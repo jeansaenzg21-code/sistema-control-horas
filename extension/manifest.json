@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "Paredes Cano · Actividad",
+  "version": "1.0.1",
+  "description": "Burbuja de actividad en curso de Paredes Cano, visible en todas las pestañas del navegador.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"],
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"],
+      "js": ["content-localhost.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "exclude_matches": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*",
+        "https://chromewebstore.google.com/*"
+      ],
+      "js": ["content-global.js"],
+      "css": ["widget.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["logo.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
