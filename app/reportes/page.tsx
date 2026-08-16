@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { MainLayout } from '@/components/main-layout'
 import { ReportFilters, type FiltrosReporte } from '@/components/report-filters'
 import { ReportSummary } from '@/components/report-summary'
 import { ReportPreview } from '@/components/report-preview'
 import { useAreas } from '@/lib/areas-context'
+import { useAuth } from '@/lib/auth-context'
 import { normalizarFecha } from '@/lib/format'
 import { exportarExcel } from '@/lib/exporter'
 import type { Actividad } from '@/lib/types'
@@ -84,6 +86,8 @@ const registros: Actividad[] = [
 
 export default function Reportes() {
   const { areas } = useAreas()
+  const { usuario, cargando } = useAuth()
+  const router = useRouter()
   const hoy = hoyISO()
   const [filtros, setFiltros] = useState<FiltrosReporte>({
     areaId: '',
@@ -92,6 +96,14 @@ export default function Reportes() {
     hasta: hoy,
     especialidad: 'todas',
   })
+
+  useEffect(() => {
+    if (!cargando && usuario?.rol !== 'admin') {
+      router.replace('/')
+    }
+  }, [cargando, usuario, router])
+
+  if (cargando || !usuario || usuario.rol !== 'admin') return null
 
   const areaPrincipal = areas[0]
   const registrosConArea = registros.map((registro) => ({

@@ -50,6 +50,20 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
     setExito('')
   }
 
+  const cancelar = () => {
+    setFormularioAbierto(false)
+    setEditandoId(null)
+    setFormulario({
+      nombre: '',
+      correo: '',
+      usuario: '',
+      password: '',
+      especialidad: opcionesEspecialidad[0] || '',
+    })
+    setError('')
+    setExito('')
+  }
+
   const comenzarEdicion = (id: string) => {
     const u = usuarios.find((x) => x.id === id)
     if (!u) return
@@ -248,7 +262,7 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
             </button>
             <button
               type="button"
-              onClick={comenzarNuevo}
+              onClick={cancelar}
               className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
             >
               Cancelar

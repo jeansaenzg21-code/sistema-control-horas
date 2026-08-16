@@ -2,11 +2,14 @@
 
 import { X, CalendarClock } from 'lucide-react'
 import { useActividad } from '@/lib/actividad-context'
+import { useAuth } from '@/lib/auth-context'
 
 export function ActivityAlert() {
   const { alertaVisible, continuarActividad, finalizarActividad, actividadActual } =
     useActividad()
+  const { usuario } = useAuth()
 
+  if (usuario?.rol === 'admin') return null
   if (!alertaVisible || !actividadActual) return null
 
   return (

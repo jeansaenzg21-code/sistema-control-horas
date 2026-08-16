@@ -91,6 +91,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
       fecha: formatearFecha(ahora),
       horaInicio: formatearHora(ahora),
       iniciadaEn: ahora.getTime(),
+      creadaEn: ahora.getTime(),
       acumuladoMs: 0,
       estado: 'en_curso',
     }
@@ -164,7 +165,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
           agregarNotificacionAUsuario(
             actividad.usuarioId,
             'Registro aprobado',
-            `Tu registro "${actividad.titulo}" fue aprobado.`,
+            `El administrador aprobó tu registro "${actividad.titulo}".`,
           )
         }
         return actualizada
@@ -184,7 +185,7 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
           agregarNotificacionAUsuario(
             actividad.usuarioId,
             'Registro rechazado',
-            `Tu registro "${actividad.titulo}" fue rechazado.`,
+            `El administrador rechazó tu registro "${actividad.titulo}".`,
           )
         }
         return actualizada

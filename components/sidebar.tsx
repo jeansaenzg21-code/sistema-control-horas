@@ -21,11 +21,11 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Panel Principal', href: '/', icon: <LayoutDashboard size={19} />, roles: ['admin', 'abogado'] },
+  { label: 'Panel Principal', href: '/', icon: <LayoutDashboard size={19} />, roles: ['admin'] },
   { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['abogado'] },
   { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'abogado'] },
   { label: 'Consolidación', href: '/consolidacion', icon: <BarChart3 size={19} />, roles: ['admin'] },
-  { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ['admin', 'abogado'] },
+  { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ['admin'] },
 ]
 
 export function Sidebar() {

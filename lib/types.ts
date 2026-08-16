@@ -18,6 +18,7 @@ export interface Actividad {
   horaInicio: string
   iniciadaEn: number
   acumuladoMs?: number
+  creadaEn?: number
   horaFin?: string
   duracion?: string
   estado: EstadoActividad
