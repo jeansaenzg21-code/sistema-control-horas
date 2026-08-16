@@ -2,9 +2,11 @@
 
 import { useMemo } from 'react'
 import { MoreVertical } from 'lucide-react'
+import Link from 'next/link'
 import { StatusBadge } from './status-badge'
 import { fechaEnRango } from '@/lib/format'
 import { useRegistros } from '@/lib/use-registros'
+import { useAuth } from '@/lib/auth-context'
 
 interface ActivityTableProps {
   areaId?: string
@@ -14,6 +16,7 @@ interface ActivityTableProps {
 
 export function ActivityTable({ areaId = '', desde = '', hasta = '' }: ActivityTableProps) {
   const registros = useRegistros()
+  const { usuario } = useAuth()
 
   const actividades = useMemo(
     () =>
@@ -28,18 +31,21 @@ export function ActivityTable({ areaId = '', desde = '', hasta = '' }: ActivityT
       <div className="mb-2.5 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-foreground">Actividad reciente</h2>
-          <p className="text-xs text-muted-foreground">Tus últimos registros</p>
+          <p className="text-xs text-muted-foreground">Últimos registros</p>
         </div>
-        <button className="text-sm font-medium text-[#c4b5fd] transition-colors hover:text-[#a78bfa]">
+        <Link
+          href={usuario?.rol === 'admin' ? '/consolidacion' : '/actividades'}
+          className="text-sm font-medium text-[#c4b5fd] transition-colors hover:text-[#a78bfa]"
+        >
           Ver todas →
-        </button>
+        </Link>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              {['Actividad', 'Especialidad', 'Duración', 'Estado', 'Fecha', ''].map((encabezado) => (
+              {['Actividad', 'Usuario', 'Especialidad', 'Duración', 'Estado', 'Fecha', ''].map((encabezado) => (
                 <th
                   key={encabezado}
                   className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
@@ -58,6 +64,7 @@ export function ActivityTable({ areaId = '', desde = '', hasta = '' }: ActivityT
                 <td className="px-3 py-2">
                   <p className="font-medium text-foreground">{actividad.titulo}</p>
                 </td>
+                <td className="px-3 py-2 text-muted-foreground">{actividad.usuarioNombre ?? '—'}</td>
                 <td className="px-3 py-2 text-muted-foreground">{actividad.especialidad}</td>
                 <td className="px-3 py-2 font-medium text-foreground">{actividad.duracion}</td>
                 <td className="px-3 py-2">
@@ -74,7 +81,7 @@ export function ActivityTable({ areaId = '', desde = '', hasta = '' }: ActivityT
             {actividades.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-8 text-center text-sm text-muted-foreground"
                 >
                   No hay actividades registradas en esa fecha.

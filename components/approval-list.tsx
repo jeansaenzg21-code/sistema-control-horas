@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Clock, Eye, ListChecks, User, X, XCircle } from 'lucide-react'
+import { Bell, CheckCircle2, Clock, Eye, ListChecks, User, X, XCircle } from 'lucide-react'
 import { useActividad } from '@/lib/actividad-context'
+import { useAuth } from '@/lib/auth-context'
+import { esJinez, registrosSimulacionJinez } from '@/lib/simulacion-jinez'
 import { StatusBadge } from './status-badge'
 import type { Actividad } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -82,7 +84,9 @@ const iconos: Record<Filtro, React.ReactNode> = {
 
 export function ApprovalList() {
   const { historial, aprobarActividad, rechazarActividad } = useActividad()
-  const [filtro, setFiltro] = useState<Filtro>('pendientes')
+  const { usuario } = useAuth()
+  const esAdmin = usuario?.rol === 'admin'
+  const [filtro, setFiltro] = useState<Filtro>(() => (esAdmin ? 'pendientes' : 'aprobadas'))
   const [detalle, setDetalle] = useState<Actividad | null>(null)
   const [demo, setDemo] = useState<Actividad[]>(plantillas)
   const [decisiones, setDecisiones] = useState<Record<string, boolean>>({})
@@ -101,7 +105,25 @@ export function ApprovalList() {
   const marcarFacturable = (id: string, valor: boolean) =>
     setDecisiones((prev) => ({ ...prev, [id]: valor }))
 
-  const todas = useMemo(() => [...historial, ...demo], [historial, demo])
+  const todas = useMemo(() => {
+    let combinadas: Actividad[] = [...historial, ...demo]
+    if (usuario && esJinez(usuario)) {
+      const simulacion = registrosSimulacionJinez(usuario).filter(
+        (s) => s.estado === 'aprobada' || s.estado === 'rechazada',
+      )
+      combinadas = [...combinadas, ...simulacion]
+    }
+    if (esAdmin || !usuario) return combinadas
+    return combinadas.filter(
+      (a) =>
+        (a.usuarioId && a.usuarioId === usuario.id) ||
+        (!a.usuarioId && a.usuarioNombre === usuario.nombre),
+    )
+  }, [historial, demo, esAdmin, usuario])
+
+  const filtrosVisibles: Filtro[] = esAdmin
+    ? ['pendientes', 'aprobadas', 'rechazadas']
+    : ['aprobadas', 'rechazadas']
 
   const conteos = useMemo(
     () => ({
@@ -187,8 +209,8 @@ export function ApprovalList() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-4">
-        {(Object.keys(etiquetas) as Filtro[]).map((clave) => (
+      <div className={cn('grid gap-4', esAdmin ? 'grid-cols-3' : 'grid-cols-2')}>
+        {filtrosVisibles.map((clave) => (
           <button
             key={clave}
             onClick={() => setFiltro(clave)}
@@ -209,7 +231,7 @@ export function ApprovalList() {
       </div>
 
       <div className="flex gap-1 rounded-lg border border-border bg-card p-1 w-fit">
-        {(Object.keys(etiquetas) as Filtro[]).map((clave) => (
+        {filtrosVisibles.map((clave) => (
           <button
             key={clave}
             onClick={() => setFiltro(clave)}
@@ -225,7 +247,17 @@ export function ApprovalList() {
         ))}
       </div>
 
-      {filtro === 'pendientes' && pendientesIds.length > 0 && (
+      {!esAdmin && (
+        <div className="flex items-center gap-2.5 rounded-xl border border-[#7c3aed]/30 bg-[#7c3aed]/5 px-4 py-3 text-sm text-foreground">
+          <Bell size={15} className="shrink-0 text-[#c4b5fd]" />
+          <p>
+            Aquí solo ves los registros que el administrador aprobó o rechazó. Cuando decida
+            sobre uno tuyo recibirás una notificación en la campana.
+          </p>
+        </div>
+      )}
+
+      {esAdmin && filtro === 'pendientes' && pendientesIds.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
           {modoSeleccion ? (
             <>

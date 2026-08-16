@@ -5,7 +5,6 @@ import { Building2, Globe } from 'lucide-react'
 import { MainLayout } from '@/components/main-layout'
 import { SettingsAreas } from '@/components/settings-areas'
 import { SettingsCompany } from '@/components/settings-company'
-import { SettingsAlerts } from '@/components/settings-alerts'
 import { cn } from '@/lib/utils'
 
 type Pestana = 'areas' | 'empresa'
@@ -40,8 +39,6 @@ export default function Configuracion() {
         </div>
 
         {pestana === 'areas' ? <SettingsAreas /> : <SettingsCompany />}
-
-        <SettingsAlerts />
       </div>
     </MainLayout>
   )

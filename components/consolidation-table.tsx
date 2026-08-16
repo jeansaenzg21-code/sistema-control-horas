@@ -4,24 +4,57 @@ import { useMemo, useState } from 'react'
 import { Clock, TrendingUp, Wallet, CalendarDays } from 'lucide-react'
 import { StatusBadge } from './status-badge'
 import { useActividad } from '@/lib/actividad-context'
+import { useAuth } from '@/lib/auth-context'
 import { duracionAHoras } from '@/lib/format'
 import { REGISTROS_DEMO } from '@/lib/demo-data'
+import { esJinez, registrosSimulacionJinez } from '@/lib/simulacion-jinez'
 import type { Actividad } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 type FiltroFactura = 'todas' | 'facturadas' | 'no_facturadas'
 
+interface GrupoUsuario {
+  key: string
+  nombre: string
+  totalHoras: number
+  registros: Actividad[]
+}
+
 export function ConsolidationTable() {
   const { historial } = useActividad()
+  const { usuarios } = useAuth()
   const [filtro, setFiltro] = useState<FiltroFactura>('todas')
 
-  const registros: Actividad[] = historial.length > 0 ? historial : REGISTROS_DEMO
+  const registros: Actividad[] = useMemo(() => {
+    const base = historial.length > 0 ? historial : REGISTROS_DEMO
+    const jinez = usuarios.find((u) => esJinez(u))
+    if (!jinez) return base
+    const simulacion = registrosSimulacionJinez(jinez)
+    return [...base, ...simulacion.filter((s) => !base.some((r) => r.id === s.id))]
+  }, [historial, usuarios])
+
+  const gruposPorUsuario = useMemo(() => {
+    const grupos = new Map<string, GrupoUsuario>()
+    for (const r of registros) {
+      const key = r.usuarioId ?? r.usuarioNombre ?? 'Sin usuario'
+      const grupo = grupos.get(key) ?? { key, nombre: key, totalHoras: 0, registros: [] }
+      grupo.registros.push(r)
+      grupo.totalHoras += duracionAHoras(r.duracion)
+      grupos.set(key, grupo)
+    }
+    return [...grupos.values()]
+  }, [registros])
+
+  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>(() => gruposPorUsuario[0]?.key ?? '')
+
+  const grupoActual = gruposPorUsuario.find((g) => g.key === usuarioSeleccionado) ?? gruposPorUsuario[0]
 
   const filtradas = useMemo(() => {
-    if (filtro === 'facturadas') return registros.filter((r) => r.facturable === true)
-    if (filtro === 'no_facturadas') return registros.filter((r) => r.facturable === false)
-    return registros
-  }, [registros, filtro])
+    if (!grupoActual) return []
+    if (filtro === 'facturadas') return grupoActual.registros.filter((r) => r.facturable === true)
+    if (filtro === 'no_facturadas') return grupoActual.registros.filter((r) => r.facturable === false)
+    return grupoActual.registros
+  }, [grupoActual, filtro])
 
   const resumen = useMemo(
     () => ({
@@ -86,6 +119,24 @@ export function ConsolidationTable() {
         ))}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {gruposPorUsuario.map((grupo) => (
+          <button
+            key={grupo.key}
+            onClick={() => setUsuarioSeleccionado(grupo.key)}
+            className={cn(
+              'flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors',
+              grupo.key === grupoActual.key
+                ? 'border-[#7c3aed] bg-[#7c3aed]/10 text-[#c4b5fd]'
+                : 'border-border bg-card text-muted-foreground hover:border-border/60 hover:text-foreground',
+            )}
+          >
+            <span>{grupo.nombre}</span>
+            <span className="text-xs text-muted-foreground">{grupo.totalHoras.toFixed(2)}h</span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex gap-1 rounded-lg border border-border bg-card p-1 w-fit">
         {opciones.map((opcion) => (
           <button
@@ -104,6 +155,12 @@ export function ConsolidationTable() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2.5">
+          <h3 className="text-sm font-semibold text-foreground">{grupoActual?.nombre}</h3>
+          <span className="text-xs text-muted-foreground">
+            Total: {(grupoActual?.totalHoras ?? 0).toFixed(2)}h
+          </span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -115,7 +172,7 @@ export function ConsolidationTable() {
                   Usuario
                 </th>
                 <th className="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground md:table-cell">
-                  Tipo
+                  Especialidad
                 </th>
                 <th className="px-4 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Horas
@@ -132,6 +189,16 @@ export function ConsolidationTable() {
               </tr>
             </thead>
             <tbody>
+              {filtradas.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-4 py-8 text-center text-sm text-muted-foreground"
+                  >
+                    No hay registros que coincidan con el filtro.
+                  </td>
+                </tr>
+              )}
               {filtradas.map((registro) => (
                 <tr
                   key={registro.id}
@@ -139,15 +206,12 @@ export function ConsolidationTable() {
                 >
                   <td className="px-4 py-2.5">
                     <p className="font-medium text-foreground">{registro.titulo}</p>
-                    <p className="mt-1.5 inline-flex rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                      {registro.especialidad}
-                    </p>
                   </td>
                   <td className="hidden px-4 py-2.5 text-muted-foreground lg:table-cell">
                     {registro.usuarioNombre ?? '—'}
                   </td>
                   <td className="hidden px-4 py-2.5 text-muted-foreground md:table-cell">
-                    {registro.tipo}
+                    {registro.especialidad}
                   </td>
                   <td className="px-4 py-2.5 text-right font-medium text-foreground">
                     {registro.duracion}
