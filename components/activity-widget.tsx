@@ -4,11 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Pause, Play, Square, X, ArrowRight } from 'lucide-react'
 import { useActividad } from '@/lib/actividad-context'
-import { obtenerEstiloEstado } from '@/lib/estado'
-import { formatearTiempoTranscurrido } from '@/lib/format'
-import { leerStorage, escribirStorage } from '@/lib/storage'
+import { useAuth } from '@/lib/auth-context'
 import { Logo } from './logo'
-import { cn } from '@/lib/utils'
+import { cn, formatHora } from '@/lib/utils'
 
 const TAMANO_BURBUJA = 46
 const ANCHO_TARJETA = 320
@@ -49,9 +47,20 @@ function limitar(posicion: Posicion): Posicion {
   }
 }
 
+function formatearTiempo(ms: number): string {
+  const totalSegundos = Math.max(0, Math.floor(ms / 1000))
+  const horas = Math.floor(totalSegundos / 3600)
+  const minutos = Math.floor((totalSegundos % 3600) / 60)
+  const segundos = totalSegundos % 60
+  const dos = (n: number) => String(n).padStart(2, '0')
+  if (horas > 0) return `${horas}:${dos(minutos)}:${dos(segundos)}`
+  return `${dos(minutos)}:${dos(segundos)}`
+}
+
 export function ActivityWidget() {
   const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad } =
     useActividad()
+  const { usuario } = useAuth()
   const [montado, setMontado] = useState(false)
   const [abierto, setAbierto] = useState(false)
   const [cerrado, setCerrado] = useState(false)
@@ -63,15 +72,15 @@ export function ActivityWidget() {
   const seArrastro = useRef(false)
   const posicionRef = useRef(posicion)
 
-  // Carga y restauración de la posición guardada
   useEffect(() => {
-    const guardada = leerStorage<Posicion>(CLAVE_POSICION)
-    setPosicion(limitar(esPosicionValida(guardada) ? guardada : posicionPorDefecto()))
-    setCerrado(leerStorage<boolean>(CLAVE_CERRADO) === true)
+    const guardada = localStorage.getItem(CLAVE_POSICION)
+    let parsed: Posicion | null = null
+    try { parsed = guardada ? JSON.parse(guardada) : null } catch { parsed = null }
+    setPosicion(limitar(esPosicionValida(parsed) ? parsed : posicionPorDefecto()))
+    setCerrado(localStorage.getItem(CLAVE_CERRADO) === 'true')
     setMontado(true)
   }, [])
 
-  // Re-encaje de la posición si la ventana cambia de tamaño
   useEffect(() => {
     const manejarResize = () => setPosicion((prev) => limitar(prev))
     window.addEventListener('resize', manejarResize)
@@ -82,7 +91,6 @@ export function ActivityWidget() {
     posicionRef.current = posicion
   }, [posicion])
 
-  // Cronómetro: repinta cada segundo mientras haya actividad activa
   useEffect(() => {
     if (!actividadActual) return
     const id = window.setInterval(() => setTick((v) => v + 1), 1000)
@@ -113,7 +121,7 @@ export function ActivityWidget() {
   const manejarFin = () => {
     inicioArrastre.current = null
     setArrastrando(false)
-    escribirStorage(CLAVE_POSICION, posicionRef.current)
+    localStorage.setItem(CLAVE_POSICION, JSON.stringify(posicionRef.current))
   }
 
   const alternar = () => {
@@ -125,12 +133,16 @@ export function ActivityWidget() {
   }
 
   const hayActividad = !!actividadActual
-  const pausada = actividadActual?.estado === 'pausada'
-  const enCurso = actividadActual?.estado === 'en_curso'
-  const estadoEstilo = actividadActual ? obtenerEstiloEstado(actividadActual.estado) : null
-  const tiempoTranscurrido = actividadActual
-    ? (actividadActual.acumuladoMs || 0) + (enCurso ? Date.now() - actividadActual.iniciadaEn : 0)
-    : 0
+  const pausada = actividadActual?.estado === 'PAUSADA'
+  const enCurso = actividadActual?.estado === 'EN_CURSO'
+  const tiempoTranscurrido = (() => {
+    if (!actividadActual) return 0
+    const inicioMs = new Date(actividadActual.inicio).getTime()
+    const ahoraMs = enCurso ? Date.now() : inicioMs
+    const finMs = actividadActual.fin ? new Date(actividadActual.fin).getTime() : ahoraMs
+    const totalBruto = Math.max(0, finMs - inicioMs)
+    return Math.max(0, totalBruto - (actividadActual.pausa_acumulada_segundos || 0) * 1000)
+  })()
 
   if (!montado || cerrado) return null
 
@@ -146,7 +158,6 @@ export function ActivityWidget() {
 
   return (
     <>
-      {/* Burbuja flotante arrastrable */}
       <button
         onPointerDown={manejarInicio}
         onPointerMove={manejarMovimiento}
@@ -160,7 +171,10 @@ export function ActivityWidget() {
         )}
         style={{ left: posicion.x, top: posicion.y, width: TAMANO_BURBUJA, height: TAMANO_BURBUJA }}
       >
-        <Logo size={TAMANO_BURBUJA} />
+        <Logo
+          size={TAMANO_BURBUJA}
+          className="overflow-hidden rounded-full shadow-none [filter:drop-shadow(0_0_10px_rgba(124,58,237,0.45))]"
+        />
         {hayActividad && !pausada && (
           <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#a78bfa] opacity-60" />
@@ -169,11 +183,10 @@ export function ActivityWidget() {
         )}
       </button>
 
-      {/* Botón para cerrar el widget */}
       <button
         onClick={(e) => {
           e.stopPropagation()
-          escribirStorage(CLAVE_CERRADO, true)
+          localStorage.setItem(CLAVE_CERRADO, 'true')
           setCerrado(true)
         }}
         aria-label="Cerrar widget"
@@ -186,13 +199,11 @@ export function ActivityWidget() {
         <X size={12} />
       </button>
 
-      {/* Tarjeta desplegable */}
       {abierto && (
         <div
           className="no-print fixed z-50 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-black/50 animate-in slide-in-from-bottom-4"
           style={{ left: izquierda, top: superior, width: ANCHO_TARJETA }}
         >
-          {/* Cabecera */}
           <div className="flex items-center justify-between border-b border-border bg-header px-4 py-3">
             <div className="flex items-center gap-2.5">
               <Logo size={26} />
@@ -213,26 +224,26 @@ export function ActivityWidget() {
             {hayActividad && actividadActual ? (
               <>
                 <p className="text-sm font-medium leading-snug text-foreground">
-                  {actividadActual.titulo}
+                  {actividadActual.descripcion}
                 </p>
 
                 <div className="mt-3 space-y-1.5">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Tiempo transcurrido</span>
                     <span className="font-semibold text-[#c4b5fd] tabular-nums">
-                      {formatearTiempoTranscurrido(tiempoTranscurrido)}
+                      {formatearTiempo(tiempoTranscurrido)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Hora de inicio</span>
-                    <span className="font-semibold text-[#c4b5fd]">{actividadActual.horaInicio}</span>
+                    <span className="font-semibold text-[#c4b5fd]">{formatHora(actividadActual.inicio)}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Estado</span>
                     <span className="flex items-center gap-1.5">
-                      <span className={cn('h-2 w-2 rounded-full', estadoEstilo?.dot)} />
-                      <span className={cn('font-medium', estadoEstilo?.text)}>
-                        {estadoEstilo?.label}
+                      <span className={cn('h-2 w-2 rounded-full', pausada ? 'bg-[#6b7280]' : 'bg-[#a78bfa]')} />
+                      <span className={cn('font-medium', pausada ? 'text-[#9ca3af]' : 'text-[#a78bfa]')}>
+                        {pausada ? 'Pausada' : 'En curso'}
                       </span>
                     </span>
                   </div>

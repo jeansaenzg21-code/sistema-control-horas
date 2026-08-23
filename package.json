@@ -1,20 +1,25 @@
 {
-  "name": "my-project",
+  "name": "paredes-cano-control-horas",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:web": "next dev",
+    "dev:widget": "npm run tauri dev --prefix timer",
+    "build:widget": "npm run tauri build --prefix timer",
     "build": "next build",
     "start": "next start",
     "lint": "eslint ."
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
-    "@vercel/analytics": "1.6.1",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
+    "mysql2": "^3.23.3",
     "next": "16.3.0",
+    "paredes-cano-shared": "file:./shared",
     "react": "^19",
     "react-dom": "^19",
     "shadcn": "^4.8.0",
@@ -23,6 +28,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",

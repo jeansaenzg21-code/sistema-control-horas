@@ -6,6 +6,7 @@ import {
   CheckCircle,
   BarChart3,
   FileText,
+  Users,
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -22,8 +23,9 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: 'Panel Principal', href: '/', icon: <LayoutDashboard size={19} />, roles: ['admin'] },
-  { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['abogado'] },
-  { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'abogado'] },
+  { label: 'Clientes', href: '/clientes', icon: <Users size={19} />, roles: ['admin'] },
+  { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['personal'] },
+  { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'personal'] },
   { label: 'Consolidación', href: '/consolidacion', icon: <BarChart3 size={19} />, roles: ['admin'] },
   { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ['admin'] },
 ]
@@ -32,7 +34,7 @@ export function Sidebar() {
   const pathname = usePathname()
   const { usuario } = useAuth()
 
-  const itemsVisibles = navItems.filter((item) => item.roles.includes(usuario?.rol ?? 'abogado'))
+  const itemsVisibles = navItems.filter((item) => item.roles.includes(usuario?.rol ?? 'personal'))
 
   return (
     <aside className="no-print fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar">

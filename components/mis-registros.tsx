@@ -4,21 +4,14 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import { StatusBadge } from './status-badge'
 import { useRegistros } from '@/lib/use-registros'
-import { duracionAHoras, normalizarFecha } from '@/lib/format'
 import type { Actividad } from '@/lib/types'
+import { esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
 
 const POR_PAGINA = 40
 
 function mesKeyActual(): string {
   const ahora = new Date()
   return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`
-}
-
-function hoyKey(): string {
-  const ahora = new Date()
-  return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(
-    ahora.getDate(),
-  ).padStart(2, '0')}`
 }
 
 function etiquetaMes(mesKey: string): string {
@@ -30,13 +23,13 @@ function etiquetaMes(mesKey: string): string {
 }
 
 function mesKeyDeFecha(fecha: string): string | null {
-  const norm = normalizarFecha(fecha)
-  return norm ? norm.slice(0, 7) : null
+  if (!fecha) return null
+  return fecha.slice(0, 7)
 }
 
 function etiquetaDia(fecha: string): string {
-  const norm = normalizarFecha(fecha)
-  const [anio, mes, dia] = norm.split('-').map(Number)
+  if (!fecha) return ''
+  const [anio, mes, dia] = fecha.split('-').map(Number)
   return new Date(anio, mes - 1, dia).toLocaleDateString('es-PE', {
     weekday: 'long',
     day: 'numeric',
@@ -48,6 +41,19 @@ function moverMes(mesKey: string, delta: number): string {
   const [anio, mes] = mesKey.split('-').map(Number)
   const fecha = new Date(anio, mes - 1 + delta, 1)
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`
+}
+
+function hoyKey(): string {
+  const ahora = new Date()
+  return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}-${String(ahora.getDate()).padStart(2, '0')}`
+}
+
+function fechaDeInicio(inicio: string): string {
+  return fechaLocalISO(inicio)
+}
+
+function horaDeInicio(inicio: string): string {
+  return String(inicio).split('T')[1]?.slice(0, 5) || ''
 }
 
 type Fila =
@@ -62,7 +68,7 @@ export function MisRegistros() {
 
   const esColapsado = (fecha: string) => {
     if (fecha in sobrescrito) return sobrescrito[fecha]
-    return normalizarFecha(fecha) !== hoyKey()
+    return fecha !== hoyKey()
   }
 
   const toggleDia = (fecha: string) => {
@@ -71,13 +77,8 @@ export function MisRegistros() {
 
   const delMes = useMemo(() => {
     return registros
-      .filter((r) => mesKeyDeFecha(r.fecha) === mes)
-      .sort((a, b) => {
-        const da = normalizarFecha(a.fecha) ?? ''
-        const db = normalizarFecha(b.fecha) ?? ''
-        if (da !== db) return da < db ? 1 : -1
-        return (a.horaInicio ?? '') < (b.horaInicio ?? '') ? 1 : -1
-      })
+      .filter((r) => mesKeyDeFecha(fechaDeInicio(r.inicio)) === mes)
+      .sort((a, b) => fechaDeInicio(b.inicio).localeCompare(fechaDeInicio(a.inicio)) || horaDeInicio(b.inicio).localeCompare(horaDeInicio(a.inicio)))
   }, [registros, mes])
 
   const filas = useMemo(() => {
@@ -87,22 +88,18 @@ export function MisRegistros() {
     const itemsDia: Actividad[] = []
     const cerrarDia = () => {
       if (itemsDia.length === 0) return
-      out.push({
-        key: `d-${fechaActual}`,
-        tipo: 'encabezado',
-        fecha: fechaActual,
-        totalHoras: totalDia,
-      })
-      for (const r of itemsDia) out.push({ key: r.id, tipo: 'registro', registro: r })
+      out.push({ key: `d-${fechaActual}`, tipo: 'encabezado', fecha: fechaActual, totalHoras: totalDia })
+      for (const r of itemsDia) out.push({ key: String(r.id), tipo: 'registro', registro: r })
     }
     for (const r of delMes) {
-      if (r.fecha !== fechaActual) {
+      const fechaReg = fechaDeInicio(r.inicio)
+      if (fechaReg !== fechaActual) {
         cerrarDia()
-        fechaActual = r.fecha
+        fechaActual = fechaReg
         totalDia = 0
         itemsDia.length = 0
       }
-      totalDia += duracionAHoras(r.duracion)
+      totalDia += calcularHoras(r)
       itemsDia.push(r)
     }
     cerrarDia()
@@ -110,7 +107,7 @@ export function MisRegistros() {
   }, [delMes])
 
   const totalMes = useMemo(
-    () => delMes.reduce((acc, r) => acc + duracionAHoras(r.duracion), 0),
+    () => delMes.reduce((acc, r) => acc + calcularHoras(r), 0),
     [delMes],
   )
 
@@ -201,7 +198,8 @@ export function MisRegistros() {
                     </tr>
                   )
                 }
-                if (esColapsado(fila.registro.fecha)) return null
+                const fechaReg = fechaDeInicio(fila.registro.inicio)
+                if (esColapsado(fechaReg)) return null
                 return (
                   <tr
                     key={fila.key}
@@ -209,28 +207,25 @@ export function MisRegistros() {
                   >
                     <td className="px-4 py-2.5">
                       <p className="flex items-center gap-2 font-medium text-foreground">
-                        {esNueva(fila.registro) && (
-                          <span
-                            className="h-2 w-2 flex-none rounded-full bg-blue-500"
-                            title="Nuevo registro"
-                          />
-                        )}
-                        <span>{fila.registro.titulo}</span>
+                        <span>{fila.registro.descripcion}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {fila.registro.tipo}
-                        {fila.registro.tipo ? ' · ' : ''}
-                        {etiquetaFacturable(fila.registro.facturable)}
+                        {fila.registro.tipo_actividad_nombre || ''}
+                        {esFacturable(fila.registro.facturable)
+                          ? ' · Facturable'
+                          : esNoFacturable(fila.registro.facturable)
+                            ? ' · No facturable'
+                            : ''}
                       </p>
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground">
-                      {fila.registro.horaInicio}
+                      {horaDeInicio(fila.registro.inicio)}
                     </td>
                     <td className="hidden px-4 py-2.5 text-muted-foreground sm:table-cell">
-                      {fila.registro.horaFin ?? '—'}
+                      {fila.registro.fin ? String(fila.registro.fin).split('T')[1]?.slice(0, 5) || '—' : '—'}
                     </td>
                     <td className="px-4 py-2.5 font-medium text-foreground">
-                      {fila.registro.duracion ?? '—'}
+                      {formatDuracion(fila.registro)}
                     </td>
                     <td className="px-4 py-2.5">
                       <StatusBadge estado={fila.registro.estado} />
@@ -256,12 +251,18 @@ export function MisRegistros() {
   )
 }
 
-function etiquetaFacturable(facturable: boolean | null | undefined): string {
-  if (facturable == null) return 'Por definir'
-  return facturable ? 'Facturable' : 'No facturable'
+function calcularHoras(r: Actividad): number {
+  if (!r.fin || !r.inicio) return 0
+  const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
+  return Math.max(0, (diff - (r.pausa_acumulada_segundos || 0)) / 3600)
 }
 
-function esNueva(registro: Actividad): boolean {
-  if (!registro.creadaEn) return false
-  return Date.now() - registro.creadaEn < 24 * 60 * 60 * 1000
+function formatDuracion(r: Actividad): string {
+  if (!r.fin || !r.inicio) return '—'
+  const segs = Math.max(0, (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000 - (r.pausa_acumulada_segundos || 0))
+  const h = Math.floor(segs / 3600)
+  const m = Math.floor((segs % 3600) / 60)
+  if (h === 0) return `${m}min`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}min`
 }

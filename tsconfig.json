@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "paredes-cano-shared": ["./shared/src"],
+      "paredes-cano-shared/*": ["./shared/src/*"]
     }
   },
   "include": [

@@ -2,17 +2,30 @@
 
 import { Clock, TrendingUp, Wallet, FileText } from 'lucide-react'
 import type { Actividad } from '@/lib/types'
+import { esFacturable, esNoFacturable } from '@/lib/utils'
 
 interface ReportSummaryProps {
   registros: Actividad[]
 }
 
 export function ReportSummary({ registros }: ReportSummaryProps) {
-  const total = registros.reduce((acc, r) => acc + duracionAHoras(r.duracion ?? ''), 0)
+  const calcularHoras = (r: Actividad): number => {
+    if (!r.fin || !r.inicio) return 0
+    const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
+    return Math.max(0, (diff - (r.pausa_acumulada_segundos || 0)) / 3600)
+  }
+
+  const total = registros.reduce((acc, r) => acc + calcularHoras(r), 0)
   const facturables = registros
-    .filter((r) => r.facturable)
-    .reduce((acc, r) => acc + duracionAHoras(r.duracion ?? ''), 0)
-  const noFacturables = total - facturables
+    .filter((r) => r.estado === 'APROBADA' && esFacturable(r.facturable))
+    .reduce((acc, r) => acc + calcularHoras(r), 0)
+  const noFacturables = registros
+    .filter(
+      (r) =>
+        r.estado === 'RECHAZADA' ||
+        (r.estado === 'APROBADA' && esNoFacturable(r.facturable)),
+    )
+    .reduce((acc, r) => acc + calcularHoras(r), 0)
 
   const tarjetas = [
     { etiqueta: 'Total de horas', valor: `${total.toFixed(1)}h`, icono: Clock, color: 'text-foreground' },
@@ -34,10 +47,4 @@ export function ReportSummary({ registros }: ReportSummaryProps) {
       ))}
     </div>
   )
-}
-
-function duracionAHoras(duracion: string): number {
-  const coincidencia = duracion.match(/(\d+)h(?:\s+(\d+)m)?/)
-  if (!coincidencia) return 0
-  return Number(coincidencia[1]) + (coincidencia[2] ? Number(coincidencia[2]) / 60 : 0)
 }

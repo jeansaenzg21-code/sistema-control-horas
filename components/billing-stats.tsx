@@ -3,8 +3,8 @@
 import { useMemo } from 'react'
 import { TrendingUp, Wallet } from 'lucide-react'
 import { KPICard } from './kpi-card'
-import { duracionAHoras, fechaEnRango } from '@/lib/format'
 import { useRegistros } from '@/lib/use-registros'
+import { esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
 
 interface BillingStatsProps {
   areaId?: string
@@ -16,15 +16,27 @@ export function BillingStats({ areaId = '', desde = '', hasta = '' }: BillingSta
   const registros = useRegistros()
 
   const horas = useMemo(() => {
-    const enRango = registros.filter(
-      (r) => (!areaId || r.areaId === areaId) && fechaEnRango(r.fecha, desde, hasta),
-    )
+    let enRango = registros
+    if (areaId) enRango = enRango.filter((r) => String(r.area_id) === areaId)
+    if (desde) enRango = enRango.filter((r) => fechaLocalISO(r.inicio) >= desde)
+    if (hasta) enRango = enRango.filter((r) => fechaLocalISO(r.inicio) <= hasta)
+
+    const calcularHoras = (r: { inicio: string; fin: string | null; pausa_acumulada_segundos: number }): number => {
+      if (!r.fin || !r.inicio) return 0
+      const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
+      return Math.max(0, (diff - r.pausa_acumulada_segundos) / 3600)
+    }
+
     const facturadas = enRango
-      .filter((r) => r.estado === 'aprobada' && r.facturable === true)
-      .reduce((acc, r) => acc + duracionAHoras(r.duracion), 0)
+      .filter((r) => r.estado === 'APROBADA' && esFacturable(r.facturable))
+      .reduce((acc, r) => acc + calcularHoras(r), 0)
     const noFacturadas = enRango
-      .filter((r) => r.estado === 'aprobada' && r.facturable === false)
-      .reduce((acc, r) => acc + duracionAHoras(r.duracion), 0)
+      .filter(
+        (r) =>
+          r.estado === 'RECHAZADA' ||
+          (r.estado === 'APROBADA' && esNoFacturable(r.facturable)),
+      )
+      .reduce((acc, r) => acc + calcularHoras(r), 0)
     const comparativa = facturadas + noFacturadas
     return { comparativa, facturadas, noFacturadas }
   }, [registros, areaId, desde, hasta])

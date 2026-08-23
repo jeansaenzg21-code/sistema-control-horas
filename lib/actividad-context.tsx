@@ -9,199 +9,257 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { Actividad, ActividadFormData } from './types'
-import { calcularDuracion, formatearFecha, formatearHora, generarId } from './format'
-import { leerStorage, escribirStorage } from './storage'
-import { notificar, solicitarPermisoNotificaciones } from './notifications'
 import { useAuth } from './auth-context'
-import { useNotificaciones } from './notificaciones-context'
 
-const CLAVE_ACTUAL = 'pc_actividad_actual'
-const CLAVE_HISTORIAL = 'pc_historial'
-const CLAVE_ALERTAS = 'pc_alertas_cada'
+export interface Actividad {
+  id: number
+  usuario_id: number
+  cliente_id: number | null
+  tipo_actividad_id: number
+  descripcion: string | null
+  facturable: boolean | null
+  inicio: string
+  fin: string | null
+  duracion_segundos: number | null
+  pausa_acumulada_segundos: number
+  estado: 'EN_CURSO' | 'PAUSADA' | 'PENDIENTE_APROBACION' | 'APROBADA' | 'RECHAZADA'
+  revisado_por: number | null
+  revisado_en: string | null
+  observacion_revision: string | null
+  created_at: string
+  usuario_nombre?: string
+  especialidad?: string
+  tipo_actividad_nombre?: string
+  area_nombre?: string
+  area_id?: number | null
+  cliente_nombre?: string
+}
 
 interface ActividadContextValue {
   actividadActual: Actividad | null
+  cargandoActividad: boolean
   historial: Actividad[]
   alertasCada: number
   alertaVisible: boolean
   configurarAlertas: (minutos: number) => void
-  iniciarActividad: (datos: ActividadFormData) => void
-  pausarActividad: () => void
-  reanudarActividad: () => void
-  finalizarActividad: () => void
+  iniciarActividad: (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; descripcion?: string; facturable?: boolean | null }) => Promise<{ ok: boolean; error?: string }>
+  pausarActividad: () => Promise<void>
+  reanudarActividad: () => Promise<void>
+  finalizarActividad: () => Promise<void>
   continuarActividad: () => void
-  aprobarActividad: (id: string, facturable: boolean) => void
-  rechazarActividad: (id: string) => void
+  cargarActividadActual: (usuarioId: number) => Promise<Actividad | null>
+  cargarHistorial: (usuarioId: number, soloPropias?: boolean) => Promise<void>
 }
 
 const ActividadContext = createContext<ActividadContextValue | null>(null)
 
 export function ActivityProvider({ children }: { children: ReactNode }) {
-  const { usuario, usuarios } = useAuth()
-  const { agregarNotificacionAUsuario } = useNotificaciones()
+  const { usuario } = useAuth()
   const [actividadActual, setActividadActual] = useState<Actividad | null>(null)
+  const [cargandoActividad, setCargandoActividad] = useState(true)
   const [historial, setHistorial] = useState<Actividad[]>([])
-  const [alertasCada, setAlertasCada] = useState(15)
+  const [alertasCada, setAlertasCada] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const guardado = localStorage.getItem('pc_alertas_cada')
+      if (guardado === '15' || guardado === '30') return Number(guardado)
+    }
+    return 15
+  })
   const [alertaVisible, setAlertaVisible] = useState(false)
   const actividadRef = useRef<Actividad | null>(null)
+  const inicioRef = useRef<number>(Date.now())
+  const cargaInicialRef = useRef(false)
 
-  // Carga inicial desde localStorage
-  useEffect(() => {
-    setActividadActual(leerStorage(CLAVE_ACTUAL))
-    const guardado = leerStorage<Actividad[]>(CLAVE_HISTORIAL) ?? []
-    setHistorial(guardado.filter((a, i) => guardado.findIndex((b) => b.id === a.id) === i))
-    const minutos = leerStorage<number>(CLAVE_ALERTAS)
-    if (minutos === 15 || minutos === 30) setAlertasCada(minutos)
-  }, [])
-
-  // Mantiene el ref sincronizado con el estado actual
   useEffect(() => {
     actividadRef.current = actividadActual
+    if (actividadActual && actividadActual.estado === 'EN_CURSO') {
+      inicioRef.current = Date.now()
+    }
   }, [actividadActual])
 
-  // Persistencia
   useEffect(() => {
-    escribirStorage(CLAVE_ACTUAL, actividadActual)
-  }, [actividadActual])
-
-  useEffect(() => {
-    escribirStorage(CLAVE_HISTORIAL, historial)
-  }, [historial])
-
-  useEffect(() => {
-    escribirStorage(CLAVE_ALERTAS, alertasCada)
+    localStorage.setItem('pc_alertas_cada', String(alertasCada))
   }, [alertasCada])
+
+  const cargarActividadActual = useCallback(async (usuarioId: number): Promise<Actividad | null> => {
+    const esCargaInicial = !cargaInicialRef.current
+    if (esCargaInicial) setCargandoActividad(true)
+    try {
+      const res = await fetch(`/api/actividades?usuario_id=${usuarioId}&estado=EN_CURSO`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.length > 0) {
+          setActividadActual(data[0])
+          return data[0] as Actividad
+        }
+        const res2 = await fetch(`/api/actividades?usuario_id=${usuarioId}&estado=PAUSADA`)
+        if (res2.ok) {
+          const data2 = await res2.json()
+          const actividad = (data2.length > 0 ? data2[0] : null) as Actividad | null
+          setActividadActual(actividad)
+          return actividad
+        }
+      }
+    } catch {
+      // Sin conexión
+    } finally {
+      if (esCargaInicial) {
+        cargaInicialRef.current = true
+        setCargandoActividad(false)
+      }
+    }
+    return null
+  }, [])
+
+  const cargarHistorial = useCallback(async (usuarioId: number, soloPropias = true) => {
+    try {
+      let url = '/api/actividades'
+      if (soloPropias) {
+        url = `/api/actividades?usuario_id=${usuarioId}`
+      }
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        setHistorial(data)
+      }
+    } catch {
+      // Sin conexión
+    }
+  }, [])
+
+  useEffect(() => {
+    if (usuario) {
+      cargaInicialRef.current = false
+      const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor'
+      Promise.all([
+        cargarActividadActual(usuario.id),
+        cargarHistorial(usuario.id, !esAdminOSupervisor),
+      ])
+    }
+  }, [usuario, cargarActividadActual, cargarHistorial])
+
+  useEffect(() => {
+    if (!usuario) return
+    const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor'
+    const es = new EventSource(`/api/actividades/stream?usuario_id=${usuario.id}`)
+    es.addEventListener('activity-changed', () => {
+      cargarActividadActual(usuario.id)
+      cargarHistorial(usuario.id, !esAdminOSupervisor)
+    })
+    return () => es.close()
+  }, [usuario, cargarActividadActual, cargarHistorial])
 
   const configurarAlertas = useCallback((minutos: number) => {
     setAlertasCada(minutos)
   }, [])
 
-  const iniciarActividad = useCallback((datos: ActividadFormData) => {
-    const ahora = new Date()
-    const nueva: Actividad = {
-      id: generarId(),
-      titulo: datos.titulo,
-      especialidad: datos.especialidad,
-      areaId: datos.areaId ?? null,
-      usuarioId: datos.usuarioId,
-      usuarioNombre: datos.usuarioNombre,
-      tipo: datos.tipo,
-      facturable: null,
-      fecha: formatearFecha(ahora),
-      horaInicio: formatearHora(ahora),
-      iniciadaEn: ahora.getTime(),
-      creadaEn: ahora.getTime(),
-      acumuladoMs: 0,
-      estado: 'en_curso',
-    }
-    setActividadActual(nueva)
-    setAlertaVisible(false)
-    solicitarPermisoNotificaciones()
-  }, [])
-
-  const pausarActividad = useCallback(() => {
-    setActividadActual((actual) => {
-      if (!actual) return actual
-      const acumulado = (actual.acumuladoMs || 0) + (Date.now() - actual.iniciadaEn)
-      return { ...actual, estado: 'pausada', acumuladoMs: acumulado }
-    })
-    setAlertaVisible(false)
-  }, [])
-
-  const reanudarActividad = useCallback(() => {
-    setActividadActual((actual) => {
-      if (!actual) return actual
-      return { ...actual, estado: 'en_curso', iniciadaEn: Date.now() }
-    })
-    setAlertaVisible(false)
-  }, [])
-
-  const finalizarActividad = useCallback(() => {
-    const actual = actividadRef.current
-    if (!actual) return
-
-    const horaFin = formatearHora()
-    const duracion = calcularDuracion(actual.horaInicio, horaFin)
-    const terminada: Actividad = {
-      ...actual,
-      horaFin,
-      duracion,
-      estado: 'pendiente_aprobacion',
-    }
-    setHistorial((prev) => [terminada, ...prev])
-    setActividadActual(null)
-    setAlertaVisible(false)
-
-    if (usuario?.rol !== 'admin') {
-      // Avisar a los administradores de que hay un registro pendiente.
-      for (const admin of usuarios.filter((u) => u.rol === 'admin')) {
-        agregarNotificacionAUsuario(
-          admin.id,
-          'Registro pendiente de aprobación',
-          `${actual.usuarioNombre || usuario?.nombre || 'Un abogado'} envió: ${actual.titulo}`,
-          '/aprobaciones',
-        )
+  const iniciarActividad = useCallback(async (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; descripcion?: string; facturable?: boolean | null }) => {
+    try {
+      const res = await fetch('/api/actividades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        return { ok: false, error: data.error || 'Error al crear actividad.' }
       }
+      setActividadActual(data.actividad)
+      setAlertaVisible(false)
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'No se pudo conectar al servidor.' }
     }
-  }, [usuario, usuarios, agregarNotificacionAUsuario])
+  }, [])
+
+  const pausarActividad = useCallback(async () => {
+    if (!usuario) return
+    const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
+    if (!actual) return
+    try {
+      const res = await fetch(`/api/actividades/${actual.id}/pausar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: usuario.id }),
+      })
+      if (!res.ok) {
+        console.warn('[actividad] No se pudo pausar:', res.status)
+        return
+      }
+      const duracionHastaPausa = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(actual.inicio).getTime()) / 1000),
+      )
+      setActividadActual((prev) => prev ? {
+        ...prev,
+        estado: 'PAUSADA',
+        duracion_segundos: duracionHastaPausa,
+      } : null)
+      setAlertaVisible(false)
+    } catch {
+      console.warn('[actividad] Sin conexión al pausar')
+    }
+  }, [usuario, cargarActividadActual])
+
+  const reanudarActividad = useCallback(async () => {
+    if (!usuario) return
+    const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
+    if (!actual) return
+    try {
+      const res = await fetch(`/api/actividades/${actual.id}/continuar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: usuario.id }),
+      })
+      if (!res.ok) {
+        console.warn('[actividad] No se pudo reanudar:', res.status)
+        return
+      }
+      setActividadActual((prev) => prev ? { ...prev, estado: 'EN_CURSO' } : null)
+      inicioRef.current = Date.now()
+      setAlertaVisible(false)
+    } catch {
+      console.warn('[actividad] Sin conexión al reanudar')
+    }
+  }, [usuario, cargarActividadActual])
+
+  const finalizarActividad = useCallback(async () => {
+    if (!usuario) return
+    const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
+    if (!actual) return
+    try {
+      const res = await fetch(`/api/actividades/${actual.id}/finalizar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: usuario.id }),
+      })
+      if (!res.ok) {
+        console.warn('[actividad] No se pudo finalizar:', res.status)
+        return
+      }
+      setActividadActual(null)
+      setAlertaVisible(false)
+       const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor'
+       await cargarHistorial(usuario.id, !esAdminOSupervisor)
+    } catch {
+      console.warn('[actividad] Sin conexión al finalizar')
+    }
+  }, [usuario, cargarActividadActual, cargarHistorial])
 
   const continuarActividad = useCallback(() => {
     setAlertaVisible(false)
-    setActividadActual((actual) => {
-      if (!actual) return actual
-      return { ...actual, iniciadaEn: Date.now() }
-    })
+    if (actividadRef.current) {
+      inicioRef.current = Date.now()
+    }
   }, [])
 
-  const aprobarActividad = useCallback(
-    (id: string, facturable: boolean) => {
-      setHistorial((prev) => {
-        const actividad = prev.find((a) => a.id === id)
-        const actualizada = prev.map((a) =>
-          a.id === id ? { ...a, estado: 'aprobada' as const, facturable } : a,
-        )
-        if (actividad?.usuarioId) {
-          agregarNotificacionAUsuario(
-            actividad.usuarioId,
-            'Registro aprobado',
-            `El administrador aprobó tu registro "${actividad.titulo}".`,
-          )
-        }
-        return actualizada
-      })
-    },
-    [agregarNotificacionAUsuario],
-  )
-
-  const rechazarActividad = useCallback(
-    (id: string) => {
-      setHistorial((prev) => {
-        const actividad = prev.find((a) => a.id === id)
-        const actualizada = prev.map((a) =>
-          a.id === id ? { ...a, estado: 'rechazada' as const } : a,
-        )
-        if (actividad?.usuarioId) {
-          agregarNotificacionAUsuario(
-            actividad.usuarioId,
-            'Registro rechazado',
-            `El administrador rechazó tu registro "${actividad.titulo}".`,
-          )
-        }
-        return actualizada
-      })
-    },
-    [agregarNotificacionAUsuario],
-  )
-
-  // Temporizador de alertas: solo con actividad en curso y tras el intervalo configurado
   useEffect(() => {
-    if (!actividadActual || actividadActual.estado !== 'en_curso') return
+    if (!actividadActual || actividadActual.estado !== 'EN_CURSO') return
     if (alertaVisible) return
 
     const comprobar = () => {
       const ahora = Date.now()
-      if (ahora - actividadActual.iniciadaEn >= alertasCada * 60 * 1000) {
+      if (ahora - inicioRef.current >= alertasCada * 60 * 1000) {
         setAlertaVisible(true)
       }
     }
@@ -211,41 +269,11 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(intervalo)
   }, [actividadActual, alertaVisible, alertasCada])
 
-  // Notificación del navegador cuando se dispara la alerta de actividad
-  useEffect(() => {
-    if (!alertaVisible || !actividadActual) return
-    notificar('¿Sigues trabajando?', `Paredes Cano · ${actividadActual.titulo}`)
-  }, [alertaVisible, actividadActual])
-
-  // Comandos externos (extensión de navegador) para pausar/reanudar/finalizar.
-  // La extensión deja el comando en el atributo compartido data-pc-comando del
-  // <html> (el DOM sí cruza entre el mundo del content script y la app), y aquí
-  // se sondea cada 400ms en vez de depender de un evento, por fiabilidad.
-  useEffect(() => {
-    const manejarComando = () => {
-      const crudo = document.documentElement.getAttribute('data-pc-comando')
-      if (!crudo) return
-      let detalle: { accion?: string } | undefined
-      try {
-        detalle = JSON.parse(crudo)
-      } catch {
-        detalle = undefined
-      }
-      if (!detalle?.accion) return
-      document.documentElement.removeAttribute('data-pc-comando')
-      if (detalle.accion === 'pausar') pausarActividad()
-      else if (detalle.accion === 'reanudar') reanudarActividad()
-      else if (detalle.accion === 'finalizar') finalizarActividad()
-    }
-    const intervalo = window.setInterval(manejarComando, 400)
-    manejarComando()
-    return () => window.clearInterval(intervalo)
-  }, [pausarActividad, reanudarActividad, finalizarActividad])
-
   return (
     <ActividadContext.Provider
       value={{
         actividadActual,
+        cargandoActividad,
         historial,
         alertasCada,
         alertaVisible,
@@ -255,8 +283,8 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         reanudarActividad,
         finalizarActividad,
         continuarActividad,
-        aprobarActividad,
-        rechazarActividad,
+        cargarActividadActual,
+        cargarHistorial,
       }}
     >
       {children}

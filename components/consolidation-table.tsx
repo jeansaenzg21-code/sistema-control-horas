@@ -3,13 +3,11 @@
 import { useMemo, useState } from 'react'
 import { Clock, TrendingUp, Wallet, CalendarDays } from 'lucide-react'
 import { StatusBadge } from './status-badge'
+import { FacturableBadge } from './facturable-badge'
 import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
-import { duracionAHoras } from '@/lib/format'
-import { REGISTROS_DEMO } from '@/lib/demo-data'
-import { esJinez, registrosSimulacionJinez } from '@/lib/simulacion-jinez'
 import type { Actividad } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
 
 type FiltroFactura = 'todas' | 'facturadas' | 'no_facturadas'
 
@@ -20,26 +18,34 @@ interface GrupoUsuario {
   registros: Actividad[]
 }
 
+function calcSegundos(r: Actividad): number {
+  if (!r.fin || !r.inicio) return 0
+  const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
+  return Math.max(0, diff - (r.pausa_acumulada_segundos || 0))
+}
+
+function esFacturada(r: Actividad): boolean {
+  return r.estado === 'APROBADA' && esFacturable(r.facturable)
+}
+
+function esNoFacturada(r: Actividad): boolean {
+  return r.estado === 'RECHAZADA' || (r.estado === 'APROBADA' && esNoFacturable(r.facturable))
+}
+
 export function ConsolidationTable() {
   const { historial } = useActividad()
   const { usuarios } = useAuth()
   const [filtro, setFiltro] = useState<FiltroFactura>('todas')
 
-  const registros: Actividad[] = useMemo(() => {
-    const base = historial.length > 0 ? historial : REGISTROS_DEMO
-    const jinez = usuarios.find((u) => esJinez(u))
-    if (!jinez) return base
-    const simulacion = registrosSimulacionJinez(jinez)
-    return [...base, ...simulacion.filter((s) => !base.some((r) => r.id === s.id))]
-  }, [historial, usuarios])
+  const registros = useMemo(() => historial, [historial])
 
   const gruposPorUsuario = useMemo(() => {
     const grupos = new Map<string, GrupoUsuario>()
     for (const r of registros) {
-      const key = r.usuarioId ?? r.usuarioNombre ?? 'Sin usuario'
+      const key = r.usuario_nombre || 'Sin usuario'
       const grupo = grupos.get(key) ?? { key, nombre: key, totalHoras: 0, registros: [] }
       grupo.registros.push(r)
-      grupo.totalHoras += duracionAHoras(r.duracion)
+      grupo.totalHoras += calcSegundos(r) / 3600
       grupos.set(key, grupo)
     }
     return [...grupos.values()]
@@ -51,52 +57,28 @@ export function ConsolidationTable() {
 
   const filtradas = useMemo(() => {
     if (!grupoActual) return []
-    if (filtro === 'facturadas') return grupoActual.registros.filter((r) => r.facturable === true)
-    if (filtro === 'no_facturadas') return grupoActual.registros.filter((r) => r.facturable === false)
+    if (filtro === 'facturadas') return grupoActual.registros.filter((r) => esFacturada(r))
+    if (filtro === 'no_facturadas') return grupoActual.registros.filter((r) => esNoFacturada(r))
     return grupoActual.registros
   }, [grupoActual, filtro])
 
   const resumen = useMemo(
     () => ({
-      total: registros.reduce((acc, r) => acc + duracionAHoras(r.duracion), 0),
-      facturadas: registros
-        .filter((r) => r.facturable === true)
-        .reduce((acc, r) => acc + duracionAHoras(r.duracion), 0),
-      noFacturadas: registros
-        .filter((r) => r.facturable === false)
-        .reduce((acc, r) => acc + duracionAHoras(r.duracion), 0),
+      total: registros.reduce((acc, r) => acc + calcSegundos(r) / 3600, 0),
+      facturadas: registros.filter((r) => esFacturada(r)).reduce((acc, r) => acc + calcSegundos(r) / 3600, 0),
+      noFacturadas: registros.filter((r) => esNoFacturada(r)).reduce((acc, r) => acc + calcSegundos(r) / 3600, 0),
       porDefinir: registros
-        .filter((r) => r.facturable == null)
-        .reduce((acc, r) => acc + duracionAHoras(r.duracion), 0),
+        .filter((r) => !esFacturada(r) && !esNoFacturada(r))
+        .reduce((acc, r) => acc + calcSegundos(r) / 3600, 0),
     }),
     [registros],
   )
 
   const indicadores = [
-    {
-      etiqueta: 'Total de horas',
-      valor: `${resumen.total.toFixed(2)}h`,
-      icono: Clock,
-      color: 'text-foreground',
-    },
-    {
-      etiqueta: 'Horas facturadas',
-      valor: `${resumen.facturadas.toFixed(2)}h`,
-      icono: TrendingUp,
-      color: 'text-emerald-400',
-    },
-    {
-      etiqueta: 'Horas no facturadas',
-      valor: `${resumen.noFacturadas.toFixed(2)}h`,
-      icono: Wallet,
-      color: 'text-muted-foreground',
-    },
-    {
-      etiqueta: 'Por definir',
-      valor: `${resumen.porDefinir.toFixed(2)}h`,
-      icono: CalendarDays,
-      color: 'text-[#c4b5fd]',
-    },
+    { etiqueta: 'Total de horas', valor: `${resumen.total.toFixed(2)}h`, icono: Clock, color: 'text-foreground' },
+    { etiqueta: 'Horas facturadas', valor: `${resumen.facturadas.toFixed(2)}h`, icono: TrendingUp, color: 'text-emerald-400' },
+    { etiqueta: 'Horas no facturadas', valor: `${resumen.noFacturadas.toFixed(2)}h`, icono: Wallet, color: 'text-muted-foreground' },
+    { etiqueta: 'Por definir', valor: `${resumen.porDefinir.toFixed(2)}h`, icono: CalendarDays, color: 'text-[#c4b5fd]' },
   ]
 
   const opciones: { valor: FiltroFactura; etiqueta: string }[] = [
@@ -126,7 +108,7 @@ export function ConsolidationTable() {
             onClick={() => setUsuarioSeleccionado(grupo.key)}
             className={cn(
               'flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors',
-              grupo.key === grupoActual.key
+              grupo.key === grupoActual?.key
                 ? 'border-[#7c3aed] bg-[#7c3aed]/10 text-[#c4b5fd]'
                 : 'border-border bg-card text-muted-foreground hover:border-border/60 hover:text-foreground',
             )}
@@ -155,104 +137,59 @@ export function ConsolidationTable() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2.5">
-          <h3 className="text-sm font-semibold text-foreground">{grupoActual?.nombre}</h3>
-          <span className="text-xs text-muted-foreground">
-            Total: {(grupoActual?.totalHoras ?? 0).toFixed(2)}h
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Actividad
-                </th>
-                <th className="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground lg:table-cell">
-                  Usuario
-                </th>
-                <th className="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground md:table-cell">
-                  Especialidad
-                </th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Horas
-                </th>
-                <th className="hidden px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground sm:table-cell">
-                  Fecha
-                </th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Facturado
-                </th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Estado
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtradas.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-8 text-center text-sm text-muted-foreground"
-                  >
-                    No hay registros que coincidan con el filtro.
-                  </td>
-                </tr>
-              )}
-              {filtradas.map((registro) => (
-                <tr
-                  key={registro.id}
-                  className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/30"
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              {['Actividad', 'Usuario', 'Duración', 'Estado', 'Facturación', 'Fecha'].map((encabezado) => (
+                <th
+                  key={encabezado}
+                  className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
                 >
-                  <td className="px-4 py-2.5">
-                    <p className="font-medium text-foreground">{registro.titulo}</p>
-                  </td>
-                  <td className="hidden px-4 py-2.5 text-muted-foreground lg:table-cell">
-                    {registro.usuarioNombre ?? '—'}
-                  </td>
-                  <td className="hidden px-4 py-2.5 text-muted-foreground md:table-cell">
-                    {registro.especialidad}
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-medium text-foreground">
-                    {registro.duracion}
-                  </td>
-                  <td className="hidden px-4 py-2.5 text-muted-foreground sm:table-cell">
-                    {registro.fecha}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <EtiquetaFacturado facturable={registro.facturable} />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <StatusBadge estado={registro.estado} />
-                  </td>
-                </tr>
+                  {encabezado}
+                </th>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {filtradas.map((actividad) => (
+              <tr
+                key={actividad.id}
+                className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/30"
+              >
+                <td className="px-3 py-2">
+                  <p className="font-medium text-foreground">{actividad.descripcion}</p>
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">{actividad.usuario_nombre ?? '—'}</td>
+                <td className="px-3 py-2 font-medium text-foreground">{formatDuracion(actividad)}</td>
+                <td className="px-3 py-2">
+                  <StatusBadge estado={actividad.estado} />
+                </td>
+                <td className="px-3 py-2">
+                  <FacturableBadge valor={actividad.facturable} />
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">{fechaLocalISO(actividad.inicio)}</td>
+              </tr>
+            ))}
+            {filtradas.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  No hay registros en esta categoría.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   )
 }
 
-function EtiquetaFacturado({ facturable }: { facturable: boolean | null | undefined }) {
-  if (facturable == null) {
-    return (
-      <span className="inline-flex rounded-full bg-amber-400/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-400">
-        Por definir
-      </span>
-    )
-  }
-  return (
-    <span
-      className={cn(
-        'inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium',
-        facturable
-          ? 'bg-emerald-400/10 text-emerald-400'
-          : 'bg-muted text-muted-foreground',
-      )}
-    >
-      {facturable ? 'Facturado' : 'No facturado'}
-    </span>
-  )
+function formatDuracion(r: Actividad): string {
+  if (!r.fin || !r.inicio) return '—'
+  const totalSeg = Math.max(0, (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000 - (r.pausa_acumulada_segundos || 0))
+  const h = Math.floor(totalSeg / 3600)
+  const m = Math.floor((totalSeg % 3600) / 60)
+  if (h === 0) return `${m}min`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}min`
 }

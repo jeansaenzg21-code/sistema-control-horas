@@ -1,8 +1,8 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { duracionAHoras, fechaEnRango } from '@/lib/format'
 import { useRegistros } from '@/lib/use-registros'
+import { esFacturable, fechaLocalISO } from '@/lib/utils'
 
 const COLORES = ['#7c3aed', '#8b5cf6', '#c4b5fd', '#a78bfa', '#6d28d9', '#ddd6fe']
 
@@ -20,14 +20,23 @@ interface AreaChartProps {
 export function AreaChart({ areaId = '', desde = '', hasta = '' }: AreaChartProps) {
   const registros = useRegistros()
 
+  const calcularHoras = (r: { inicio: string; fin: string | null; pausa_acumulada_segundos: number }): number => {
+    if (!r.fin || !r.inicio) return 0
+    const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
+    return Math.max(0, (diff - r.pausa_acumulada_segundos) / 3600)
+  }
+
   const datos = useMemo(() => {
     const mapa = new Map<string, number>()
     for (const r of registros) {
-      if (r.estado !== 'aprobada' || r.facturable !== true) continue
-      if (areaId && r.areaId !== areaId) continue
-      if (!fechaEnRango(r.fecha, desde, hasta)) continue
-      const horas = duracionAHoras(r.duracion)
-      mapa.set(r.especialidad, (mapa.get(r.especialidad) ?? 0) + horas)
+      if (r.estado !== 'APROBADA' || !esFacturable(r.facturable)) continue
+      if (areaId && String(r.area_id) !== areaId) continue
+      const fechaReg = fechaLocalISO(r.inicio)
+      if (desde && fechaReg < desde) continue
+      if (hasta && fechaReg > hasta) continue
+      const horas = calcularHoras(r)
+      const esp = r.especialidad || 'Sin especialidad'
+      mapa.set(esp, (mapa.get(esp) ?? 0) + horas)
     }
     return Array.from(mapa.entries())
       .map(([nombre, horas]) => ({ nombre, horas }))

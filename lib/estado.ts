@@ -8,31 +8,31 @@ interface EstadoEstilo {
 }
 
 export const ESTADO_ACTIVIDAD: Record<EstadoActividad, EstadoEstilo> = {
-  en_curso: {
+  EN_CURSO: {
     label: 'En curso',
     dot: 'bg-[#a78bfa]',
     text: 'text-[#a78bfa]',
     badge: 'bg-[#7c3aed]/15 text-[#c4b5fd] border border-[#7c3aed]/25',
   },
-  pausada: {
+  PAUSADA: {
     label: 'Pausada',
     dot: 'bg-[#6b7280]',
     text: 'text-[#9ca3af]',
     badge: 'bg-[#6b7280]/15 text-[#cbd5e1] border border-[#6b7280]/25',
   },
-  pendiente_aprobacion: {
+  PENDIENTE_APROBACION: {
     label: 'Pendiente de aprobación',
     dot: 'bg-amber-400',
     text: 'text-amber-400',
     badge: 'bg-amber-400/10 text-amber-400 border border-amber-400/25',
   },
-  aprobada: {
+  APROBADA: {
     label: 'Aprobada',
     dot: 'bg-emerald-400',
     text: 'text-emerald-400',
     badge: 'bg-emerald-400/10 text-emerald-400 border border-emerald-400/25',
   },
-  rechazada: {
+  RECHAZADA: {
     label: 'Rechazada',
     dot: 'bg-rose-400',
     text: 'text-rose-400',

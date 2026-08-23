@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 type Pestana = 'registrar' | 'registros'
 
 export default function Actividades() {
-  const { actividadActual } = useActividad()
+  const { actividadActual, cargandoActividad } = useActividad()
   const { usuario, cargando } = useAuth()
   const registros = useRegistros()
   const router = useRouter()
@@ -33,8 +33,8 @@ export default function Actividades() {
   const resumen = useMemo(() => {
     return {
       total: registros.length,
-      pendientes: registros.filter((r) => r.estado === 'pendiente_aprobacion').length,
-      aprobadas: registros.filter((r) => r.estado === 'aprobada').length,
+      pendientes: registros.filter((r) => r.estado === 'PENDIENTE_APROBACION').length,
+      aprobadas: registros.filter((r) => r.estado === 'APROBADA').length,
     }
   }, [registros])
 
@@ -98,9 +98,30 @@ export default function Actividades() {
                     : '¿Qué vas a trabajar hoy?'}
                 </p>
                 {actividadActual && (
-                  <div className="mt-2 flex w-fit items-center gap-2 rounded-lg border border-[#7c3aed]/40 bg-[#7c3aed]/10 px-3 py-1.5 text-sm font-medium text-[#c4b5fd]">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-[#a78bfa]" />
-                    En curso
+                  <div
+                    key={actividadActual.estado}
+                    className={cn(
+                    'mt-2 flex w-fit items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium',
+                    actividadActual.estado === 'PAUSADA'
+                      ? 'border-slate-300/30 bg-slate-300/10 text-slate-300'
+                      : 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300',
+                    )}
+                    style={actividadActual.estado === 'PAUSADA'
+                      ? { borderColor: 'rgba(203, 213, 225, 0.3)', backgroundColor: 'rgba(203, 213, 225, 0.1)', color: '#cbd5e1' }
+                      : { borderColor: 'rgba(52, 211, 153, 0.25)', backgroundColor: 'rgba(52, 211, 153, 0.1)', color: '#6ee7b7' }}
+                  >
+                    <span
+                      className={cn(
+                        'h-2 w-2 flex-none rounded-full',
+                        actividadActual.estado === 'PAUSADA' ? '' : 'animate-pulse',
+                      )}
+                      style={{
+                        width: 8,
+                        height: 8,
+                        backgroundColor: actividadActual.estado === 'PAUSADA' ? '#cbd5e1' : '#34d399',
+                      }}
+                    />
+                    {actividadActual.estado === 'PAUSADA' ? 'Pausada' : 'En curso'}
                   </div>
                 )}
               </div>
@@ -117,7 +138,12 @@ export default function Actividades() {
               </div>
             </div>
 
-            {actividadActual ? (
+            {cargandoActividad ? (
+              <section className="rounded-xl border border-border bg-card p-5">
+                <div className="h-5 w-48 animate-pulse rounded bg-muted" />
+                <div className="mt-4 h-24 animate-pulse rounded-xl bg-muted/60" />
+              </section>
+            ) : actividadActual ? (
               <ActivityCard />
             ) : (
               <section className="rounded-xl border border-border bg-card p-5">

@@ -23,10 +23,13 @@ interface ReportFiltersProps {
 }
 
 export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
-  const { areas } = useAreas()
-  const areaSeleccionada = areas.find((a) => a.id === filtros.areaId)
+  const { areas, especialidades } = useAreas()
+  const areaSeleccionada = areas.find((a) => String(a.id) === filtros.areaId)
   const sinArea = !filtros.areaId
-  const especialidades = areaSeleccionada ? areaSeleccionada.especialidades : []
+
+  const especialidadesDelArea = areaSeleccionada
+    ? especialidades.filter((e) => e.area_id === areaSeleccionada.id)
+    : []
 
   const actualizar = <K extends keyof FiltrosReporte>(clave: K, valor: FiltrosReporte[K]) => {
     onChange({ ...filtros, [clave]: valor })
@@ -63,7 +66,7 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
           >
             <option value="">Selecciona un área</option>
             {areas.map((area) => (
-              <option key={area.id} value={area.id}>
+              <option key={area.id} value={String(area.id)}>
                 {area.nombre}
               </option>
             ))}
@@ -102,9 +105,9 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
               className={`${estiloControl} cursor-pointer`}
             >
               <option value="todas">Todas</option>
-              {especialidades.map((esp) => (
-                <option key={esp} value={esp.toLowerCase()}>
-                  {esp}
+              {especialidadesDelArea.map((esp) => (
+                <option key={esp.id} value={esp.nombre.toLowerCase()}>
+                  {esp.nombre}
                 </option>
               ))}
             </select>

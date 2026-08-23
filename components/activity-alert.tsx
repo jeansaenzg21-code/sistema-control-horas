@@ -41,7 +41,7 @@ export function ActivityAlert() {
         <div className="px-4 py-3">
           <div className="rounded-lg border border-border bg-muted px-3 py-2.5">
             <p className="text-xs text-muted-foreground">Actividad</p>
-            <p className="text-sm font-medium text-foreground">{actividadActual.titulo}</p>
+            <p className="text-sm font-medium text-foreground">{actividadActual.descripcion}</p>
           </div>
         </div>
 
