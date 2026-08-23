@@ -1,0 +1,8 @@
+export { ActivityWidget, TAMANO_BURBUJA, MARGEN_ABIERTO, layoutCompact } from './activity-widget'
+export type { CompactOverride } from './activity-widget'
+export { WidgetProvider, useWidget } from './widget-context'
+export type { Actividad, WidgetUsuario, WidgetContextValue } from './types'
+export { Logo } from './logo'
+export { cn, formatHora, formatFecha } from './utils'
+export { storage } from './storage'
+export { apiFetch, API_BASE_URL } from './api'

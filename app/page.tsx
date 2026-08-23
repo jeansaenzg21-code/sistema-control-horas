@@ -50,7 +50,7 @@ export default function PanelPrincipal() {
             >
               <option value="">Selecciona un área</option>
               {areas.map((area) => (
-                <option key={area.id} value={area.id}>
+                <option key={area.id} value={String(area.id)}>
                   {area.nombre}
                 </option>
               ))}

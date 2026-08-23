@@ -8,205 +8,147 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { leerStorage, escribirStorage } from './storage'
-import { generarId } from './format'
 
-export type Rol = 'admin' | 'abogado'
+export type Rol = 'personal' | 'supervisor' | 'admin'
 
 export interface Usuario {
-  id: string
+  id: number
   nombre: string
   correo: string
   usuario: string
-  passwordHash: string
   rol: Rol
-  areaId: string | null
-  especialidad: string
+  area_id: number | null
+  especialidad: string | null
+  supervisor_id: number | null
   activo: boolean
-}
-
-export interface Credenciales {
-  usuario: string
-  password: string
-}
-
-interface UsuarioNuevo {
-  nombre: string
-  correo: string
-  usuario: string
-  password: string
-  rol: Rol
-  areaId: string | null
-  especialidad: string
-  activo?: boolean
+  created_at: string
+  area_nombre?: string | null
 }
 
 interface AuthContextValue {
   usuario: Usuario | null
   cargando: boolean
   usuarios: Usuario[]
-  login: (credenciales: Credenciales) => { ok: boolean; error?: string }
+  login: (credenciales: { usuario: string; password: string }) => Promise<{ ok: boolean; error?: string }>
   logout: () => void
-  crearUsuario: (datos: UsuarioNuevo) => { ok: boolean; error?: string }
-  actualizarUsuario: (id: string, cambios: Partial<UsuarioNuevo>) => { ok: boolean; error?: string }
-  eliminarUsuario: (id: string) => { ok: boolean; error?: string }
+  cargarUsuarios: () => Promise<void>
 }
 
-const CLAVE_USUARIOS = 'pc_usuarios'
-const CLAVE_SESION = 'pc_sesion'
+function mapRol(dbRol: string): Rol {
+  if (dbRol === 'SUPERVISOR') return 'supervisor'
+  if (dbRol === 'ADMINISTRACION') return 'admin'
+  return 'personal'
+}
+
+function normalizeUsuario(raw: Record<string, unknown>): Usuario {
+  return {
+    id: raw.id as number,
+    nombre: raw.nombre as string,
+    correo: (raw.correo as string) || '',
+    usuario: raw.usuario as string,
+    rol: mapRol(raw.rol as string),
+    area_id: raw.area_id as number | null,
+    especialidad: raw.especialidad as string | null,
+    supervisor_id: raw.supervisor_id as number | null,
+    activo: Boolean(raw.activo),
+    created_at: raw.created_at as string,
+    area_nombre: (raw.area_nombre as string) || null,
+  }
+}
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-
-// Hash simple para una app de demo sin backend. Cuando se conecte a MySQL la
-// autenticación real ocurrirá en el servidor (bcrypt) y esto desaparecerá.
-function hashPassword(password: string): string {
-  let h1 = 0x811c9dc5
-  let h2 = 0x01000193
-  for (let i = 0; i < password.length; i++) {
-    const c = password.charCodeAt(i)
-    h1 = (h1 ^ c) * 0x01000193
-    h2 = (h2 * 33) ^ c
-  }
-  h1 = h1 >>> 0
-  h2 = h2 >>> 0
-  return `pc$${h1.toString(16)}${h2.toString(16)}`
-}
-
-function usuarioPorDefecto(): Usuario {
-  return {
-    id: generarId(),
-    nombre: 'Administrador',
-    correo: 'admin@paredescano.com',
-    usuario: 'admin',
-    passwordHash: hashPassword('admin'),
-    rol: 'admin',
-    areaId: null,
-    especialidad: 'Corporativo',
-    activo: true,
-  }
-}
-
-function sanitizarUsuario(usuario: Usuario): Usuario {
-  return { ...usuario }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
   const [cargando, setCargando] = useState(true)
 
-  // Carga inicial: si no hay usuarios registrados, crea el admin por defecto.
   useEffect(() => {
-    let guardados = leerStorage<Usuario[]>(CLAVE_USUARIOS) ?? []
-    if (guardados.length === 0) {
-      guardados = [usuarioPorDefecto()]
-      escribirStorage(CLAVE_USUARIOS, guardados)
-    }
-    setUsuarios(guardados)
-
-    const sesionId = leerStorage<string>(CLAVE_SESION)
+    const sesionId = localStorage.getItem('pc_sesion')
     if (sesionId) {
-      const encontrado = guardados.find((u) => u.id === sesionId && u.activo)
-      if (encontrado) setUsuario(encontrado)
+      cargarUsuarios().then(() => {
+        setCargando(false)
+      })
+    } else {
+      setCargando(false)
     }
-    setCargando(false)
   }, [])
 
-  // Persistencia
-  useEffect(() => {
-    if (!cargando) escribirStorage(CLAVE_USUARIOS, usuarios)
-  }, [usuarios, cargando])
+  const cargarUsuarios = useCallback(async () => {
+    try {
+      const res = await fetch('/api/usuarios')
+      if (res.ok) {
+        const data = await res.json()
+        const normalized = data.map(normalizeUsuario)
+        setUsuarios(normalized)
+        const sesionId = localStorage.getItem('pc_sesion')
+        if (sesionId) {
+          const encontrado = normalized.find((u: Usuario) => u.id === Number(sesionId) && u.activo)
+          if (encontrado) setUsuario(encontrado)
+        }
+      }
+    } catch {
+      // Sin conexión
+    }
+  }, [])
 
   useEffect(() => {
-    if (usuario) escribirStorage(CLAVE_SESION, usuario.id)
-    else escribirStorage(CLAVE_SESION, null)
-  }, [usuario])
+    if (!cargando && usuario) {
+      localStorage.setItem('pc_sesion', String(usuario.id))
+    }
+  }, [usuario, cargando])
 
-  const login = useCallback((credenciales: Credenciales) => {
-    const u = credenciales.usuario.trim().toLowerCase()
-    const encontrado = usuarios.find((x) => x.usuario.toLowerCase() === u)
-    if (!encontrado || encontrado.passwordHash !== hashPassword(credenciales.password)) {
-      return { ok: false, error: 'Usuario o contraseña incorrectos.' }
+  const login = useCallback(async (credenciales: { usuario: string; password: string }) => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credenciales),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        return { ok: false, error: data.error || 'Error al iniciar sesión.' }
+      }
+      const normalized = normalizeUsuario(data.usuario)
+      setUsuario(normalized)
+      localStorage.setItem('pc_sesion', String(normalized.id))
+      if (data.token) {
+        localStorage.setItem('pc_token', data.token)
+        fetch('/api/widget/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: data.token,
+            usuarioId: normalized.id,
+            usuario: normalized.usuario,
+            nombre: normalized.nombre,
+            rol: normalized.rol,
+          }),
+        }).catch(() => {})
+      }
+      await cargarUsuarios()
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'No se pudo conectar al servidor.' }
     }
-    if (!encontrado.activo) {
-      return { ok: false, error: 'Tu cuenta está desactivada. Contacta al administrador.' }
-    }
-    setUsuario(sanitizarUsuario(encontrado))
-    return { ok: true }
-  }, [usuarios])
+  }, [cargarUsuarios])
 
   const logout = useCallback(() => {
+    const token = localStorage.getItem('pc_token')
+    if (token) {
+      fetch('/api/auth/session', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {})
+      fetch('/api/widget/sync', { method: 'DELETE' }).catch(() => {})
+    }
     setUsuario(null)
-  }, [])
-
-  const crearUsuario = useCallback((datos: UsuarioNuevo) => {
-    const usuarioLimpio = datos.usuario.trim().toLowerCase()
-    if (usuarios.some((u) => u.usuario.toLowerCase() === usuarioLimpio)) {
-      return { ok: false, error: 'Ya existe un usuario con ese nombre.' }
-    }
-    const nuevo: Usuario = {
-      id: generarId(),
-      nombre: datos.nombre.trim(),
-      correo: datos.correo.trim(),
-      usuario: usuarioLimpio,
-      passwordHash: hashPassword(datos.password),
-      rol: datos.rol,
-      areaId: datos.areaId ?? null,
-      especialidad: datos.especialidad.trim(),
-      activo: datos.activo !== false,
-    }
-    setUsuarios((prev) => [...prev, nuevo])
-    return { ok: true }
-  }, [usuarios])
-
-  const actualizarUsuario = useCallback((id: string, cambios: Partial<UsuarioNuevo>) => {
-    let error: string | undefined
-    setUsuarios((prev) =>
-      prev.map((u) => {
-        if (u.id !== id) return u
-        const proximo: Usuario = { ...u }
-        if (cambios.nombre !== undefined) proximo.nombre = cambios.nombre.trim()
-        if (cambios.correo !== undefined) proximo.correo = cambios.correo.trim()
-        if (cambios.usuario !== undefined) {
-          const limpio = cambios.usuario.trim().toLowerCase()
-          if (prev.some((o) => o.id !== id && o.usuario.toLowerCase() === limpio)) {
-            error = 'Ya existe otro usuario con ese nombre.'
-            return u
-          }
-          proximo.usuario = limpio
-        }
-        if (cambios.password !== undefined && cambios.password !== '') {
-          proximo.passwordHash = hashPassword(cambios.password)
-        }
-        if (cambios.rol !== undefined) proximo.rol = cambios.rol
-        if (cambios.areaId !== undefined) proximo.areaId = cambios.areaId
-        if (cambios.especialidad !== undefined) proximo.especialidad = cambios.especialidad.trim()
-        if (cambios.activo !== undefined) proximo.activo = cambios.activo
-        return proximo
-      }),
-    )
-    if (error) return { ok: false, error }
-    return { ok: true }
-  }, [])
-
-  const eliminarUsuario = useCallback((id: string) => {
-    setUsuarios((prev) => prev.filter((u) => u.id !== id))
-    return { ok: true }
+    localStorage.removeItem('pc_sesion')
+    localStorage.removeItem('pc_token')
   }, [])
 
   return (
-    <AuthContext.Provider
-      value={{
-        usuario,
-        cargando,
-        usuarios,
-        login,
-        logout,
-        crearUsuario,
-        actualizarUsuario,
-        eliminarUsuario,
-      }}
-    >
+    <AuthContext.Provider value={{ usuario, cargando, usuarios, login, logout, cargarUsuarios }}>
       {children}
     </AuthContext.Provider>
   )

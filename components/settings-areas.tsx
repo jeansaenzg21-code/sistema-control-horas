@@ -7,39 +7,38 @@ import { useAuth } from '@/lib/auth-context'
 import { SettingsUsers } from './settings-users'
 
 export function SettingsAreas() {
-  const { areas, crearArea, actualizarArea, eliminarArea } = useAreas()
+  const { areas, especialidades, crearArea, actualizarArea, eliminarArea, crearEspecialidad, eliminarEspecialidad } = useAreas()
   const { usuarios } = useAuth()
-  const [areaSeleccionada, setAreaSeleccionada] = useState<string | null>(null)
+  const [areaSeleccionada, setAreaSeleccionada] = useState<number | null>(null)
   const [creando, setCreando] = useState(false)
   const [nuevaEspecialidad, setNuevaEspecialidad] = useState('')
 
-  const area = areaSeleccionada ? areas.find((a) => a.id === areaSeleccionada) : null
-  const usuariosArea = usuarios.filter((u) => u.areaId === areaSeleccionada && u.rol === 'abogado')
-  const especialidadesValidas = area?.especialidades ?? []
+  const area = areaSeleccionada != null ? areas.find((a) => a.id === areaSeleccionada) : null
+  const usuariosArea = usuarios.filter((u) => u.area_id === areaSeleccionada && u.rol === 'personal')
+  const especialidadesDelArea = area
+    ? especialidades.filter((e) => e.area_id === area.id)
+    : []
 
-  const agregarEspecialidad = () => {
+  const agregarEspecialidad = async () => {
     const valor = nuevaEspecialidad.trim()
     if (!valor || !area) return
-    if (area.especialidades.some((e) => e.toLowerCase() === valor.toLowerCase())) return
-    actualizarArea(area.id, { especialidades: [...area.especialidades, valor] })
+    if (especialidadesDelArea.some((e) => e.nombre.toLowerCase() === valor.toLowerCase())) return
+    await crearEspecialidad(area.id, valor)
     setNuevaEspecialidad('')
   }
 
-  const quitarEspecialidad = (especialidad: string) => {
-    if (!area) return
-    actualizarArea(area.id, {
-      especialidades: area.especialidades.filter((e) => e !== especialidad),
-    })
+  const quitarEspecialidad = async (espId: number) => {
+    await eliminarEspecialidad(espId)
   }
 
-  const manejarEliminar = (id: string, nombre: string) => {
-    const tieneUsuarios = usuarios.some((u) => u.areaId === id && u.rol === 'abogado')
+  const manejarEliminar = async (id: number, nombre: string) => {
+    const tieneUsuarios = usuarios.some((u) => u.area_id === id && u.rol === 'personal')
     if (tieneUsuarios) {
       window.alert('No se puede eliminar un área que tiene usuarios asignados.')
       return
     }
     if (!window.confirm(`¿Eliminar el área "${nombre}"?`)) return
-    eliminarArea(id)
+    await eliminarArea(id)
     if (areaSeleccionada === id) setAreaSeleccionada(null)
   }
 
@@ -63,7 +62,6 @@ export function SettingsAreas() {
           </div>
         </div>
 
-        {/* Configuración del área */}
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="mb-3 flex items-center gap-2">
             <Settings size={16} className="text-muted-foreground" />
@@ -84,7 +82,7 @@ export function SettingsAreas() {
               <label className="mb-1.5 block text-sm font-medium text-foreground">Descripción</label>
               <input
                 type="text"
-                value={area.descripcion}
+                value={area.descripcion ?? ''}
                 onChange={(e) => actualizarArea(area.id, { descripcion: e.target.value })}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
               />
@@ -94,16 +92,16 @@ export function SettingsAreas() {
           <div className="mt-3">
             <label className="mb-1.5 block text-sm font-medium text-foreground">Especialidades del área</label>
             <div className="flex flex-wrap gap-2">
-              {area.especialidades.map((especialidad) => (
+              {especialidadesDelArea.map((esp) => (
                 <span
-                  key={especialidad}
+                  key={esp.id}
                   className="flex items-center gap-1.5 rounded-full bg-[#7c3aed]/15 px-3 py-1 text-sm font-medium text-[#c4b5fd]"
                 >
-                  {especialidad}
+                  {esp.nombre}
                   <button
                     type="button"
-                    onClick={() => quitarEspecialidad(especialidad)}
-                    aria-label={`Quitar ${especialidad}`}
+                    onClick={() => quitarEspecialidad(esp.id)}
+                    aria-label={`Quitar ${esp.nombre}`}
                     className="rounded-full p-0.5 text-[#c4b5fd]/70 transition-colors hover:text-rose-400"
                   >
                     <X size={13} />
@@ -148,8 +146,7 @@ export function SettingsAreas() {
           </div>
         </div>
 
-        {/* Usuarios del área */}
-        <SettingsUsers areaId={area.id} especialidades={especialidadesValidas} />
+        <SettingsUsers areaId={area.id} especialidades={especialidadesDelArea.map((e) => e.nombre)} />
       </div>
     )
   }
@@ -174,16 +171,12 @@ export function SettingsAreas() {
 
       {creando && (
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault()
             const form = new FormData(e.currentTarget)
             const nombre = String(form.get('nombre') || '').trim()
             const descripcion = String(form.get('descripcion') || '').trim()
-            const especialidades = String(form.get('especialidades') || '')
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean)
-            const resultado = crearArea({ nombre, descripcion, especialidades })
+            const resultado = await crearArea({ nombre, descripcion })
             if (resultado.ok) {
               setCreando(false)
             }
@@ -212,17 +205,6 @@ export function SettingsAreas() {
               />
             </div>
           </div>
-          <div className="mt-3">
-            <label className="mb-1.5 block text-sm font-medium text-foreground">
-              Especialidades <span className="text-muted-foreground">(separadas por coma)</span>
-            </label>
-            <input
-              name="especialidades"
-              type="text"
-              placeholder="Corporativo, Tributario, Laboral"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
-            />
-          </div>
           <div className="mt-4 flex gap-2">
             <button
               type="submit"
@@ -242,7 +224,8 @@ export function SettingsAreas() {
       )}
 
       {areas.map((area) => {
-        const usuariosArea = usuarios.filter((u) => u.areaId === area.id && u.rol === 'abogado').length
+        const countUsuarios = usuarios.filter((u) => u.area_id === area.id && u.rol === 'personal').length
+        const espDelArea = especialidades.filter((e) => e.area_id === area.id)
         return (
           <div key={area.id} className="rounded-xl border border-border bg-card p-4">
             <div className="flex items-start justify-between gap-3">
@@ -260,7 +243,7 @@ export function SettingsAreas() {
               <div className="flex flex-none items-center gap-1.5">
                 <span className="flex items-center gap-1.5 rounded-full bg-[#7c3aed]/10 px-2.5 py-1 text-xs font-medium text-[#c4b5fd]">
                   <Users size={13} />
-                  {usuariosArea} {usuariosArea === 1 ? 'usuario' : 'usuarios'}
+                  {countUsuarios} {countUsuarios === 1 ? 'usuario' : 'usuarios'}
                 </span>
                 <button
                   type="button"
@@ -276,15 +259,15 @@ export function SettingsAreas() {
             <div className="mt-3 rounded-lg border border-border bg-muted p-3">
               <p className="mb-2 text-xs text-muted-foreground">Especialidades</p>
               <div className="flex flex-wrap gap-2">
-                {area.especialidades.map((especialidad) => (
+                {espDelArea.map((esp) => (
                   <span
-                    key={especialidad}
+                    key={esp.id}
                     className="rounded-full bg-[#7c3aed]/15 px-3 py-1 text-sm font-medium text-[#c4b5fd]"
                   >
-                    {especialidad}
+                    {esp.nombre}
                   </span>
                 ))}
-                {area.especialidades.length === 0 && (
+                {espDelArea.length === 0 && (
                   <span className="text-sm text-muted-foreground">Sin especialidades</span>
                 )}
               </div>

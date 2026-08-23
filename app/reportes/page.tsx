@@ -1,22 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MainLayout } from '@/components/main-layout'
 import { ReportFilters, type FiltrosReporte } from '@/components/report-filters'
 import { ReportSummary } from '@/components/report-summary'
 import { ReportPreview } from '@/components/report-preview'
 import { useAreas } from '@/lib/areas-context'
+import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
-import { normalizarFecha } from '@/lib/format'
 import { exportarExcel } from '@/lib/exporter'
-import type { Actividad } from '@/lib/types'
-
-function fechaDemo(diasAtras: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - diasAtras)
-  return d.toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })
-}
+import { esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
 
 function hoyISO(): string {
   const ahora = new Date()
@@ -25,68 +19,10 @@ function hoyISO(): string {
   return `${ahora.getFullYear()}-${mes}-${dia}`
 }
 
-const registros: Actividad[] = [
-  {
-    id: 'r1',
-    titulo: 'Elaboración de contrato comercial',
-    especialidad: 'Corporativo',
-    tipo: 'Redacción de contrato',
-    facturable: true,
-    fecha: fechaDemo(0),
-    horaInicio: '09:00',
-    iniciadaEn: 0,
-    horaFin: '12:30',
-    duracion: '3h 30m',
-    estado: 'aprobada',
-    usuarioNombre: 'Carlos Mendoza',
-  },
-  {
-    id: 'r2',
-    titulo: 'Revisión de documentación tributaria',
-    especialidad: 'Tributario',
-    tipo: 'Revisión de documentación',
-    facturable: true,
-    fecha: fechaDemo(1),
-    horaInicio: '14:00',
-    iniciadaEn: 0,
-    horaFin: '16:45',
-    duracion: '2h 45m',
-    estado: 'aprobada',
-    usuarioNombre: 'Carlos Mendoza',
-  },
-  {
-    id: 'r3',
-    titulo: 'Consultoría laboral - Empresa XYZ',
-    especialidad: 'Laboral',
-    tipo: 'Consultoría legal',
-    facturable: false,
-    fecha: fechaDemo(2),
-    horaInicio: '10:30',
-    iniciadaEn: 0,
-    horaFin: '13:00',
-    duracion: '2h 30m',
-    estado: 'pendiente_aprobacion',
-    usuarioNombre: 'Rosa Gutiérrez',
-  },
-  {
-    id: 'r4',
-    titulo: 'Revisión interna de bases de datos',
-    especialidad: 'Corporativo',
-    tipo: 'Investigación legal',
-    facturable: false,
-    fecha: fechaDemo(2),
-    horaInicio: '15:00',
-    iniciadaEn: 0,
-    horaFin: '16:15',
-    duracion: '1h 15m',
-    estado: 'aprobada',
-    usuarioNombre: 'Laura Campos',
-  },
-]
-
 export default function Reportes() {
   const { areas } = useAreas()
   const { usuario, cargando } = useAuth()
+  const { historial } = useActividad()
   const router = useRouter()
   const hoy = hoyISO()
   const [filtros, setFiltros] = useState<FiltrosReporte>({
@@ -105,36 +41,41 @@ export default function Reportes() {
 
   if (cargando || !usuario || usuario.rol !== 'admin') return null
 
-  const areaPrincipal = areas[0]
-  const registrosConArea = registros.map((registro) => ({
-    ...registro,
-    areaId: areaPrincipal?.id ?? null,
-  }))
+  const registrosFiltrados = historial.filter((registro) => {
+    if (filtros.areaId && String(registro.area_id) !== filtros.areaId) return false
 
-  const registrosFiltrados = registrosConArea.filter((registro) => {
-    if (filtros.areaId && registro.areaId !== filtros.areaId) return false
-
-    const fechaNormalizada = normalizarFecha(registro.fecha)
-    if (fechaNormalizada) {
-      if (filtros.desde && fechaNormalizada < filtros.desde) return false
-      if (filtros.hasta && fechaNormalizada > filtros.hasta) return false
-    }
+    const fechaReg = fechaLocalISO(registro.inicio)
+    if (filtros.desde && fechaReg < filtros.desde) return false
+    if (filtros.hasta && fechaReg > filtros.hasta) return false
 
     if (filtros.especialidad === 'todas') return true
-    return registro.especialidad.toLowerCase() === filtros.especialidad
+    return (registro.especialidad || '').toLowerCase() === filtros.especialidad
   })
 
   const manejarExcel = () => {
+    const calcularHoras = (r: typeof registrosFiltrados[0]): string => {
+      if (!r.fin || !r.inicio) return '—'
+      const inicioMs = new Date(r.inicio).getTime()
+      const finMs = new Date(r.fin).getTime()
+      const totalSeg = Math.max(0, Math.floor((finMs - inicioMs) / 1000) - (r.pausa_acumulada_segundos || 0))
+      const h = Math.floor(totalSeg / 3600)
+      const m = Math.floor((totalSeg % 3600) / 60)
+      if (h === 0) return `${m}min`
+      if (m === 0) return `${h}h`
+      return `${h}h ${m}min`
+    }
+
     exportarExcel(
-      ['Actividad', 'Usuario', 'Especialidad', 'Duración', 'Facturable', 'Estado', 'Fecha'],
+      ['Actividad', 'Cliente', 'Usuario', 'Especialidad', 'Duración', 'Facturable', 'Estado', 'Fecha'],
       registrosFiltrados.map((r) => ({
-        Actividad: r.titulo,
-        Usuario: r.usuarioNombre ?? '',
-        Especialidad: r.especialidad,
-        Duración: r.duracion ?? '',
-        Facturable: r.facturable ? 'Sí' : 'No',
+        Actividad: r.descripcion ?? '',
+        Cliente: r.cliente_nombre ?? '',
+        Usuario: r.usuario_nombre ?? '',
+        Especialidad: r.especialidad ?? '',
+        Duración: calcularHoras(r),
+        Facturable: esFacturable(r.facturable) ? 'Sí' : esNoFacturable(r.facturable) ? 'No' : 'Por definir',
         Estado: etiquetaEstado(r.estado),
-        Fecha: r.fecha,
+        Fecha: fechaLocalISO(r.inicio),
       })),
       `reporte-paredes-cano-${filtros.tipo}`,
     )
@@ -157,13 +98,13 @@ export default function Reportes() {
   )
 }
 
-function etiquetaEstado(estado: Actividad['estado']): string {
-  const etiquetas: Record<Actividad['estado'], string> = {
-    en_curso: 'En curso',
-    pausada: 'Pausada',
-    pendiente_aprobacion: 'Pendiente de aprobación',
-    aprobada: 'Aprobada',
-    rechazada: 'Rechazada',
+function etiquetaEstado(estado: string): string {
+  const etiquetas: Record<string, string> = {
+    EN_CURSO: 'En curso',
+    PAUSADA: 'Pausada',
+    PENDIENTE_APROBACION: 'Pendiente de aprobación',
+    APROBADA: 'Aprobada',
+    RECHAZADA: 'Rechazada',
   }
-  return etiquetas[estado]
+  return etiquetas[estado] ?? estado
 }

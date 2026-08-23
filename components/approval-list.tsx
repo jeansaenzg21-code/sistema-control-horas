@@ -1,74 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bell, CheckCircle2, Clock, Eye, ListChecks, User, X, XCircle } from 'lucide-react'
-import { useActividad } from '@/lib/actividad-context'
+import { useActividad, type Actividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
-import { esJinez, registrosSimulacionJinez } from '@/lib/simulacion-jinez'
 import { StatusBadge } from './status-badge'
-import type { Actividad } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { FacturableBadge } from './facturable-badge'
+import { cn, esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
 
 type Filtro = 'pendientes' | 'aprobadas' | 'rechazadas'
-
-const plantillas: Actividad[] = [
-  {
-    id: 'demo-1',
-    titulo: 'Elaboración de contrato comercial',
-    especialidad: 'Corporativo',
-    tipo: 'Redacción de contrato',
-    facturable: null,
-    fecha: '31 de julio, 2025',
-    horaInicio: '09:00',
-    iniciadaEn: 0,
-    horaFin: '12:30',
-    duracion: '3h 30m',
-    estado: 'pendiente_aprobacion',
-    usuarioNombre: 'Carlos Mendoza',
-  },
-  {
-    id: 'demo-2',
-    titulo: 'Revisión de documentación tributaria',
-    especialidad: 'Tributario',
-    tipo: 'Revisión de documentación',
-    facturable: true,
-    fecha: '30 de julio, 2025',
-    horaInicio: '14:00',
-    iniciadaEn: 0,
-    horaFin: '16:45',
-    duracion: '2h 45m',
-    estado: 'aprobada',
-    usuarioNombre: 'Carlos Mendoza',
-  },
-  {
-    id: 'demo-3',
-    titulo: 'Consultoría laboral - Empresa XYZ',
-    especialidad: 'Laboral',
-    tipo: 'Consultoría legal',
-    facturable: true,
-    fecha: '29 de julio, 2025',
-    horaInicio: '10:30',
-    iniciadaEn: 0,
-    horaFin: '13:00',
-    duracion: '2h 30m',
-    estado: 'aprobada',
-    usuarioNombre: 'Rosa Gutiérrez',
-  },
-  {
-    id: 'demo-4',
-    titulo: 'Llamada con cliente - Seguimiento de caso',
-    especialidad: 'Corporativo',
-    tipo: 'Reunión con cliente',
-    facturable: true,
-    fecha: '28 de julio, 2025',
-    horaInicio: '11:00',
-    iniciadaEn: 0,
-    horaFin: '12:00',
-    duracion: '1h 00m',
-    estado: 'rechazada',
-    usuarioNombre: 'Rosa Gutiérrez',
-  },
-]
 
 const etiquetas: Record<Filtro, string> = {
   pendientes: 'Pendientes',
@@ -83,43 +23,61 @@ const iconos: Record<Filtro, React.ReactNode> = {
 }
 
 export function ApprovalList() {
-  const { historial, aprobarActividad, rechazarActividad } = useActividad()
-  const { usuario } = useAuth()
+  const { historial } = useActividad()
+  const { usuario, usuarios } = useAuth()
   const esAdmin = usuario?.rol === 'admin'
   const [filtro, setFiltro] = useState<Filtro>(() => (esAdmin ? 'pendientes' : 'aprobadas'))
   const [detalle, setDetalle] = useState<Actividad | null>(null)
-  const [demo, setDemo] = useState<Actividad[]>(plantillas)
-  const [decisiones, setDecisiones] = useState<Record<string, boolean>>({})
-  const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set())
+  const [decisiones, setDecisiones] = useState<Record<number, boolean>>({})
+  const [seleccionadas, setSeleccionadas] = useState<Set<number>>(new Set())
   const [confirmarMasivo, setConfirmarMasivo] = useState(false)
   const [modoSeleccion, setModoSeleccion] = useState(false)
+  const [cargando, setCargando] = useState(false)
+  const [aprobaciones, setAprobaciones] = useState<Actividad[]>([])
+
+  const cargarAprobaciones = useCallback(async () => {
+    if (!usuario) return
+    try {
+      let url = '/api/aprobaciones?'
+      if (esAdmin) {
+        url += `supervisor_id=${usuario.id}`
+      } else {
+        url += `usuario_id=${usuario.id}`
+      }
+      const res = await fetch(url)
+      if (!res.ok) {
+        console.warn('[aprobaciones] No se pudo cargar:', res.status)
+        return
+      }
+      const data = await res.json()
+      setAprobaciones(data)
+    } catch {
+      // Sin conexión
+    }
+  }, [usuario, esAdmin])
 
   useEffect(() => {
     setSeleccionadas(new Set())
     setModoSeleccion(false)
   }, [filtro])
 
+  useEffect(() => {
+    cargarAprobaciones()
+  }, [cargarAprobaciones])
+
   const decisionPara = (actividad: Actividad): boolean =>
     decisiones[actividad.id] ?? actividad.facturable ?? true
 
-  const marcarFacturable = (id: string, valor: boolean) =>
+  const marcarFacturable = (id: number, valor: boolean) =>
     setDecisiones((prev) => ({ ...prev, [id]: valor }))
 
   const todas = useMemo(() => {
-    let combinadas: Actividad[] = [...historial, ...demo]
-    if (usuario && esJinez(usuario)) {
-      const simulacion = registrosSimulacionJinez(usuario).filter(
-        (s) => s.estado === 'aprobada' || s.estado === 'rechazada',
-      )
-      combinadas = [...combinadas, ...simulacion]
-    }
-    if (esAdmin || !usuario) return combinadas
-    return combinadas.filter(
-      (a) =>
-        (a.usuarioId && a.usuarioId === usuario.id) ||
-        (!a.usuarioId && a.usuarioNombre === usuario.nombre),
+    if (aprobaciones.length > 0) return aprobaciones
+    if (esAdmin || !usuario) return historial
+    return historial.filter(
+      (a) => a.usuario_id === usuario.id,
     )
-  }, [historial, demo, esAdmin, usuario])
+  }, [aprobaciones, historial, esAdmin, usuario])
 
   const filtrosVisibles: Filtro[] = esAdmin
     ? ['pendientes', 'aprobadas', 'rechazadas']
@@ -127,21 +85,21 @@ export function ApprovalList() {
 
   const conteos = useMemo(
     () => ({
-      pendientes: todas.filter((a) => a.estado === 'pendiente_aprobacion').length,
-      aprobadas: todas.filter((a) => a.estado === 'aprobada').length,
-      rechazadas: todas.filter((a) => a.estado === 'rechazada').length,
+      pendientes: todas.filter((a) => a.estado === 'PENDIENTE_APROBACION').length,
+      aprobadas: todas.filter((a) => a.estado === 'APROBADA').length,
+      rechazadas: todas.filter((a) => a.estado === 'RECHAZADA').length,
     }),
     [todas],
   )
 
   const filtradas = todas.filter((actividad) => actividad.estado === {
-    pendientes: 'pendiente_aprobacion',
-    aprobadas: 'aprobada',
-    rechazadas: 'rechazada',
+    pendientes: 'PENDIENTE_APROBACION',
+    aprobadas: 'APROBADA',
+    rechazadas: 'RECHAZADA',
   }[filtro])
 
   const pendientesIds = useMemo(
-    () => todas.filter((a) => a.estado === 'pendiente_aprobacion').map((a) => a.id),
+    () => todas.filter((a) => a.estado === 'PENDIENTE_APROBACION').map((a) => a.id),
     [todas],
   )
 
@@ -156,7 +114,7 @@ export function ApprovalList() {
     }
   }
 
-  const alternarSeleccion = (id: string) => {
+  const alternarSeleccion = (id: number) => {
     setSeleccionadas((prev) => {
       const nuevo = new Set(prev)
       if (nuevo.has(id)) {
@@ -168,43 +126,65 @@ export function ApprovalList() {
     })
   }
 
-  const manejarAprobar = (actividad: Actividad) => {
+  const manejarAprobar = async (actividad: Actividad) => {
+    if (!usuario) return
     const facturable = decisionPara(actividad)
-    aprobarActividad(actividad.id, facturable)
-    setDemo((prev) =>
-      prev.map((a) => (a.id === actividad.id ? { ...a, estado: 'aprobada' as const, facturable } : a)),
-    )
-    setSeleccionadas((prev) => {
-      const nuevo = new Set(prev)
-      nuevo.delete(actividad.id)
-      return nuevo
-    })
-    if (detalle?.id === actividad.id) setDetalle(null)
+    try {
+      const res = await fetch(`/api/actividades/${actividad.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'APROBADA', revisado_por: usuario.id, facturable }),
+      })
+      if (!res.ok) {
+        console.warn('[aprobaciones] No se pudo aprobar:', res.status)
+        return
+      }
+      setDetalle(null)
+      await cargarAprobaciones()
+    } catch {
+      console.warn('[aprobaciones] Sin conexión al aprobar')
+    }
   }
 
-  const manejarRechazar = (actividad: Actividad) => {
-    rechazarActividad(actividad.id)
-    setDemo((prev) => prev.map((a) => (a.id === actividad.id ? { ...a, estado: 'rechazada' as const } : a)))
-    setSeleccionadas((prev) => {
-      const nuevo = new Set(prev)
-      nuevo.delete(actividad.id)
-      return nuevo
-    })
-    if (detalle?.id === actividad.id) setDetalle(null)
+  const manejarRechazar = async (actividad: Actividad) => {
+    if (!usuario) return
+    try {
+      const res = await fetch(`/api/actividades/${actividad.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: 'RECHAZADA', revisado_por: usuario.id }),
+      })
+      if (!res.ok) {
+        console.warn('[aprobaciones] No se pudo rechazar:', res.status)
+        return
+      }
+      setDetalle(null)
+      await cargarAprobaciones()
+    } catch {
+      console.warn('[aprobaciones] Sin conexión al rechazar')
+    }
   }
 
-  const aprobarSeleccionadas = () => {
+  const aprobarSeleccionadas = async () => {
+    if (!usuario) return
     for (const id of seleccionadas) {
       const actividad = todas.find((a) => a.id === id)
       if (!actividad) continue
       const facturable = decisionPara(actividad)
-      aprobarActividad(id, facturable)
-      setDemo((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, estado: 'aprobada' as const, facturable } : a)),
-      )
+      try {
+        const res = await fetch(`/api/actividades/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ estado: 'APROBADA', revisado_por: usuario.id, facturable }),
+        })
+        if (!res.ok) console.warn('[aprobaciones] Fallo al aprobar id', id, res.status)
+      } catch {
+        console.warn('[aprobaciones] Sin conexión al aprobar id', id)
+      }
     }
     setSeleccionadas(new Set())
     setConfirmarMasivo(false)
+    await cargarAprobaciones()
   }
 
   return (
@@ -252,7 +232,7 @@ export function ApprovalList() {
           <Bell size={15} className="shrink-0 text-[#c4b5fd]" />
           <p>
             Aquí solo ves los registros que el administrador aprobó o rechazó. Cuando decida
-            sobre uno tuyo recibirás una notificación en la campana.
+            sobre uno tuyo recibirás una notificación.
           </p>
         </div>
       )}
@@ -315,7 +295,7 @@ export function ApprovalList() {
           >
             <div className="flex items-center justify-between gap-4 p-4">
               <div className="flex min-w-0 items-center gap-3">
-                {actividad.estado === 'pendiente_aprobacion' && modoSeleccion && (
+                {actividad.estado === 'PENDIENTE_APROBACION' && modoSeleccion && (
                   <input
                     type="checkbox"
                     checked={seleccionadas.has(actividad.id)}
@@ -325,23 +305,24 @@ export function ApprovalList() {
                 )}
                 <div className="shrink-0 text-muted-foreground">{iconos[etiquetaPorEstado(actividad.estado)]}</div>
                 <div className="min-w-0">
-                  <h3 className="truncate font-medium text-foreground">{actividad.titulo}</h3>
+                  <h3 className="truncate font-medium text-foreground">{actividad.descripcion}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {actividad.especialidad} · {actividad.fecha}
+                    {actividad.tipo_actividad_nombre || actividad.especialidad} · {actividad.cliente_nombre ? `Cliente: ${actividad.cliente_nombre} · ` : ''}{fechaLocalISO(actividad.inicio)}
                   </p>
                   <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                     <User size={12} />
-                    Enviado por: <span className="font-medium text-foreground">{actividad.usuarioNombre ?? 'Desconocido'}</span>
+                    Enviado por: <span className="font-medium text-foreground">{actividad.usuario_nombre ?? 'Desconocido'}</span>
                   </p>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-4">
                 <div className="text-right">
-                  <p className="font-semibold text-foreground">{actividad.duracion ?? '—'}</p>
+                  <p className="font-semibold text-foreground">{formatDuracion(actividad)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {actividad.horaInicio} – {actividad.horaFin ?? '—'}
+                    {String(actividad.inicio).split('T')[1]?.slice(0, 5) ?? '—'} – {actividad.fin ? String(actividad.fin).split('T')[1]?.slice(0, 5) : '—'}
                   </p>
                 </div>
+                <FacturableBadge valor={actividad.facturable} />
                 <StatusBadge estado={actividad.estado} />
                 <div className="flex items-center gap-2">
                   <button
@@ -351,7 +332,7 @@ export function ApprovalList() {
                     <Eye size={14} />
                     Ver
                   </button>
-                  {actividad.estado === 'pendiente_aprobacion' && (
+                  {actividad.estado === 'PENDIENTE_APROBACION' && (
                     <>
                       <button
                         onClick={() => manejarAprobar(actividad)}
@@ -420,6 +401,23 @@ export function ApprovalList() {
   )
 }
 
+function formatDuracion(a: Actividad): string {
+  if (a.fin && a.inicio) {
+    const segs = a.pausa_acumulada_segundos || 0
+    const inicio = new Date(a.inicio).getTime()
+    const fin = new Date(a.fin).getTime()
+    if (isNaN(inicio) || isNaN(fin)) return '—'
+    const totalSeg = Math.floor((fin - inicio) / 1000) - segs
+    if (totalSeg <= 0) return '—'
+    const h = Math.floor(totalSeg / 3600)
+    const m = Math.floor((totalSeg % 3600) / 60)
+    if (h === 0) return `${m}min`
+    if (m === 0) return `${h}h`
+    return `${h}h ${m}min`
+  }
+  return '—'
+}
+
 function DetalleActividad({
   actividad,
   facturable,
@@ -443,9 +441,9 @@ function DetalleActividad({
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">{actividad.titulo}</h2>
+            <h2 className="text-lg font-semibold text-foreground">{actividad.descripcion}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Enviado por: <span className="font-medium text-foreground">{actividad.usuarioNombre ?? 'Desconocido'}</span>
+              Enviado por: <span className="font-medium text-foreground">{actividad.usuario_nombre ?? 'Desconocido'}</span>
             </p>
           </div>
           <button onClick={onCerrar} className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-border hover:text-foreground">
@@ -454,19 +452,20 @@ function DetalleActividad({
         </div>
 
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <CampoDetalle etiqueta="Especialidad" valor={actividad.especialidad} />
-          <CampoDetalle etiqueta="Tipo" valor={actividad.tipo} />
-          <CampoDetalle etiqueta="Fecha" valor={actividad.fecha} />
-          <CampoDetalle etiqueta="Horario" valor={`${actividad.horaInicio} – ${actividad.horaFin ?? '—'}`} />
-          <CampoDetalle etiqueta="Duración" valor={actividad.duracion ?? '—'} />
+          <CampoDetalle etiqueta="Especialidad" valor={actividad.especialidad || '—'} />
+          <CampoDetalle etiqueta="Tipo" valor={actividad.tipo_actividad_nombre || '—'} />
+          <CampoDetalle etiqueta="Cliente" valor={actividad.cliente_nombre || '—'} />
+          <CampoDetalle etiqueta="Fecha" valor={fechaLocalISO(actividad.inicio)} />
+          <CampoDetalle etiqueta="Horario" valor={`${String(actividad.inicio).split('T')[1]?.slice(0, 5) ?? '—'} – ${actividad.fin ? String(actividad.fin).split('T')[1]?.slice(0, 5) : '—'}`} />
+          <CampoDetalle etiqueta="Duración" valor={formatDuracion(actividad)} />
           <div>
             <p className="text-xs text-muted-foreground">Facturable</p>
-            {actividad.estado === 'pendiente_aprobacion' ? (
+            {actividad.estado === 'PENDIENTE_APROBACION' ? (
               <div className="mt-1.5">
                 <ControlFacturable valor={facturable} onChange={onFacturableChange} />
               </div>
             ) : (
-              <p className="font-medium text-foreground">{etiquetaFacturable(actividad.facturable)}</p>
+              <p className="font-medium text-foreground">{esNoFacturable(actividad.facturable) ? 'No' : esFacturable(actividad.facturable) ? 'Sí' : 'Por definir'}</p>
             )}
           </div>
           <div className="col-span-2">
@@ -477,7 +476,7 @@ function DetalleActividad({
           </div>
         </div>
 
-        {actividad.estado === 'pendiente_aprobacion' && (
+        {actividad.estado === 'PENDIENTE_APROBACION' && (
           <div className="mt-5 flex gap-3">
             <button
               onClick={onAprobar}
@@ -528,11 +527,6 @@ function ControlFacturable({
   )
 }
 
-function etiquetaFacturable(facturable: boolean | null | undefined): string {
-  if (facturable == null) return 'Por definir'
-  return facturable ? 'Sí' : 'No'
-}
-
 function CampoDetalle({ etiqueta, valor }: { etiqueta: string; valor: string }) {
   return (
     <div>
@@ -543,7 +537,7 @@ function CampoDetalle({ etiqueta, valor }: { etiqueta: string; valor: string }) 
 }
 
 function etiquetaPorEstado(estado: Actividad['estado']): Filtro {
-  if (estado === 'pendiente_aprobacion') return 'pendientes'
-  if (estado === 'aprobada') return 'aprobadas'
+  if (estado === 'PENDIENTE_APROBACION') return 'pendientes'
+  if (estado === 'APROBADA') return 'aprobadas'
   return 'rechazadas'
 }

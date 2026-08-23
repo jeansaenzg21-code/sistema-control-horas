@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
-import { ActivityWidget } from './activity-widget'
+import { ActivityWidgetWrapper as ActivityWidget } from './activity-widget-wrapper'
 import { useAuth } from '@/lib/auth-context'
 
 interface MainLayoutProps {

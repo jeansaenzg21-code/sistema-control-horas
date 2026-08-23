@@ -8,114 +8,106 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { generarId } from './format'
-import { leerStorage, escribirStorage } from './storage'
 import { useAuth } from './auth-context'
 
 export interface Notificacion {
-  id: string
+  id: number
   titulo: string
-  mensaje: string
-  fecha: string
+  mensaje: string | null
+  url: string | null
   leida: boolean
-  href?: string
+  created_at: string
 }
 
 interface NotificacionesContextValue {
   notificaciones: Notificacion[]
   noLeidas: number
-  agregarNotificacion: (titulo: string, mensaje: string, href?: string) => void
-  agregarNotificacionAUsuario: (usuarioId: string, titulo: string, mensaje: string, href?: string) => void
-  marcarLeida: (id: string) => void
-  marcarTodasLeidas: () => void
+  agregarNotificacionAUsuario: (usuarioId: number, titulo: string, mensaje: string, url?: string) => Promise<void>
+  marcarLeida: (id: number) => Promise<void>
+  marcarTodasLeidas: () => Promise<void>
+  cargarNotificaciones: (usuarioId: number) => Promise<void>
 }
 
 const NotificacionesContext = createContext<NotificacionesContextValue | null>(null)
 
-function claveDeUsuario(usuarioId: string) {
-  return `pc_notificaciones_${usuarioId}`
-}
-
-function normalizar(lista: unknown): Notificacion[] {
-  if (!Array.isArray(lista)) return []
-  return lista.filter(
-    (n): n is Notificacion =>
-      !!n &&
-      typeof n === 'object' &&
-      typeof (n as Notificacion).id === 'string' &&
-      typeof (n as Notificacion).titulo === 'string',
-  )
-}
-
 export function NotificacionesProvider({ children }: { children: ReactNode }) {
   const { usuario } = useAuth()
-  const usuarioId = usuario?.id ?? null
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
 
-  useEffect(() => {
-    if (!usuarioId) {
-      setNotificaciones([])
-      return
+  const cargarNotificaciones = useCallback(async (usuarioId: number) => {
+    try {
+      const res = await fetch(`/api/notificaciones?usuario_id=${usuarioId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setNotificaciones(data)
+      }
+    } catch {
+      // Sin conexión
     }
-    setNotificaciones(normalizar(leerStorage(claveDeUsuario(usuarioId))))
-  }, [usuarioId])
+  }, [])
 
   useEffect(() => {
-    if (!usuarioId) return
-    escribirStorage(claveDeUsuario(usuarioId), notificaciones)
-  }, [notificaciones, usuarioId])
+    if (usuario) {
+      cargarNotificaciones(usuario.id)
+    } else {
+      setNotificaciones([])
+    }
+  }, [usuario, cargarNotificaciones])
 
-  const agregarNotificacionAUsuario = useCallback(
-    (targetId: string, titulo: string, mensaje: string, href?: string) => {
-      if (!targetId) return
-      const nueva: Notificacion = {
-        id: generarId(),
-        titulo,
-        mensaje,
-        fecha: new Date().toISOString(),
-        leida: false,
-        href,
+  const agregarNotificacionAUsuario = useCallback(async (targetId: number, titulo: string, mensaje: string, url?: string) => {
+    try {
+      await fetch('/api/notificaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: targetId, titulo, mensaje, url }),
+      })
+      if (usuario && targetId === usuario.id) {
+        await cargarNotificaciones(usuario.id)
       }
-      const existentes = usuarioId === targetId ? notificaciones : normalizar(leerStorage(claveDeUsuario(targetId)))
-      escribirStorage(claveDeUsuario(targetId), [nueva, ...existentes])
-      if (usuarioId === targetId) {
-        setNotificaciones((prev) => [nueva, ...prev])
-      }
-    },
-    [usuarioId, notificaciones],
-  )
+    } catch {
+      // Sin conexión
+    }
+  }, [usuario, cargarNotificaciones])
 
-  const agregarNotificacion = useCallback(
-    (titulo: string, mensaje: string, href?: string) => {
-      if (usuarioId) agregarNotificacionAUsuario(usuarioId, titulo, mensaje, href)
-    },
-    [usuarioId, agregarNotificacionAUsuario],
-  )
-
-  const marcarLeida = useCallback(
-    (id: string) => {
+  const marcarLeida = useCallback(async (id: number) => {
+    try {
+      if (!usuario) return
+      await fetch('/api/notificaciones', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: usuario.id, notificacion_id: id }),
+      })
       setNotificaciones((prev) => prev.map((n) => (n.id === id ? { ...n, leida: true } : n)))
-    },
-    [],
-  )
+    } catch {
+      // Sin conexión
+    }
+  }, [usuario])
 
-  const marcarTodasLeidas = useCallback(() => {
-    setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })))
-  }, [])
+  const marcarTodasLeidas = useCallback(async () => {
+    try {
+      if (!usuario) return
+      await fetch('/api/notificaciones', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario_id: usuario.id, marcar_todas: true }),
+      })
+      setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })))
+    } catch {
+      // Sin conexión
+    }
+  }, [usuario])
 
   const noLeidas = notificaciones.filter((n) => !n.leida).length
 
   return (
-    <NotificacionesContext.Provider
-      value={{
-        notificaciones,
-        noLeidas,
-        agregarNotificacion,
-        agregarNotificacionAUsuario,
-        marcarLeida,
-        marcarTodasLeidas,
-      }}
-    >
+    <NotificacionesContext.Provider value={{
+      notificaciones,
+      noLeidas,
+      agregarNotificacionAUsuario,
+      marcarLeida,
+      marcarTodasLeidas,
+      cargarNotificaciones,
+    }}>
       {children}
     </NotificacionesContext.Provider>
   )

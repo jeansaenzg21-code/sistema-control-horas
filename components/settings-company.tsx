@@ -1,38 +1,46 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Building2, MapPin, Globe } from 'lucide-react'
 
-const campos = [
-  {
-    etiqueta: 'Nombre de la empresa',
-    valor: 'Paredes Cano',
-    icono: Building2,
-  },
-  {
-    etiqueta: 'Descripción',
-    valor:
-      'Consultoría jurídica especializada en derecho corporativo, tributario y laboral con más de 15 años de experiencia.',
-    icono: null,
-    multilinea: true,
-  },
-  {
-    etiqueta: 'País',
-    valor: 'Perú',
-    icono: Globe,
-  },
-  {
-    etiqueta: 'Ciudad',
-    valor: 'Lima',
-    icono: MapPin,
-  },
-]
+interface Empresa {
+  id: number
+  nombre: string
+  descripcion: string | null
+  pais: string
+  ciudad: string | null
+}
 
 export function SettingsCompany() {
+  const [empresa, setEmpresa] = useState<Empresa | null>(null)
+
+  useEffect(() => {
+    fetch('/api/empresa')
+      .then((r) => r.json())
+      .then(setEmpresa)
+      .catch(() => {})
+  }, [])
+
+  if (!empresa) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-5">
+        <p className="text-sm text-muted-foreground">Cargando...</p>
+      </div>
+    )
+  }
+
+  const campos = [
+    { etiqueta: 'Nombre de la empresa', valor: empresa.nombre, icono: Building2 },
+    { etiqueta: 'Descripción', valor: empresa.descripcion || '', icono: null, multilinea: true },
+    { etiqueta: 'País', valor: empresa.pais, icono: Globe },
+    { etiqueta: 'Ciudad', valor: empresa.ciudad || '', icono: MapPin },
+  ]
+
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="mb-5 flex items-center gap-4">
         <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl">
-          <img src="/logo.png" alt="Paredes Cano" className="h-full w-full object-contain" />
+          <img src="/logo.png" alt={empresa.nombre} className="h-full w-full object-contain" />
         </div>
         <div>
           <h2 className="text-sm font-semibold text-foreground">Información de la empresa</h2>

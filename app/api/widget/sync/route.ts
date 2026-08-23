@@ -1,0 +1,100 @@
+import { NextResponse } from 'next/server'
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { notifyAuthChange } from '@/lib/events'
+
+const SYNC_FILE = join(tmpdir(), '.paredes-cano-widget-sync.json')
+
+interface SyncData {
+  token: string
+  usuarioId: number
+  usuario: string
+  nombre: string
+  rol: string
+  timestamp: number
+}
+
+function readSync(): SyncData | null {
+  try {
+    if (!existsSync(SYNC_FILE)) return null
+    const raw = readFileSync(SYNC_FILE, 'utf-8')
+    const data = JSON.parse(raw) as SyncData
+    if (Date.now() - data.timestamp > 12 * 60 * 60 * 1000) {
+      unlinkSync(SYNC_FILE)
+      return null
+    }
+    return data
+  } catch {
+    return null
+  }
+}
+
+function writeSync(data: SyncData) {
+  writeFileSync(SYNC_FILE, JSON.stringify(data), 'utf-8')
+}
+
+function deleteSync() {
+  try {
+    if (existsSync(SYNC_FILE)) unlinkSync(SYNC_FILE)
+  } catch {}
+}
+
+function esRolAdmin(rol: string | undefined | null): boolean {
+  const r = (rol || '').toUpperCase()
+  return r === 'ADMIN' || r === 'ADMINISTRACION'
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    if (!body.token) {
+      return NextResponse.json({ error: 'token requerido' }, { status: 400 })
+    }
+    if (esRolAdmin(body.rol)) {
+      deleteSync()
+      return NextResponse.json({ ok: false, motivo: 'rol sin widget' })
+    }
+    writeSync({
+      token: body.token,
+      usuarioId: body.usuarioId,
+      usuario: body.usuario,
+      nombre: body.nombre,
+      rol: body.rol,
+      timestamp: Date.now(),
+    })
+    notifyAuthChange('login')
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('Error en widget sync POST:', error)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    const data = readSync()
+    if (!data) {
+      return NextResponse.json({ synced: false })
+    }
+    if (esRolAdmin(data.rol)) {
+      deleteSync()
+      return NextResponse.json({ synced: false })
+    }
+    return NextResponse.json({ synced: true, token: data.token, usuario: { id: data.usuarioId, usuario: data.usuario, nombre: data.nombre, rol: data.rol } })
+  } catch (error) {
+    console.error('Error en widget sync GET:', error)
+    return NextResponse.json({ synced: false })
+  }
+}
+
+export async function DELETE() {
+  try {
+    deleteSync()
+    notifyAuthChange('logout')
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('Error en widget sync DELETE:', error)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
+  }
+}

@@ -47,7 +47,7 @@ export function Header({ title, subtitle }: HeaderProps) {
   const abrirNotificacion = (notificacion: (typeof notificaciones)[number]) => {
     marcarLeida(notificacion.id)
     setNotifAbierto(false)
-    if (notificacion.href) router.push(notificacion.href)
+    if (notificacion.url) router.push(notificacion.url)
   }
 
   const irAConfiguracion = () => {
@@ -128,10 +128,10 @@ export function Header({ title, subtitle }: HeaderProps) {
                         {notificacion.mensaje}
                       </span>
                       <span className="mt-1 block text-[11px] text-muted-foreground/70">
-                        {formatearFecha(notificacion.fecha)}
+                        {formatearFecha(notificacion.created_at)}
                       </span>
                     </span>
-                    {notificacion.href && (
+                    {notificacion.url && (
                       <ArrowRight size={14} className="shrink-0 text-muted-foreground/60" />
                     )}
                     {!notificacion.leida && (
@@ -184,15 +184,13 @@ export function Header({ title, subtitle }: HeaderProps) {
               </div>
 
               <div className="p-1">
-                {usuario.rol === 'admin' && (
-                  <button
-                    onClick={irAConfiguracion}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-                  >
-                    <Settings size={16} className="text-muted-foreground" />
-                    Configuración
-                  </button>
-                )}
+                <button
+                  onClick={irAConfiguracion}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  <Settings size={16} className="text-muted-foreground" />
+                  Configuración
+                </button>
                 <button
                   onClick={manejarLogout}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-rose-500 transition-colors hover:bg-muted"

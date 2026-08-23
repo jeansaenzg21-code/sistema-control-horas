@@ -3,7 +3,9 @@
 import { FileSpreadsheet } from 'lucide-react'
 import type { FiltrosReporte } from './report-filters'
 import { StatusBadge } from './status-badge'
+import { FacturableBadge } from './facturable-badge'
 import type { Actividad } from '@/lib/types'
+import { fechaLocalISO } from '@/lib/utils'
 
 interface ReportPreviewProps {
   filtros: FiltrosReporte
@@ -12,6 +14,16 @@ interface ReportPreviewProps {
 }
 
 export function ReportPreview({ filtros, registros, onExportar }: ReportPreviewProps) {
+  const formatDuracion = (r: Actividad): string => {
+    if (!r.fin || !r.inicio) return '—'
+    const totalSeg = Math.max(0, (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000 - (r.pausa_acumulada_segundos || 0))
+    const h = Math.floor(totalSeg / 3600)
+    const m = Math.floor((totalSeg % 3600) / 60)
+    if (h === 0) return `${m}min`
+    if (m === 0) return `${h}h`
+    return `${h}h ${m}min`
+  }
+
   return (
     <div className="print-area overflow-hidden rounded-xl border border-border bg-card">
       <div className="flex items-center justify-between border-b border-border bg-muted/40 px-5 py-3">
@@ -39,7 +51,7 @@ export function ReportPreview({ filtros, registros, onExportar }: ReportPreviewP
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              {['Actividad', 'Usuario', 'Especialidad', 'Duración', 'Facturable', 'Estado'].map((encabezado) => (
+              {['Actividad', 'Cliente', 'Usuario', 'Especialidad', 'Duración', 'Facturable', 'Estado'].map((encabezado) => (
                 <th
                   key={encabezado}
                   className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
@@ -56,18 +68,17 @@ export function ReportPreview({ filtros, registros, onExportar }: ReportPreviewP
                 className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/20"
               >
                 <td className="px-4 py-2.5">
-                  <p className="font-medium text-foreground">{registro.titulo}</p>
-                  <p className="text-xs text-muted-foreground">{registro.fecha}</p>
+                  <p className="font-medium text-foreground">{registro.descripcion}</p>
+                  <p className="text-xs text-muted-foreground">{fechaLocalISO(registro.inicio)}</p>
                 </td>
-                <td className="px-4 py-2.5 text-muted-foreground">{registro.usuarioNombre ?? '—'}</td>
-                <td className="px-4 py-2.5 text-muted-foreground">{registro.especialidad}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{registro.cliente_nombre ?? '—'}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{registro.usuario_nombre ?? '—'}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{registro.especialidad || '—'}</td>
                 <td className="px-4 py-2.5 font-medium text-foreground">
-                  {registro.duracion ?? '—'}
+                  {formatDuracion(registro)}
                 </td>
                 <td className="px-4 py-2.5">
-                  <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-foreground">
-                    {registro.facturable ? 'Sí' : 'No'}
-                  </span>
+                  <FacturableBadge valor={registro.facturable} />
                 </td>
                 <td className="px-4 py-2.5">
                   <StatusBadge estado={registro.estado} />
