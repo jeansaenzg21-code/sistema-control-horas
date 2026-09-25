@@ -19,6 +19,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'La contraseña debe tener al menos 4 caracteres.' }, { status: 400 })
     }
 
+    const [empresas] = await pool.query('SELECT id FROM empresa ORDER BY id LIMIT 1')
+    if ((empresas as unknown[]).length === 0) {
+      return NextResponse.json({ error: 'No existe una empresa configurada.' }, { status: 400 })
+    }
+    const empresaId = Number((empresas as Array<{ id: number }>)[0].id)
+
+    const [areas] = await pool.query(
+      `SELECT id
+       FROM areas
+       WHERE empresa_id = ? AND nombre = ? AND activo = TRUE
+       ORDER BY id
+       LIMIT 1`,
+      [empresaId, 'Administración']
+    )
+    if ((areas as unknown[]).length === 0) {
+      return NextResponse.json(
+        { error: 'No existe el área Administración para la empresa configurada.' },
+        { status: 400 }
+      )
+    }
+    const areaId = Number((areas as Array<{ id: number }>)[0].id)
+
     const [existe] = await pool.query('SELECT id FROM usuarios LIMIT 1')
     if ((existe as unknown[]).length > 0) {
       return NextResponse.json({ error: 'Ya existe un usuario administrador.' }, { status: 400 })
@@ -33,8 +55,8 @@ export async function POST(request: Request) {
 
     const [result] = await pool.query(
       `INSERT INTO usuarios (nombre, correo, usuario, password_hash, rol, area_id, activo)
-       VALUES (?, ?, ?, ?, 'ADMINISTRACION', 1, TRUE)`,
-      [nombre.trim(), correo?.trim() || '', usuario.trim(), hash]
+       VALUES (?, ?, ?, ?, 'ADMINISTRACION', ?, TRUE)`,
+      [nombre.trim(), correo?.trim() || '', usuario.trim(), hash, areaId]
     )
 
     return NextResponse.json({ ok: true, id: (result as { insertId: number }).insertId })
