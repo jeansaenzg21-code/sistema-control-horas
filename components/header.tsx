@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Search, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, DoorOpen } from 'lucide-react'
+import { Bell, Search, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, DoorOpen, Menu } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useNotificaciones } from '@/lib/notificaciones-context'
 import { cn } from '@/lib/utils'
@@ -10,9 +10,10 @@ import { cn } from '@/lib/utils'
 interface HeaderProps {
   title: string
   subtitle?: string
+  onAbrirMenu: () => void
 }
 
-export function Header({ title, subtitle }: HeaderProps) {
+export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
   const { usuario, empresaActiva, logout, salirDeEmpresa } = useAuth()
   const { notificaciones, noLeidas, marcarLeida, marcarTodasLeidas } = useNotificaciones()
   const [notifAbierto, setNotifAbierto] = useState(false)
@@ -75,16 +76,26 @@ export function Header({ title, subtitle }: HeaderProps) {
   }
 
   return (
-    <header className="no-print sticky top-0 z-30 flex min-h-14 items-center justify-between border-b border-border bg-header px-6 py-2">
-      <div className="flex-1">
-        <h1 className="text-lg font-bold tracking-tight text-foreground">{title}</h1>
-        {subtitle && <p className="text-[11px] text-muted-foreground">{subtitle}</p>}
-        {empresaActiva && (
-          <p className="text-[11px] text-[#c4b5fd]">{empresaActiva.nombre}</p>
-        )}
+    <header className="no-print sticky top-0 z-30 flex min-h-14 items-center justify-between gap-2 border-b border-border bg-header px-4 py-2 sm:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <button
+          type="button"
+          onClick={onAbrirMenu}
+          aria-label="Abrir menú"
+          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+        >
+          <Menu size={20} />
+        </button>
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-bold tracking-tight text-foreground">{title}</h1>
+          {subtitle && <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>}
+          {empresaActiva && (
+            <p className="truncate text-[11px] text-[#c4b5fd]">{empresaActiva.nombre}</p>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1 sm:gap-3">
         <div className="hidden items-center gap-2 rounded-lg border border-border bg-background/60 px-3 py-1.5 lg:flex">
           <Search size={15} className="text-muted-foreground" />
           <input
