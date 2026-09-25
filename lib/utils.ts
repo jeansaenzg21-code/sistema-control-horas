@@ -32,3 +32,13 @@ export function esFacturable(valor: unknown): boolean {
 export function esNoFacturable(valor: unknown): boolean {
   return valor === false || valor === 0
 }
+
+export function formatoHoras(horas: number): string {
+  if (!Number.isFinite(horas)) return '0min'
+  const totalMin = Math.round(horas * 60)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  if (h === 0) return `${m}min`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}min`
+}

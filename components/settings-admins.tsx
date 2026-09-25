@@ -11,6 +11,14 @@ interface FormularioAdmin {
   password: string
 }
 
+function getHeaders() {
+  const token = localStorage.getItem('pc_token')
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+}
+
 export function SettingsAdmins() {
   const { usuarios, usuario: actual, cargarUsuarios } = useAuth()
   const [cargando, setCargando] = useState<number | null>(null)
@@ -37,7 +45,7 @@ export function SettingsAdmins() {
     try {
       const res = await fetch(`/api/usuarios/${userId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ rol: 'admin' }),
       })
       if (res.ok) {
@@ -56,7 +64,7 @@ export function SettingsAdmins() {
     try {
       const res = await fetch(`/api/usuarios/${userId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ rol: 'personal' }),
       })
       if (res.ok) await cargarUsuarios()
@@ -95,7 +103,7 @@ export function SettingsAdmins() {
     try {
       const res = await fetch('/api/usuarios', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({
           nombre: formulario.nombre,
           correo: formulario.correo,
@@ -127,7 +135,7 @@ export function SettingsAdmins() {
           <div className="flex-1">
             <h3 className="text-base font-semibold text-foreground">Administradores</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Los administradores tienen acceso total al sistema: áreas, empresa, aprobaciones, consolidación y reportes.
+              Los administradores tienen acceso total al sistema: divisiones, empresa, aprobaciones, consolidación y reportes.
             </p>
           </div>
         </div>

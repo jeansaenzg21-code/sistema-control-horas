@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getUserFromRequest, deleteSession } from '@/lib/auth'
+import { getUserFromRequest, getEmpresaContext, deleteSession } from '@/lib/auth'
 
 export async function GET(request: Request) {
   try {
@@ -7,7 +7,14 @@ export async function GET(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 })
     }
-    return NextResponse.json({ ok: true, usuario: user })
+    const context = await getEmpresaContext(user)
+    return NextResponse.json({
+      ok: true,
+      usuario: user,
+      empresa_activa: context.activa,
+      empresas: context.disponibles,
+      requiere_empresa: !context.activa,
+    })
   } catch (error) {
     console.error('Error al validar sesión:', error)
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })

@@ -30,16 +30,16 @@ export default function Reportes() {
     tipo: 'mensual',
     desde: hoy,
     hasta: hoy,
-    especialidad: 'todas',
+    cargo: 'todas',
   })
 
   useEffect(() => {
-    if (!cargando && usuario?.rol !== 'admin') {
+    if (!cargando && usuario?.rol !== 'admin' && usuario?.rol !== 'jefe_area') {
       router.replace('/')
     }
   }, [cargando, usuario, router])
 
-  if (cargando || !usuario || usuario.rol !== 'admin') return null
+  if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area')) return null
 
   const registrosFiltrados = historial.filter((registro) => {
     if (filtros.areaId && String(registro.area_id) !== filtros.areaId) return false
@@ -48,8 +48,8 @@ export default function Reportes() {
     if (filtros.desde && fechaReg < filtros.desde) return false
     if (filtros.hasta && fechaReg > filtros.hasta) return false
 
-    if (filtros.especialidad === 'todas') return true
-    return (registro.especialidad || '').toLowerCase() === filtros.especialidad
+    if (filtros.cargo === 'todas') return true
+    return (registro.cargo || '').toLowerCase() === filtros.cargo
   })
 
   const manejarExcel = () => {
@@ -66,12 +66,12 @@ export default function Reportes() {
     }
 
     exportarExcel(
-      ['Actividad', 'Cliente', 'Usuario', 'Especialidad', 'Duración', 'Facturable', 'Estado', 'Fecha'],
+      ['Actividad', 'Cliente', 'Usuario', 'Cargo', 'Duración', 'Facturable', 'Estado', 'Fecha'],
       registrosFiltrados.map((r) => ({
         Actividad: r.descripcion ?? '',
         Cliente: r.cliente_nombre ?? '',
         Usuario: r.usuario_nombre ?? '',
-        Especialidad: r.especialidad ?? '',
+        Cargo: r.cargo ?? '',
         Duración: calcularHoras(r),
         Facturable: esFacturable(r.facturable) ? 'Sí' : esNoFacturable(r.facturable) ? 'No' : 'Por definir',
         Estado: etiquetaEstado(r.estado),

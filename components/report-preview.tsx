@@ -51,7 +51,7 @@ export function ReportPreview({ filtros, registros, onExportar }: ReportPreviewP
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              {['Actividad', 'Cliente', 'Usuario', 'Especialidad', 'Duración', 'Facturable', 'Estado'].map((encabezado) => (
+              {['Actividad', 'Cliente', 'Usuario', 'Cargo', 'Duración', 'Facturable', 'Estado'].map((encabezado) => (
                 <th
                   key={encabezado}
                   className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
@@ -73,7 +73,7 @@ export function ReportPreview({ filtros, registros, onExportar }: ReportPreviewP
                 </td>
                 <td className="px-4 py-2.5 text-muted-foreground">{registro.cliente_nombre ?? '—'}</td>
                 <td className="px-4 py-2.5 text-muted-foreground">{registro.usuario_nombre ?? '—'}</td>
-                <td className="px-4 py-2.5 text-muted-foreground">{registro.especialidad || '—'}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{registro.cargo || '—'}</td>
                 <td className="px-4 py-2.5 font-medium text-foreground">
                   {formatDuracion(registro)}
                 </td>
@@ -97,7 +97,7 @@ function tituloTipo(tipo: string): string {
   const titulos: Record<string, string> = {
     mensual: 'Reporte mensual',
     proyecto: 'Reporte por proyecto',
-    especialidad: 'Reporte por especialidad',
+    cargo: 'Reporte por cargo',
     facturacion: 'Reporte de facturación',
   }
   return titulos[tipo] ?? 'Reporte'

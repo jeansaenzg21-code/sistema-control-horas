@@ -8,78 +8,92 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useAuth } from './auth-context'
 
 export interface Area {
   id: number
+  empresa_id: number
   nombre: string
   descripcion: string | null
   activo: boolean
+  jefe_id: number | null
+  jefe_nombre: string | null
+  jefe_rol: string | null
   total_usuarios: number
-  especialidades: string[]
-}
-
-export interface Especialidad {
-  id: number
-  area_id: number
-  nombre: string
-  activo: boolean
-  tipos_actividad: string[]
 }
 
 interface AreasContextValue {
   areas: Area[]
-  especialidades: Especialidad[]
   cargando: boolean
+  error: string | null
   cargarAreas: () => Promise<void>
-  cargarEspecialidades: (areaId?: number) => Promise<void>
   crearArea: (datos: { nombre: string; descripcion?: string }) => Promise<{ ok: boolean; error?: string }>
-  actualizarArea: (id: number, cambios: { nombre?: string; descripcion?: string }) => Promise<{ ok: boolean; error?: string }>
+  actualizarArea: (id: number, cambios: { nombre?: string; descripcion?: string; jefe_id?: number | null }) => Promise<{ ok: boolean; error?: string }>
   eliminarArea: (id: number) => Promise<{ ok: boolean; error?: string }>
-  crearEspecialidad: (areaId: number, nombre: string) => Promise<{ ok: boolean; error?: string }>
-  eliminarEspecialidad: (id: number) => Promise<{ ok: boolean; error?: string }>
 }
 
 const AreasContext = createContext<AreasContextValue | null>(null)
 
 export function AreasProvider({ children }: { children: ReactNode }) {
+  const { empresaActiva } = useAuth()
+  const empresaId = empresaActiva?.id ?? null
   const [areas, setAreas] = useState<Area[]>([])
-  const [especialidades, setEspecialidades] = useState<Especialidad[]>([])
   const [cargando, setCargando] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const getHeaders = useCallback(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+  }, [])
 
   const cargarAreas = useCallback(async () => {
-    try {
-      const res = await fetch('/api/areas')
-      if (res.ok) {
-        const data = await res.json()
-        setAreas(data)
-      }
-    } catch {
-      // Sin conexión
+    if (!empresaId) {
+      setAreas([])
+      setError(null)
+      return
     }
-  }, [])
 
-  const cargarEspecialidades = useCallback(async (areaId?: number) => {
     try {
-      const url = areaId ? `/api/especialidades?area_id=${areaId}` : '/api/especialidades'
-      const res = await fetch(url)
+      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+      const res = await fetch('/api/areas', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
       if (res.ok) {
         const data = await res.json()
-        setEspecialidades(data)
+        setAreas(Array.isArray(data) ? data : [])
+        setError(null)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        setAreas([])
+        setError(data.error || 'No se pudieron cargar las divisiones.')
       }
     } catch {
-      // Sin conexión
+      setAreas([])
+      setError('No se pudo conectar con el servidor para cargar las divisiones.')
     }
-  }, [])
+  }, [empresaId])
 
   useEffect(() => {
-    Promise.all([cargarAreas(), cargarEspecialidades()]).then(() => setCargando(false))
-  }, [cargarAreas, cargarEspecialidades])
+    if (!empresaId) {
+      setAreas([])
+      setError(null)
+      setCargando(false)
+      return
+    }
+
+    setCargando(true)
+    void cargarAreas().finally(() => setCargando(false))
+  }, [empresaId, cargarAreas])
 
   const crearArea = useCallback(async (datos: { nombre: string; descripcion?: string }) => {
+    if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
       const res = await fetch('/api/areas', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify(datos),
       })
       const data = await res.json()
@@ -89,75 +103,51 @@ export function AreasProvider({ children }: { children: ReactNode }) {
     } catch {
       return { ok: false, error: 'Error de conexión.' }
     }
-  }, [cargarAreas])
+  }, [empresaId, getHeaders, cargarAreas])
 
-  const actualizarArea = useCallback(async (id: number, cambios: { nombre?: string; descripcion?: string }) => {
+  const actualizarArea = useCallback(async (id: number, cambios: { nombre?: string; descripcion?: string; jefe_id?: number | null }) => {
+    if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
       const res = await fetch('/api/areas', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ id, ...cambios }),
       })
-      if (!res.ok) return { ok: false, error: 'Error al actualizar.' }
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return { ok: false, error: data.error || 'Error al actualizar.' }
       await cargarAreas()
       return { ok: true }
     } catch {
       return { ok: false, error: 'Error de conexión.' }
     }
-  }, [cargarAreas])
+  }, [empresaId, getHeaders, cargarAreas])
 
   const eliminarArea = useCallback(async (id: number) => {
+    if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
       const res = await fetch('/api/areas', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ id }),
       })
-      if (!res.ok) return { ok: false, error: 'Error al eliminar.' }
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) return { ok: false, error: data.error || 'Error al eliminar.' }
       await cargarAreas()
       return { ok: true }
     } catch {
       return { ok: false, error: 'Error de conexión.' }
     }
-  }, [cargarAreas])
-
-  const crearEspecialidad = useCallback(async (areaId: number, nombre: string) => {
-    try {
-      const res = await fetch('/api/especialidades', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ area_id: areaId, nombre }),
-      })
-      const data = await res.json()
-      if (!res.ok) return { ok: false, error: data.error }
-      await cargarEspecialidades(areaId)
-      return { ok: true }
-    } catch {
-      return { ok: false, error: 'Error de conexión.' }
-    }
-  }, [cargarEspecialidades])
-
-  const eliminarEspecialidad = useCallback(async (id: number) => {
-    try {
-      const res = await fetch('/api/especialidades', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      })
-      if (!res.ok) return { ok: false, error: 'Error al eliminar.' }
-      await cargarEspecialidades()
-      return { ok: true }
-    } catch {
-      return { ok: false, error: 'Error de conexión.' }
-    }
-  }, [cargarEspecialidades])
+  }, [empresaId, getHeaders, cargarAreas])
 
   return (
     <AreasContext.Provider value={{
-      areas, especialidades, cargando,
-      cargarAreas, cargarEspecialidades,
-      crearArea, actualizarArea, eliminarArea,
-      crearEspecialidad, eliminarEspecialidad,
+      areas,
+      cargando,
+      error,
+      cargarAreas,
+      crearArea,
+      actualizarArea,
+      eliminarArea,
     }}>
       {children}
     </AreasContext.Provider>

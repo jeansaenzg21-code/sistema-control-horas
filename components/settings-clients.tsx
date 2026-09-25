@@ -1,9 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Plus, Trash2, Pencil, X, Clock, Building2, Mail, Phone, MapPin, Search, UsersRound, SlidersHorizontal } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Building2, Clock, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, UsersRound } from 'lucide-react'
 import { useClientes, type Cliente } from '@/lib/clientes-context'
 import { useAreas } from '@/lib/areas-context'
+import { useAuth } from '@/lib/auth-context'
+import { useNotificaciones } from '@/lib/notificaciones-context'
+import { evaluarBolsaHoras } from '@/lib/bolsa-horas'
+import { formatoHoras } from '@/lib/utils'
 
 interface FormularioCliente {
   nombre: string
@@ -25,68 +29,58 @@ const formularioVacio: FormularioCliente = {
   horas_contratadas: '',
 }
 
+function normalizar(valor: string | null | undefined): string {
+  return (valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function iniciales(nombre: string): string {
+  return nombre
+    .split(' ')
+    .map((parte) => parte[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+}
+
 export function SettingsClients() {
-  const { clientes, crearCliente, actualizarCliente, eliminarCliente } = useClientes()
+  const { clientes, cargando, crearCliente, actualizarCliente, eliminarCliente } = useClientes()
   const { areas } = useAreas()
+  const { usuario } = useAuth()
+  const esJefeArea = usuario?.rol === 'jefe_area'
+  const { cargarNotificaciones } = useNotificaciones()
   const [creando, setCreando] = useState(false)
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [formulario, setFormulario] = useState<FormularioCliente>(formularioVacio)
-  const [cargando, setCargando] = useState(false)
+  const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [areaFiltro, setAreaFiltro] = useState<number | ''>('')
 
+  useEffect(() => {
+    if (!cargando && usuario) void cargarNotificaciones(usuario.id)
+  }, [cargando, usuario, cargarNotificaciones])
+
   const clientesFiltrados = useMemo(() => {
-    const termino = busqueda.trim().toLowerCase()
-    if (!termino && areaFiltro === '') return clientes
-    return clientes.filter((cliente) =>
-      (areaFiltro === '' || cliente.area_id === areaFiltro) &&
-      [cliente.nombre, cliente.ruc, cliente.correo, cliente.area_nombre]
-        .filter(Boolean)
-        .some((valor) => valor!.toLowerCase().includes(termino)),
-    )
+    const termino = normalizar(busqueda.trim())
+    return clientes.filter((cliente) => {
+      if (areaFiltro !== '' && cliente.area_id !== areaFiltro) return false
+      if (!termino) return true
+      return [cliente.nombre, cliente.ruc, cliente.correo, cliente.telefono, cliente.direccion, cliente.area_nombre]
+        .some((valor) => normalizar(valor).includes(termino))
+    })
   }, [clientes, busqueda, areaFiltro])
 
-  const manejarCrear = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!formulario.nombre.trim() || !formulario.area_id) return
-    setCargando(true)
-    setError('')
-    const resultado = await crearCliente({
-      nombre: formulario.nombre.trim(),
-      ruc: formulario.ruc.trim() || null,
-      correo: formulario.correo.trim() || null,
-      telefono: formulario.telefono.trim() || null,
-      direccion: formulario.direccion.trim() || null,
-      area_id: Number(formulario.area_id),
-      horas_contratadas: Number(formulario.horas_contratadas) || 0,
+  const abrirCrear = () => {
+    setFormulario({
+      ...formularioVacio,
+      area_id: esJefeArea && usuario?.area_id ? Number(usuario.area_id) : '',
     })
-    setCargando(false)
-    if (resultado.ok) {
-      setFormulario(formularioVacio)
-      setCreando(false)
-    } else setError(resultado.error || 'No se pudo registrar el cliente.')
-  }
-
-  const manejarEditar = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!editandoId || !formulario.nombre.trim() || !formulario.area_id) return
-    setCargando(true)
+    setEditandoId(null)
+    setCreando(true)
     setError('')
-    const resultado = await actualizarCliente(editandoId, {
-      nombre: formulario.nombre.trim(),
-      ruc: formulario.ruc.trim() || null,
-      correo: formulario.correo.trim() || null,
-      telefono: formulario.telefono.trim() || null,
-      direccion: formulario.direccion.trim() || null,
-      area_id: Number(formulario.area_id),
-      horas_contratadas: Number(formulario.horas_contratadas) || 0,
-    })
-    setCargando(false)
-    if (resultado.ok) {
-      setFormulario(formularioVacio)
-      setEditandoId(null)
-    } else setError(resultado.error || 'No se pudo actualizar el cliente.')
   }
 
   const iniciarEdicion = (cliente: Cliente) => {
@@ -101,12 +95,52 @@ export function SettingsClients() {
     })
     setEditandoId(cliente.id)
     setCreando(false)
+    setError('')
   }
 
   const cancelar = () => {
     setFormulario(formularioVacio)
     setCreando(false)
     setEditandoId(null)
+    setError('')
+  }
+
+  const manejarCrear = async (evento: React.FormEvent) => {
+    evento.preventDefault()
+    if (!formulario.nombre.trim() || !formulario.area_id) return
+    setGuardando(true)
+    setError('')
+    const resultado = await crearCliente({
+      nombre: formulario.nombre.trim(),
+      ruc: formulario.ruc.trim() || null,
+      correo: formulario.correo.trim() || null,
+      telefono: formulario.telefono.trim() || null,
+      direccion: formulario.direccion.trim() || null,
+      area_id: Number(formulario.area_id),
+      horas_contratadas: Number(formulario.horas_contratadas) || 0,
+    })
+    setGuardando(false)
+    if (resultado.ok) cancelar()
+    else setError(resultado.error || 'No se pudo registrar el cliente.')
+  }
+
+  const manejarEditar = async (evento: React.FormEvent) => {
+    evento.preventDefault()
+    if (!editandoId || !formulario.nombre.trim() || !formulario.area_id) return
+    setGuardando(true)
+    setError('')
+    const resultado = await actualizarCliente(editandoId, {
+      nombre: formulario.nombre.trim(),
+      ruc: formulario.ruc.trim() || null,
+      correo: formulario.correo.trim() || null,
+      telefono: formulario.telefono.trim() || null,
+      direccion: formulario.direccion.trim() || null,
+      area_id: Number(formulario.area_id),
+      horas_contratadas: Number(formulario.horas_contratadas) || 0,
+    })
+    setGuardando(false)
+    if (resultado.ok) cancelar()
+    else setError(resultado.error || 'No se pudo actualizar el cliente.')
   }
 
   const manejarEliminar = async (id: number, nombre: string) => {
@@ -114,266 +148,202 @@ export function SettingsClients() {
     await eliminarCliente(id)
   }
 
-  const formularioEsValido = formulario.nombre.trim() && formulario.area_id !== ''
+  const formularioEsValido = Boolean(formulario.nombre.trim() && formulario.area_id !== '')
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-[#7c3aed]/20 p-2.5 text-[#c4b5fd]"><UsersRound size={22} /></div>
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Cartera de clientes</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Organiza clientes, áreas y horas contratadas.</p>
-            </div>
+    <div className="space-y-4">
+      <section className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#7c3aed]/15 text-[#c4b5fd]">
+            <UsersRound size={20} />
           </div>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <div className="flex items-center gap-2 rounded-xl border border-border/80 bg-muted/40 p-2">
-              <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-card px-3 text-muted-foreground">
-                <SlidersHorizontal size={15} className="text-[#a78bfa]" />
-                <select
-                  value={areaFiltro}
-                  onChange={(e) => setAreaFiltro(e.target.value ? Number(e.target.value) : '')}
-                  aria-label="Filtrar por área"
-                  className="cursor-pointer bg-transparent py-2 text-sm text-foreground outline-none"
-                  style={{ colorScheme: 'dark' }}
-                >
-                  <option value="" className="bg-card text-foreground">Todas las áreas</option>
-                  {areas.map((area) => (
-                    <option key={area.id} value={area.id} className="bg-card text-foreground">{area.nombre}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="relative w-full sm:w-48">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Buscar cliente..."
-                  className="w-full rounded-lg border border-border/70 bg-card py-2 pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-[#7c3aed] focus:ring-2 focus:ring-[#7c3aed]/20"
-                />
-              </div>
-            </div>
-            <button
-              onClick={() => { setCreando((v) => !v); setEditandoId(null); setFormulario(formularioVacio); setError('') }}
-              className="flex items-center justify-center gap-2 rounded-lg bg-[#7c3aed] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#7c3aed]/20 transition-colors hover:bg-[#6d28d9]"
-            >
-              <Plus size={16} />
-              Nuevo cliente
-            </button>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#a78bfa]">Administración</p>
+            <h1 className="mt-1 text-lg font-semibold text-foreground">Cartera de clientes</h1>
+            <p className="mt-0.5 text-xs text-muted-foreground">Organiza clientes, divisiones y horas contratadas.</p>
           </div>
         </div>
-      </div>
+        <button
+          type="button"
+          onClick={abrirCrear}
+          className="flex items-center justify-center gap-2 rounded-lg bg-[#7c3aed] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#6d28d9]"
+        >
+          <Plus size={16} />
+          Nuevo cliente
+        </button>
+      </section>
+
+      <section className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:flex-row sm:items-end">
+        <div className="relative min-w-0 flex-1">
+          <label htmlFor="buscar-cliente" className="sr-only">Buscar clientes</label>
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            id="buscar-cliente"
+            type="search"
+            value={busqueda}
+            onChange={(evento) => setBusqueda(evento.target.value)}
+            placeholder="Buscar por nombre, RUC o contacto..."
+            className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-[#7c3aed]/50"
+          />
+        </div>
+        <div className="w-full sm:w-52">
+          <label htmlFor="filtro-area-clientes" className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            <Building2 size={13} />
+            División
+          </label>
+          <select
+            id="filtro-area-clientes"
+            value={areaFiltro}
+            onChange={(evento) => setAreaFiltro(evento.target.value ? Number(evento.target.value) : '')}
+            className="h-9 w-full cursor-pointer rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
+          >
+            <option value="">Todas las divisiones</option>
+            {areas.map((area) => <option key={area.id} value={area.id}>{area.nombre}</option>)}
+          </select>
+        </div>
+        <span className="px-1 pb-2 text-[11px] text-muted-foreground sm:whitespace-nowrap">
+          {clientesFiltrados.length} {clientesFiltrados.length === 1 ? 'cliente' : 'clientes'}
+        </span>
+      </section>
 
       {(creando || editandoId) && (
-        <form
-          onSubmit={editandoId ? manejarEditar : manejarCrear}
-          className="rounded-xl border border-border bg-card p-4"
-        >
-          <h3 className="mb-3 text-sm font-semibold text-foreground">
-            {editandoId ? 'Editar cliente' : 'Nuevo cliente'}
-          </h3>
-          {error && <p className="mb-3 rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-400">{error}</p>}
+        <form onSubmit={editandoId ? manejarEditar : manejarCrear} className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">{editandoId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+            <button type="button" onClick={cancelar} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Cerrar formulario">
+              <span className="sr-only">Cerrar</span>
+              ×
+            </button>
+          </div>
+          {error && <p className="mb-3 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-400">{error}</p>}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Nombre *</label>
-              <input
-                type="text"
-                value={formulario.nombre}
-                onChange={(e) => setFormulario((f) => ({ ...f, nombre: e.target.value }))}
-                required
-                placeholder="Nombre del cliente"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">RUC</label>
-              <input
-                type="text"
-                value={formulario.ruc}
-                onChange={(e) => setFormulario((f) => ({ ...f, ruc: e.target.value }))}
-                placeholder="RUC del cliente"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Correo</label>
-              <input
-                type="email"
-                value={formulario.correo}
-                onChange={(e) => setFormulario((f) => ({ ...f, correo: e.target.value }))}
-                placeholder="correo@ejemplo.com"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Teléfono</label>
-              <input
-                type="text"
-                value={formulario.telefono}
-                onChange={(e) => setFormulario((f) => ({ ...f, telefono: e.target.value }))}
-                placeholder="Teléfono de contacto"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Dirección</label>
-              <input
-                type="text"
-                value={formulario.direccion}
-                onChange={(e) => setFormulario((f) => ({ ...f, direccion: e.target.value }))}
-                placeholder="Dirección del cliente"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Área *</label>
-              <select
-                value={formulario.area_id}
-                onChange={(e) => setFormulario((f) => ({ ...f, area_id: e.target.value ? Number(e.target.value) : '' }))}
-                required
-                className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50 hover:border-[#7c3aed]/50"
-              >
-                <option value="">Selecciona un área...</option>
-                {areas.map((area) => (
-                  <option key={area.id} value={area.id}>
-                    {area.nombre}
-                  </option>
-                ))}
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">Nombre *</span>
+              <input type="text" required value={formulario.nombre} onChange={(evento) => setFormulario((f) => ({ ...f, nombre: evento.target.value }))} placeholder="Nombre del cliente" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">RUC</span>
+              <input type="text" value={formulario.ruc} onChange={(evento) => setFormulario((f) => ({ ...f, ruc: evento.target.value }))} placeholder="RUC del cliente" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">Correo</span>
+              <input type="email" value={formulario.correo} onChange={(evento) => setFormulario((f) => ({ ...f, correo: evento.target.value }))} placeholder="correo@ejemplo.com" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">Teléfono</span>
+              <input type="text" value={formulario.telefono} onChange={(evento) => setFormulario((f) => ({ ...f, telefono: evento.target.value }))} placeholder="Teléfono de contacto" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">Dirección</span>
+              <input type="text" value={formulario.direccion} onChange={(evento) => setFormulario((f) => ({ ...f, direccion: evento.target.value }))} placeholder="Dirección del cliente" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">División *</span>
+              <select required value={formulario.area_id} onChange={(evento) => setFormulario((f) => ({ ...f, area_id: evento.target.value ? Number(evento.target.value) : '' }))} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30">
+                <option value="">Selecciona una división...</option>
+                {areas.map((area) => <option key={area.id} value={area.id}>{area.nombre}</option>)}
               </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-medium text-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Clock size={14} />
-                  Horas contratadas
-                </span>
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                value={formulario.horas_contratadas}
-                onChange={(e) => setFormulario((f) => ({ ...f, horas_contratadas: e.target.value ? Number(e.target.value) : '' }))}
-                placeholder="Ej. 100"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
-              />
-            </div>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-foreground"><Clock size={13} /> Horas contratadas</span>
+              <input type="number" min="0" step="0.5" value={formulario.horas_contratadas} onChange={(evento) => setFormulario((f) => ({ ...f, horas_contratadas: evento.target.value ? Number(evento.target.value) : '' }))} placeholder="Ej. 100" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
+            </label>
           </div>
           <div className="mt-4 flex gap-2">
-            <button
-              type="submit"
-              disabled={!formularioEsValido || cargando}
-              className="rounded-lg bg-[#7c3aed] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#7c3aed]/90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {cargando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear cliente'}
+            <button type="submit" disabled={!formularioEsValido || guardando} className="rounded-lg bg-[#7c3aed] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#6d28d9] disabled:cursor-not-allowed disabled:opacity-50">
+              {guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Crear cliente'}
             </button>
-            <button
-              type="button"
-              onClick={cancelar}
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-            >
-              Cancelar
-            </button>
+            <button type="button" onClick={cancelar} className="rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted">Cancelar</button>
           </div>
         </form>
       )}
 
-      {clientes.length === 0 && !creando && (
-        <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
-          <Building2 size={32} className="mx-auto mb-3 text-muted-foreground" />
+      {cargando ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3].map((item) => <div key={item} className="h-56 animate-pulse rounded-xl border border-border bg-card/60" />)}
+        </div>
+      ) : clientes.length === 0 && !creando ? (
+        <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center">
+          <Building2 size={28} className="mx-auto mb-3 text-muted-foreground" />
           <p className="text-sm font-medium text-foreground">No hay clientes registrados</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Crea un nuevo cliente para comenzar a registrar horas
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Crea el primer cliente para comenzar a registrar horas.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {clientesFiltrados.map((cliente) => {
+            const horasContratadas = Number(cliente.horas_contratadas) || 0
+            const horasConsumidas = Number(cliente.horas_consumidas) || 0
+            const horasRestantes = horasContratadas - horasConsumidas
+            const porcentajeConsumo = horasContratadas > 0 ? Math.min(100, (horasConsumidas / horasContratadas) * 100) : 0
+            const bolsa = evaluarBolsaHoras(horasContratadas, horasConsumidas)
+            const mensajeBolsa = bolsa.estado === 'agotada'
+              ? `Bolsa agotada: ${formatoHoras(Math.abs(bolsa.restantes))} excedidas. Revisa facturación adicional.`
+              : `Bolsa por agotarse: quedan ${formatoHoras(bolsa.restantes)} (${Math.max(0, Math.round(bolsa.porcentajeRestante))}%). Revisa una ampliación.`
+            return (
+              <article id={`cliente-${cliente.id}`} key={cliente.id} className="group flex min-h-56 flex-col rounded-xl border border-border bg-card p-4 transition-colors hover:border-[#7c3aed]/50">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#7c3aed]/15 text-xs font-semibold text-[#c4b5fd]">{iniciales(cliente.nombre)}</div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="truncate text-sm font-semibold text-foreground">{cliente.nombre}</h2>
+                    <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground" title={cliente.area_nombre || 'Sin división asignada'}>
+                      <Building2 size={12} className="flex-none text-[#a78bfa]" />
+                      División: {cliente.area_nombre || 'Sin asignar'}
+                    </p>
+                  </div>
+                  <div className="flex flex-none gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+                    <button type="button" onClick={() => iniciarEdicion(cliente)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Editar ${cliente.nombre}`}><Pencil size={14} /></button>
+                    <button type="button" onClick={() => manejarEliminar(cliente.id, cliente.nombre)} className="rounded-md p-1.5 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400" aria-label={`Eliminar ${cliente.nombre}`}><Trash2 size={14} /></button>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-2 border-y border-border/70 py-3 text-xs text-muted-foreground">
+                  <p className="truncate" title={cliente.ruc || 'RUC no registrado'}>
+                    RUC: <span className="text-foreground">{cliente.ruc || 'No registrado'}</span>
+                  </p>
+                  <p className="flex min-w-0 items-center gap-2 truncate" title={cliente.correo || 'Correo no registrado'}>
+                    <Mail size={13} className="flex-none text-[#a78bfa]" />
+                    <span className="truncate">Correo: <span className="text-foreground">{cliente.correo || 'No registrado'}</span></span>
+                  </p>
+                  <p className="flex min-w-0 items-center gap-2 truncate" title={cliente.telefono || 'Teléfono no registrado'}>
+                    <Phone size={13} className="flex-none text-[#a78bfa]" />
+                    <span className="truncate">Teléfono: <span className="text-foreground">{cliente.telefono || 'No registrado'}</span></span>
+                  </p>
+                  <p className="flex min-w-0 items-center gap-2 truncate" title={cliente.direccion || 'Dirección no registrada'}>
+                    <MapPin size={13} className="flex-none text-[#a78bfa]" />
+                    <span className="truncate">Dirección: <span className="text-foreground">{cliente.direccion || 'No registrada'}</span></span>
+                  </p>
+                </div>
+                {bolsa.estado !== 'normal' && (
+                  <div
+                    role="alert"
+                    className={`mt-3 flex items-start gap-2 rounded-lg border px-2.5 py-2 text-[11px] leading-relaxed ${
+                      bolsa.estado === 'agotada'
+                        ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                        : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                    }`}
+                  >
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                    <span>{mensajeBolsa}</span>
+                  </div>
+                )}
+                <div className="mt-auto pt-4">
+                  <div className="mb-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Contratadas <strong className="text-foreground">{formatoHoras(horasContratadas)}</strong></span>
+                    <span>Consumidas <strong className="text-foreground">{formatoHoras(horasConsumidas)}</strong></span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full" style={{ width: `${porcentajeConsumo}%`, backgroundColor: bolsa.estado === 'agotada' ? '#ef4444' : bolsa.estado === 'por_agotarse' ? '#f59e0b' : '#7c3aed' }} /></div>
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    {horasRestantes >= 0 ? 'Restantes' : 'Excedidas'}:{' '}
+                    <span className={horasRestantes <= 0 ? 'font-semibold text-rose-400' : horasRestantes < 10 ? 'font-semibold text-amber-400' : 'font-semibold text-foreground'}>
+                      {formatoHoras(Math.abs(horasRestantes))}
+                    </span>
+                  </p>
+                </div>
+              </article>
+            )
+          })}
+          {clientesFiltrados.length === 0 && clientes.length > 0 && <div className="col-span-full rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No hay clientes que coincidan con la búsqueda.</div>}
         </div>
       )}
-
-      <div className="grid grid-cols-1 justify-items-start gap-4 md:grid-cols-2">
-        {clientesFiltrados.map((cliente) => {
-          const horasRestantes = cliente.horas_contratadas - cliente.horas_consumidas
-          const porcentajeConsumo = cliente.horas_contratadas > 0
-            ? Math.min(100, (cliente.horas_consumidas / cliente.horas_contratadas) * 100)
-            : 0
-
-          return (
-            <div
-              key={cliente.id}
-              className="group rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#7c3aed]/50 hover:shadow-lg hover:shadow-[#7c3aed]/5"
-              style={{ width: '360px', maxWidth: '100%' }}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-foreground">{cliente.nombre}</h3>
-                  {cliente.ruc && (
-                    <p className="mt-1 text-xs text-muted-foreground">RUC: {cliente.ruc}</p>
-                  )}
-                </div>
-                <div className="flex flex-none items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => iniciarEdicion(cliente)}
-                    aria-label={`Editar ${cliente.nombre}`}
-                    className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => manejarEliminar(cliente.id, cliente.nombre)}
-                    aria-label={`Eliminar ${cliente.nombre}`}
-                    className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-rose-500/10 hover:text-rose-400"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-2 border-y border-border/70 py-3 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Building2 size={14} className="text-[#a78bfa]" />
-                  <span className="truncate">{cliente.area_nombre}</span>
-                </div>
-                {cliente.correo && (
-                  <p className="flex items-center gap-2 truncate"><Mail size={14} className="text-[#a78bfa]" />{cliente.correo}</p>
-                )}
-                {cliente.telefono && (
-                  <p className="flex items-center gap-2"><Phone size={14} className="text-[#a78bfa]" />{cliente.telefono}</p>
-                )}
-                {cliente.direccion && (
-                  <p className="flex items-center gap-2 truncate"><MapPin size={14} className="text-[#a78bfa]" />{cliente.direccion}</p>
-                )}
-              </div>
-
-              <div className="mt-3 rounded-lg border border-border bg-muted p-3">
-                <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Horas contratadas: <span className="font-semibold text-foreground">{cliente.horas_contratadas}h</span></span>
-                  <span>Consumidas: <span className="font-semibold text-foreground">{cliente.horas_consumidas}h</span></span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-background">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${porcentajeConsumo}%`,
-                      backgroundColor: porcentajeConsumo >= 90 ? '#ef4444' : porcentajeConsumo >= 70 ? '#f59e0b' : '#7c3aed',
-                    }}
-                  />
-                </div>
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  Restantes: <span className={`font-semibold ${horasRestantes <= 0 ? 'text-rose-400' : horasRestantes < 10 ? 'text-amber-400' : 'text-foreground'}`}>
-                    {horasRestantes}h
-                  </span>
-                </p>
-              </div>
-            </div>
-          )
-        })}
-        {clientesFiltrados.length === 0 && clientes.length > 0 && (
-          <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-            No hay clientes que coincidan con la búsqueda.
-          </div>
-        )}
-      </div>
     </div>
   )
 }

@@ -5,7 +5,9 @@ import {
   ListTodo,
   CheckCircle,
   BarChart3,
+  CalendarCheck,
   FileText,
+  FolderKanban,
   Users,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -22,12 +24,14 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Panel Principal', href: '/', icon: <LayoutDashboard size={19} />, roles: ['admin'] },
-  { label: 'Clientes', href: '/clientes', icon: <Users size={19} />, roles: ['admin'] },
-  { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['personal'] },
-  { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'personal'] },
-  { label: 'Consolidación', href: '/consolidacion', icon: <BarChart3 size={19} />, roles: ['admin'] },
-  { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ['admin'] },
+  { label: 'Panel Principal', href: '/', icon: <LayoutDashboard size={19} />, roles: ['admin', 'jefe_area'] },
+  { label: 'Clientes', href: '/clientes', icon: <Users size={19} />, roles: ['admin', 'jefe_area'] },
+  { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['personal', 'jefe_area'] },
+  { label: 'Proyectos', href: '/proyectos', icon: <FolderKanban size={19} />, roles: ['admin', 'supervisor', 'personal', 'jefe_area'] },
+  { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'supervisor', 'personal'] },
+  { label: 'Consolidación', href: '/consolidacion', icon: <BarChart3 size={19} />, roles: ['admin', 'jefe_area'] },
+  { label: 'Cumplimiento', href: '/cumplimiento', icon: <CalendarCheck size={19} />, roles: ['admin', 'jefe_area'] },
+  { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ['admin', 'jefe_area'] },
 ]
 
 export function Sidebar() {
@@ -55,7 +59,8 @@ export function Sidebar() {
           Módulos
         </p>
         {itemsVisibles.map((item) => {
-          const isActive = pathname === item.href
+          const isActive =
+            pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`))
           return (
             <Link
               key={item.href}

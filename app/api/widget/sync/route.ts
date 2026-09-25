@@ -15,6 +15,14 @@ interface SyncData {
   timestamp: number
 }
 
+function widgetSyncHabilitado(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.WIDGET_SYNC_ENABLED === 'true'
+}
+
+function widgetSyncDeshabilitado(): NextResponse {
+  return NextResponse.json({ error: 'Sincronización de widget no disponible.' }, { status: 404 })
+}
+
 function readSync(): SyncData | null {
   try {
     if (!existsSync(SYNC_FILE)) return null
@@ -47,6 +55,7 @@ function esRolAdmin(rol: string | undefined | null): boolean {
 
 export async function POST(request: Request) {
   try {
+    if (!widgetSyncHabilitado()) return widgetSyncDeshabilitado()
     const body = await request.json()
     if (!body.token) {
       return NextResponse.json({ error: 'token requerido' }, { status: 400 })
@@ -73,6 +82,7 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
+    if (!widgetSyncHabilitado()) return widgetSyncDeshabilitado()
     const data = readSync()
     if (!data) {
       return NextResponse.json({ synced: false })
@@ -90,6 +100,7 @@ export async function GET() {
 
 export async function DELETE() {
   try {
+    if (!widgetSyncHabilitado()) return widgetSyncDeshabilitado()
     deleteSync()
     notifyAuthChange('logout')
     return NextResponse.json({ ok: true })

@@ -18,6 +18,14 @@ export interface Cliente {
   created_at: string
 }
 
+function normalizarCliente(cliente: Cliente): Cliente {
+  return {
+    ...cliente,
+    horas_contratadas: Number(cliente.horas_contratadas) || 0,
+    horas_consumidas: Number(cliente.horas_consumidas) || 0,
+  }
+}
+
 interface ClientesContextValue {
   clientes: Cliente[]
   cargando: boolean
@@ -30,78 +38,98 @@ interface ClientesContextValue {
 const ClientesContext = createContext<ClientesContextValue | null>(null)
 
 export function ClientesProvider({ children }: { children: ReactNode }) {
-  const { usuario } = useAuth()
+  const { usuario, empresaActiva } = useAuth()
+  const empresaId = empresaActiva?.id ?? null
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [cargando, setCargando] = useState(true)
 
   const cargarClientes = useCallback(async () => {
+    if (!empresaId) {
+      setClientes([])
+      return
+    }
+
     try {
       const token = localStorage.getItem('pc_token')
-      const res = await fetch('/api/clientes', { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+      const res = await fetch('/api/clientes', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
       if (res.ok) {
-        const data = await res.json()
-        setClientes(data)
-      }
+        const data = (await res.json()) as Cliente[]
+        setClientes(data.map(normalizarCliente))
+      } else setClientes([])
     } catch {
-      // Sin conexión
+      setClientes([])
     } finally {
       setCargando(false)
     }
-  }, [])
+  }, [empresaId])
 
   useEffect(() => {
-    if (usuario) cargarClientes()
-    else setClientes([])
-  }, [usuario, cargarClientes])
+    if (usuario && empresaId) {
+      setCargando(true)
+      void cargarClientes()
+    } else {
+      setClientes([])
+      setCargando(false)
+    }
+  }, [usuario, empresaId, cargarClientes])
+
+  const headers = () => {
+    const token = localStorage.getItem('pc_token')
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+  }
 
   const crearCliente = useCallback(async (datos: Omit<Cliente, 'id' | 'area_nombre' | 'horas_consumidas' | 'activo' | 'created_at'>) => {
+    if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
       const res = await fetch('/api/clientes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('pc_token') ? { Authorization: `Bearer ${localStorage.getItem('pc_token')}` } : {}) },
+        headers: headers(),
         body: JSON.stringify(datos),
       })
       const data = await res.json()
-      if (!res.ok) {
-        return { ok: false, error: data.error || 'Error al crear cliente.' }
-      }
+      if (!res.ok) return { ok: false, error: data.error || 'Error al crear cliente.' }
       await cargarClientes()
       return { ok: true }
     } catch {
       return { ok: false, error: 'No se pudo conectar al servidor.' }
     }
-  }, [cargarClientes])
+  }, [empresaId, cargarClientes])
 
   const actualizarCliente = useCallback(async (id: number, datos: Partial<Cliente>) => {
+    if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
       const res = await fetch('/api/clientes', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('pc_token') ? { Authorization: `Bearer ${localStorage.getItem('pc_token')}` } : {}) },
+        headers: headers(),
         body: JSON.stringify({ id, ...datos }),
       })
       const data = await res.json()
-      if (!res.ok) {
-        return { ok: false, error: data.error || 'Error al actualizar cliente.' }
-      }
+      if (!res.ok) return { ok: false, error: data.error || 'Error al actualizar cliente.' }
       await cargarClientes()
       return { ok: true }
     } catch {
       return { ok: false, error: 'No se pudo conectar al servidor.' }
     }
-  }, [cargarClientes])
+  }, [empresaId, cargarClientes])
 
   const eliminarCliente = useCallback(async (id: number) => {
+    if (!empresaId) return
     try {
       await fetch('/api/clientes', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('pc_token') ? { Authorization: `Bearer ${localStorage.getItem('pc_token')}` } : {}) },
+        headers: headers(),
         body: JSON.stringify({ id }),
       })
       await cargarClientes()
     } catch {
-      // Sin conexión
+      return
     }
-  }, [cargarClientes])
+  }, [empresaId, cargarClientes])
 
   return (
     <ClientesContext.Provider value={{ clientes, cargando, cargarClientes, crearCliente, actualizarCliente, eliminarCliente }}>

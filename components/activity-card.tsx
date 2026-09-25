@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { CalendarDays, Clock3, Pause, Play, Square, Tag, UserRound } from 'lucide-react'
+import { CalendarDays, Clock3, FolderKanban, Pause, Play, Square, Tag, UserRound } from 'lucide-react'
 import { useActividad } from '@/lib/actividad-context'
 import { cn, formatFecha, formatHora } from '@/lib/utils'
 
@@ -16,7 +16,7 @@ function formatearTiempo(ms: number): string {
 }
 
 export function ActivityCard() {
-  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad } =
+  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad, tiempoPausaMs } =
     useActividad()
   const [tick, setTick] = useState(0)
 
@@ -27,18 +27,15 @@ export function ActivityCard() {
   }, [actividadActual])
 
   if (!actividadActual) return null
+  if (actividadActual.estado !== 'EN_CURSO' && actividadActual.estado !== 'PAUSADA') return null
 
   const pausada = actividadActual.estado === 'PAUSADA'
   const enCurso = actividadActual.estado === 'EN_CURSO'
   void tick
 
   const tiempoTranscurrido = (() => {
-    if (pausada && actividadActual.duracion_segundos != null) {
-      return Math.max(
-        0,
-        (Number(actividadActual.duracion_segundos) - Number(actividadActual.pausa_acumulada_segundos || 0)) * 1000,
-      )
-    }
+    if (!actividadActual) return 0
+    if (pausada && tiempoPausaMs != null) return tiempoPausaMs
     const inicioMs = new Date(actividadActual.inicio).getTime()
     const ahoraMs = enCurso ? Date.now() : inicioMs
     const finMs = actividadActual.fin ? new Date(actividadActual.fin).getTime() : ahoraMs
@@ -47,9 +44,10 @@ export function ActivityCard() {
   })()
 
   const campos = [
-    { etiqueta: 'Especialidad', valor: actividadActual.especialidad || '—', icono: <UserRound size={14} /> },
+    { etiqueta: 'Cargo', valor: actividadActual.cargo || '—', icono: <UserRound size={14} /> },
     { etiqueta: 'Tipo de actividad', valor: actividadActual.tipo_actividad_nombre || '—', icono: <Tag size={14} /> },
     { etiqueta: 'Cliente', valor: actividadActual.cliente_nombre || 'Sin cliente', icono: <UserRound size={14} /> },
+    ...(actividadActual.proyecto_nombre ? [{ etiqueta: 'Proyecto', valor: actividadActual.proyecto_nombre, icono: <FolderKanban size={14} /> }] : []),
     { etiqueta: 'Fecha', valor: formatFecha(actividadActual.inicio), icono: <CalendarDays size={14} /> },
   ]
 

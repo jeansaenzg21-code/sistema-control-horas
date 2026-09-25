@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { TrendingUp, Wallet } from 'lucide-react'
 import { KPICard } from './kpi-card'
 import { useRegistros } from '@/lib/use-registros'
-import { esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
+import { esFacturable, esNoFacturable, fechaLocalISO, formatoHoras } from '@/lib/utils'
 
 interface BillingStatsProps {
   areaId?: string
@@ -52,7 +52,7 @@ export function BillingStats({ areaId = '', desde = '', hasta = '' }: BillingSta
         valor={`${pct(horas.facturadas)}%`}
         icono={TrendingUp}
         color="verde"
-        detalle={`${horas.facturadas.toFixed(1)}h facturadas`}
+        detalle={`${formatoHoras(horas.facturadas)} facturadas`}
       />
       <KPICard
         className="flex-1"
@@ -60,7 +60,7 @@ export function BillingStats({ areaId = '', desde = '', hasta = '' }: BillingSta
         valor={`${pct(horas.noFacturadas)}%`}
         icono={Wallet}
         color="gris"
-        detalle={`${horas.noFacturadas.toFixed(1)}h no facturadas`}
+        detalle={`${formatoHoras(horas.noFacturadas)} no facturadas`}
       />
     </div>
   )

@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { Pause, Play, Square, X, ArrowRight } from 'lucide-react'
+import { Pause, Play, Square, X, ArrowRight, CalendarClock } from 'lucide-react'
 import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { Logo } from './logo'
 import { cn, formatHora } from '@/lib/utils'
 
-const TAMANO_BURBUJA = 46
+const TAMANO_BURBUJA = 50
 const ANCHO_TARJETA = 320
 const ALTURA_TARJETA_ESTIMADA = 300
 const MARGEN = 16
@@ -58,7 +58,7 @@ function formatearTiempo(ms: number): string {
 }
 
 export function ActivityWidget() {
-  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad } =
+  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad, tiempoPausaMs } =
     useActividad()
   const { usuario } = useAuth()
   const [montado, setMontado] = useState(false)
@@ -67,6 +67,8 @@ export function ActivityWidget() {
   const [posicion, setPosicion] = useState<Posicion>({ x: 0, y: 0 })
   const [arrastrando, setArrastrando] = useState(false)
   const [tick, setTick] = useState(0)
+  const [alertaVisible, setAlertaVisible] = useState(false)
+  const ultimoAvisoRef = useRef(Date.now())
 
   const inicioArrastre = useRef<{ x: number; y: number } | null>(null)
   const seArrastro = useRef(false)
@@ -96,6 +98,29 @@ export function ActivityWidget() {
     const id = window.setInterval(() => setTick((v) => v + 1), 1000)
     return () => window.clearInterval(id)
   }, [actividadActual])
+
+  useEffect(() => {
+    ultimoAvisoRef.current = Date.now()
+    setAlertaVisible(false)
+  }, [actividadActual?.id])
+
+  useEffect(() => {
+    if (!actividadActual || actividadActual.estado !== 'EN_CURSO' || alertaVisible) return
+    const comprobar = () => {
+      if (Date.now() - ultimoAvisoRef.current >= 15 * 60 * 1000) {
+        setAlertaVisible(true)
+        setAbierto(true)
+      }
+    }
+    const id = window.setInterval(comprobar, 15_000)
+    comprobar()
+    return () => window.clearInterval(id)
+  }, [actividadActual, alertaVisible])
+
+  const continuarAlerta = () => {
+    ultimoAvisoRef.current = Date.now()
+    setAlertaVisible(false)
+  }
 
   const manejarInicio = (evento: React.PointerEvent) => {
     inicioArrastre.current = { x: evento.clientX, y: evento.clientY }
@@ -137,6 +162,7 @@ export function ActivityWidget() {
   const enCurso = actividadActual?.estado === 'EN_CURSO'
   const tiempoTranscurrido = (() => {
     if (!actividadActual) return 0
+    if (pausada && tiempoPausaMs != null) return tiempoPausaMs
     const inicioMs = new Date(actividadActual.inicio).getTime()
     const ahoraMs = enCurso ? Date.now() : inicioMs
     const finMs = actividadActual.fin ? new Date(actividadActual.fin).getTime() : ahoraMs
@@ -158,6 +184,7 @@ export function ActivityWidget() {
 
   return (
     <>
+      <style>{`@keyframes pc-pulso{0%{box-shadow:0 0 0 0 rgba(167,139,250,.48),0 0 8px 0 rgba(167,139,250,.22)}70%{box-shadow:0 0 0 9px rgba(167,139,250,0),0 0 16px 3px rgba(167,139,250,.08)}100%{box-shadow:0 0 0 0 rgba(167,139,250,0),0 0 8px 0 rgba(167,139,250,.22)}}`}</style>
       <button
         onPointerDown={manejarInicio}
         onPointerMove={manejarMovimiento}
@@ -165,22 +192,47 @@ export function ActivityWidget() {
         onClick={alternar}
         aria-label="Actividad en curso"
         className={cn(
-          'no-print fixed z-50 touch-none select-none rounded-full transition-shadow duration-150',
+          'no-print fixed z-50 touch-none select-none',
           arrastrando ? 'cursor-grabbing scale-105' : 'cursor-grab hover:scale-105',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7c3aed]',
         )}
-        style={{ left: posicion.x, top: posicion.y, width: TAMANO_BURBUJA, height: TAMANO_BURBUJA }}
+        style={{
+          left: posicion.x,
+          top: posicion.y,
+          width: TAMANO_BURBUJA,
+          height: TAMANO_BURBUJA,
+          borderRadius: 14,
+          background: 'linear-gradient(135deg, #3b0764 0%, #1e1b4b 100%)',
+          filter: 'drop-shadow(0 6px 16px rgba(124, 58, 237, 0.45))',
+          transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
       >
-        <Logo
-          size={TAMANO_BURBUJA}
-          className="overflow-hidden rounded-full shadow-none [filter:drop-shadow(0_0_10px_rgba(124,58,237,0.45))]"
-        />
-        {hayActividad && !pausada && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#a78bfa] opacity-60" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-[#a78bfa]" />
-          </span>
+        {enCurso && (
+          <span
+            aria-hidden
+            style={{
+              position: 'absolute',
+              inset: -3,
+              borderRadius: 16,
+              pointerEvents: 'none',
+              animation: 'pc-pulso 1.8s ease-out infinite',
+            }}
+          />
         )}
+        {pausada && (
+          <span
+            aria-hidden
+            style={{
+              position: 'absolute',
+              inset: -3,
+              borderRadius: 16,
+              pointerEvents: 'none',
+              boxShadow:
+                '0 0 0 1px rgba(107,114,128,.4), inset 0 0 8px 2px rgba(107,114,128,.35)',
+            }}
+          />
+        )}
+        <Logo size={TAMANO_BURBUJA} />
       </button>
 
       <button
@@ -221,7 +273,36 @@ export function ActivityWidget() {
           </div>
 
           <div className="p-4">
-            {hayActividad && actividadActual ? (
+            {alertaVisible && actividadActual ? (
+              <div className="rounded-xl border border-[#7c3aed]/30 bg-[#7c3aed]/10 p-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#7c3aed]/20 text-[#c4b5fd]">
+                    <CalendarClock size={18} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">¿Sigues trabajando?</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Confirma si continúas con esta actividad.</p>
+                  </div>
+                </div>
+                <p className="mt-3 rounded-lg border border-border bg-muted px-3 py-2 text-sm font-medium text-foreground">
+                  {actividadActual.descripcion || 'Actividad en curso'}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={continuarAlerta}
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-[#7c3aed]/40"
+                  >
+                    Continuar
+                  </button>
+                  <button
+                    onClick={finalizarActividad}
+                    className="flex-1 rounded-lg bg-[#7c3aed] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#7c3aed]/90"
+                  >
+                    Finalizar
+                  </button>
+                </div>
+              </div>
+            ) : hayActividad && actividadActual ? (
               <>
                 <p className="text-sm font-medium leading-snug text-foreground">
                   {actividadActual.descripcion}
@@ -241,7 +322,10 @@ export function ActivityWidget() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Estado</span>
                     <span className="flex items-center gap-1.5">
-                      <span className={cn('h-2 w-2 rounded-full', pausada ? 'bg-[#6b7280]' : 'bg-[#a78bfa]')} />
+                      <span
+                        className={cn('h-2 w-2 rounded-full', pausada ? 'bg-[#6b7280]' : 'bg-[#34d399]')}
+                        style={pausada ? undefined : { boxShadow: '0 0 8px 1px rgba(52, 211, 153, 0.8)' }}
+                      />
                       <span className={cn('font-medium', pausada ? 'text-[#9ca3af]' : 'text-[#a78bfa]')}>
                         {pausada ? 'Pausada' : 'En curso'}
                       </span>
@@ -278,7 +362,7 @@ export function ActivityWidget() {
             ) : (
               <div className="py-2">
                 <p className="text-sm text-muted-foreground">
-                  No tienes una actividad en curso. Inicia una desde el módulo de actividades.
+                  No tienes una actividad en curso.
                 </p>
                 <Link
                   href="/actividades"

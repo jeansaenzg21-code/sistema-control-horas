@@ -104,7 +104,7 @@ export function ActivityWidget({
   getWindowPos?: () => Promise<{ x: number; y: number }>
   compactOverride?: CompactOverride | null
 } = {}) {
-  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad } =
+  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad, tiempoPausaMs } =
     useWidget()
   const [montado, setMontado] = useState(false)
   const [abierto, setAbierto] = useState(false)
@@ -249,12 +249,7 @@ export function ActivityWidget({
   const enCurso = actividadActual?.estado === 'EN_CURSO'
   const tiempoTranscurrido = (() => {
     if (!actividadActual) return 0
-    if (pausada && actividadActual.duracion_segundos != null) {
-      return Math.max(
-        0,
-        (Number(actividadActual.duracion_segundos) - Number(actividadActual.pausa_acumulada_segundos || 0)) * 1000,
-      )
-    }
+    if (pausada && tiempoPausaMs != null) return tiempoPausaMs
     const inicioMs = new Date(actividadActual.inicio).getTime()
     const ahoraMs = enCurso ? Date.now() : inicioMs
     const finMs = actividadActual.fin ? new Date(actividadActual.fin).getTime() : ahoraMs
@@ -291,7 +286,7 @@ export function ActivityWidget({
         aria-label="Actividad en curso"
         className={cn(
           'no-print fixed z-50 touch-none select-none',
-          arrastrando ? 'cursor-grabbing scale-110' : 'cursor-grab hover:scale-[1.09]',
+          arrastrando ? 'cursor-grabbing scale-105' : 'cursor-grab hover:scale-105',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7c3aed]',
         )}
         style={{
@@ -299,9 +294,9 @@ export function ActivityWidget({
           top: compact ? compactBubbleTop : posicion.y,
           width: TAMANO_BURBUJA,
           height: TAMANO_BURBUJA,
-          borderRadius: 17,
+          borderRadius: 14,
           background: 'linear-gradient(135deg, #3b0764 0%, #1e1b4b 100%)',
-           filter: 'drop-shadow(0 4px 11px rgba(124, 58, 237, 0.28))',
+          filter: 'drop-shadow(0 6px 16px rgba(124, 58, 237, 0.45))',
           transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
         }}
       >
@@ -311,7 +306,7 @@ export function ActivityWidget({
             style={{
               position: 'absolute',
               inset: -3,
-              borderRadius: 19,
+              borderRadius: 16,
               pointerEvents: 'none',
               animation: 'pc-pulso 1.8s ease-out infinite',
             }}
@@ -323,16 +318,14 @@ export function ActivityWidget({
             style={{
               position: 'absolute',
               inset: -3,
-              borderRadius: 19,
+              borderRadius: 16,
               pointerEvents: 'none',
               boxShadow:
                 '0 0 0 1px rgba(107,114,128,.4), inset 0 0 8px 2px rgba(107,114,128,.35)',
             }}
           />
         )}
-        <span className="relative z-10 flex" style={{ padding: 1 }}>
-          <Logo size={TAMANO_BURBUJA} radius={17} innerRatio={0.9} />
-        </span>
+        <Logo size={TAMANO_BURBUJA} />
       </button>
 
       {!compact && (
@@ -355,19 +348,18 @@ export function ActivityWidget({
 
       {abierto && (
         <div
-          className="no-print fixed z-50 overflow-hidden rounded-2xl bg-card animate-in fade-in"
+          className="no-print fixed z-50 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl shadow-black/50 animate-in slide-in-from-bottom-4"
           style={{
             left: compact ? compactPanelLeft : izquierda,
             ...(compact && compactOverride?.panelArriba
               ? { bottom: (layout?.ventana.h ?? 0) - compactBubbleTop + 10 }
               : { top: compact ? compactPanelTop : superior }),
             width: ANCHO_TARJETA,
-            boxShadow: '0 18px 50px rgba(0, 0, 0, 0.5)',
           }}
         >
-          <div className="flex items-center justify-between bg-white/[0.03] px-4 py-3">
+          <div className="flex items-center justify-between border-b border-border bg-header px-4 py-3">
             <div className="flex items-center gap-2.5">
-              <Logo size={26} radius={8} />
+              <Logo size={26} />
               <span className="text-sm font-semibold text-foreground">
                 {hayActividad ? 'Actividad en curso' : 'Actividades'}
               </span>

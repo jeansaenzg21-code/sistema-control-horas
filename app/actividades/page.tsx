@@ -2,21 +2,23 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarCheck, ListChecks, Play } from 'lucide-react'
+import { CalendarCheck, ListChecks, MessageSquare, Play } from 'lucide-react'
 import { MainLayout } from '@/components/main-layout'
 import { ActivityCard } from '@/components/activity-card'
 import { ActivityForm } from '@/components/activity-form'
 import { MisRegistros } from '@/components/mis-registros'
+import { MisObservaciones } from '@/components/mis-observaciones'
 import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { useRegistros } from '@/lib/use-registros'
 import { cn } from '@/lib/utils'
 
-type Pestana = 'registrar' | 'registros'
+type Pestana = 'registrar' | 'registros' | 'observaciones'
 
 export default function Actividades() {
   const { actividadActual, cargandoActividad } = useActividad()
   const { usuario, cargando } = useAuth()
+  const esJefeArea = usuario?.rol === 'jefe_area'
   const registros = useRegistros()
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('registrar')
@@ -29,6 +31,21 @@ export default function Actividades() {
       router.replace('/')
     }
   }, [cargando, usuario, router])
+
+  useEffect(() => {
+    if (!usuario || usuario.rol === 'admin' || usuario.rol === 'jefe_area' || typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('pestana') === 'observaciones' || params.get('tab') === 'observaciones') {
+      setPestana('observaciones')
+    }
+  }, [usuario])
+
+  useEffect(() => {
+    if (!usuario || usuario.rol === 'admin' || usuario.rol === 'jefe_area' || typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('actividad')) return
+    router.replace(`/aprobaciones?${params.toString()}`)
+  }, [usuario, router])
 
   const resumen = useMemo(() => {
     return {
@@ -51,8 +68,13 @@ export default function Actividades() {
     { id: 'registrar', etiqueta: 'Registrar', icono: <Play size={16} /> },
     {
       id: 'registros',
-      etiqueta: `Mis registros${resumen.total > 0 ? ` (${resumen.total})` : ''}`,
+      etiqueta: `${esJefeArea ? 'Registros del área' : 'Mis registros'}${resumen.total > 0 ? ` (${resumen.total})` : ''}`,
       icono: <ListChecks size={16} />,
+    },
+    {
+      id: 'observaciones',
+      etiqueta: 'Mis observaciones',
+      icono: <MessageSquare size={16} />,
     },
   ]
 
@@ -65,7 +87,7 @@ export default function Actividades() {
   return (
     <MainLayout
       title="Actividades"
-      subtitle="Registra tu tiempo y consulta tus registros"
+      subtitle={esJefeArea ? 'Registra tu tiempo y consulta los registros de tu área' : 'Registra tu tiempo y consulta tus registros'}
     >
       <div className="space-y-5">
         <div className="flex gap-1 border-b border-border">
@@ -164,8 +186,10 @@ export default function Actividades() {
               </section>
             )}
           </>
-        ) : (
+        ) : pestana === 'registros' ? (
           <MisRegistros />
+        ) : (
+          <MisObservaciones />
         )}
       </div>
     </MainLayout>

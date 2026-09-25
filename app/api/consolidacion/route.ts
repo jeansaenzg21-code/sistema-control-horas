@@ -1,15 +1,22 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
+import { esJefeDeArea } from '@/lib/permisos'
 
 export async function GET(request: Request) {
   try {
+    const user = await getUserFromRequest(request)
+    if (!user) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 })
+    const context = await getEmpresaContext(user)
+    if (!context.activa) return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
+
     const { searchParams } = new URL(request.url)
     const areaId = searchParams.get('area_id')
     const desde = searchParams.get('desde')
     const hasta = searchParams.get('hasta')
 
     let query = `SELECT
-      u.id AS usuario_id, u.nombre AS usuario_nombre, u.especialidad,
+      u.id AS usuario_id, u.nombre AS usuario_nombre, u.cargo,
       a.estado,
       a.facturable,
       COALESCE((SELECT SUM(TIMESTAMPDIFF(SECOND, p.inicio, COALESCE(p.fin, NOW()))) FROM pausas p WHERE p.actividad_id = a.id), 0) AS pausa_segundos,
@@ -19,12 +26,24 @@ export async function GET(request: Request) {
       END AS duracion_bruta_segundos
       FROM actividades a
       INNER JOIN usuarios u ON u.id = a.usuario_id
-      WHERE a.estado IN ('APROBADA', 'PENDIENTE_APROBACION', 'RECHAZADA')`
-    const params: (string | number)[] = []
+      INNER JOIN areas ar ON ar.id = u.area_id
+      WHERE ar.empresa_id = ? AND a.estado IN ('APROBADA', 'PENDIENTE_APROBACION', 'RECHAZADA')`
+    const params: (string | number)[] = [context.activa.id]
 
-    if (areaId) {
+    const areaJefe = esJefeDeArea(user) ? user.area_id : null
+    if (areaJefe != null) {
+      if (areaId && Number(areaId) !== areaJefe) {
+        return NextResponse.json({ error: 'Sólo puedes consultar la consolidación de tu área.' }, { status: 403 })
+      }
       query += ' AND u.area_id = ?'
-      params.push(areaId)
+      params.push(areaJefe)
+    } else if (areaId) {
+      const parsedAreaId = Number(areaId)
+      if (!Number.isInteger(parsedAreaId) || parsedAreaId <= 0) {
+        return NextResponse.json({ error: 'La división indicada no es válida.' }, { status: 400 })
+      }
+      query += ' AND u.area_id = ?'
+      params.push(parsedAreaId)
     }
     if (desde) {
       query += ' AND DATE(a.inicio) >= ?'
@@ -41,7 +60,7 @@ export async function GET(request: Request) {
     const mapa = new Map<string, {
       usuario_id: number
       usuario_nombre: string
-      especialidad: string
+      cargo: string | null
       total_segundos: number
       facturables_segundos: number
       no_facturables_segundos: number
@@ -56,7 +75,7 @@ export async function GET(request: Request) {
         mapa.set(key, {
           usuario_id: r.usuario_id as number,
           usuario_nombre: r.usuario_nombre as string,
-          especialidad: r.especialidad as string,
+          cargo: r.cargo == null ? null : String(r.cargo),
           total_segundos: 0,
           facturables_segundos: 0,
           no_facturables_segundos: 0,

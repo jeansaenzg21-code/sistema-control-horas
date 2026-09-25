@@ -2,6 +2,7 @@
 
 import { Calendar, FileText, LayoutList, Building2 } from 'lucide-react'
 import { useAreas } from '@/lib/areas-context'
+import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
 
 export interface FiltrosReporte {
@@ -9,12 +10,12 @@ export interface FiltrosReporte {
   tipo: string
   desde: string
   hasta: string
-  especialidad: string
+  cargo: string
 }
 
 const tipos = [
   { id: 'mensual', etiqueta: 'Mensual' },
-  { id: 'especialidad', etiqueta: 'Por especialidad' },
+  { id: 'cargo', etiqueta: 'Por cargo' },
 ]
 
 interface ReportFiltersProps {
@@ -23,12 +24,12 @@ interface ReportFiltersProps {
 }
 
 export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
-  const { areas, especialidades } = useAreas()
+  const { areas } = useAreas()
+  const { usuarios } = useAuth()
   const areaSeleccionada = areas.find((a) => String(a.id) === filtros.areaId)
   const sinArea = !filtros.areaId
-
-  const especialidadesDelArea = areaSeleccionada
-    ? especialidades.filter((e) => e.area_id === areaSeleccionada.id)
+  const cargosDelArea = areaSeleccionada
+    ? [...new Set(usuarios.filter((usuario) => usuario.area_id === areaSeleccionada.id && usuario.cargo).map((usuario) => usuario.cargo as string))].sort()
     : []
 
   const actualizar = <K extends keyof FiltrosReporte>(clave: K, valor: FiltrosReporte[K]) => {
@@ -36,11 +37,11 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
   }
 
   const seleccionarArea = (areaId: string) => {
-    onChange({ ...filtros, areaId, especialidad: 'todas' })
+    onChange({ ...filtros, areaId, cargo: 'todas' })
   }
 
   const seleccionarTipo = (tipo: string) => {
-    onChange({ ...filtros, tipo, especialidad: tipo === 'especialidad' ? filtros.especialidad : 'todas' })
+    onChange({ ...filtros, tipo, cargo: tipo === 'cargo' ? filtros.cargo : 'todas' })
   }
 
   const estiloControl =
@@ -51,20 +52,20 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
       <div
         className={cn(
           'grid grid-cols-1 gap-4 md:grid-cols-2',
-          filtros.tipo === 'especialidad' ? 'lg:grid-cols-5' : 'lg:grid-cols-4',
+          filtros.tipo === 'cargo' ? 'lg:grid-cols-5' : 'lg:grid-cols-4',
         )}
       >
         <div>
           <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <Building2 size={13} />
-            Área
+             División
           </label>
           <select
             value={filtros.areaId}
             onChange={(e) => seleccionarArea(e.target.value)}
             className={`${estiloControl} cursor-pointer`}
           >
-            <option value="">Selecciona un área</option>
+             <option value="">Selecciona una división</option>
             {areas.map((area) => (
               <option key={area.id} value={String(area.id)}>
                 {area.nombre}
@@ -92,24 +93,20 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
           </select>
         </div>
 
-        {filtros.tipo === 'especialidad' && (
+        {filtros.tipo === 'cargo' && (
           <div>
             <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Calendar size={13} />
-              Especialidad
+              Cargo
             </label>
             <select
-              value={filtros.especialidad}
-              onChange={(e) => actualizar('especialidad', e.target.value)}
+              value={filtros.cargo}
+              onChange={(e) => actualizar('cargo', e.target.value)}
               disabled={sinArea}
               className={`${estiloControl} cursor-pointer`}
             >
-              <option value="todas">Todas</option>
-              {especialidadesDelArea.map((esp) => (
-                <option key={esp.id} value={esp.nombre.toLowerCase()}>
-                  {esp.nombre}
-                </option>
-              ))}
+              <option value="todas">Todos</option>
+              {cargosDelArea.map((cargo) => <option key={cargo} value={cargo.toLowerCase()}>{cargo}</option>)}
             </select>
           </div>
         )}
