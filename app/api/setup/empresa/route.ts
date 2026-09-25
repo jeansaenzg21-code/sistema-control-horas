@@ -12,17 +12,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El país es obligatorio.' }, { status: 400 })
     }
 
-    const [existe] = await pool.query('SELECT id FROM empresa LIMIT 1')
-    if ((existe as unknown[]).length > 0) {
-      return NextResponse.json({ error: 'La empresa ya está configurada.' }, { status: 400 })
+    const connection = await pool.getConnection()
+    try {
+      await connection.beginTransaction()
+
+      const [existe] = await connection.query('SELECT id FROM empresa LIMIT 1 FOR UPDATE')
+      if ((existe as unknown[]).length > 0) {
+        await connection.rollback()
+        return NextResponse.json({ error: 'La empresa ya está configurada.' }, { status: 400 })
+      }
+
+      const [empresaResult] = await connection.query(
+        'INSERT INTO empresa (nombre, descripcion, pais, ciudad) VALUES (?, ?, ?, ?)',
+        [nombre.trim(), descripcion?.trim() || null, pais.trim(), ciudad?.trim() || null]
+      )
+      const empresaId = (empresaResult as { insertId: number }).insertId
+
+      await connection.query(
+        'INSERT INTO areas (empresa_id, nombre, descripcion) VALUES (?, ?, ?)',
+        [empresaId, 'Administración', 'Área principal de la empresa']
+      )
+
+      await connection.commit()
+      return NextResponse.json({ ok: true, id: empresaId })
+    } catch (error) {
+      try {
+        await connection.rollback()
+      } catch {}
+      throw error
+    } finally {
+      connection.release()
     }
-
-    const [result] = await pool.query(
-      'INSERT INTO empresa (nombre, descripcion, pais, ciudad) VALUES (?, ?, ?, ?)',
-      [nombre.trim(), descripcion?.trim() || null, pais.trim(), ciudad?.trim() || null]
-    )
-
-    return NextResponse.json({ ok: true, id: (result as { insertId: number }).insertId })
   } catch (error) {
     console.error('Error al crear empresa:', error)
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
