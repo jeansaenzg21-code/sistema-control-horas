@@ -1,12 +1,28 @@
 import { subscribeActivityChanges } from '@/lib/events'
+import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const usuarioId = Number(url.searchParams.get('usuario_id'))
+  const token = url.searchParams.get('token')
   if (!Number.isFinite(usuarioId) || usuarioId <= 0) {
     return Response.json({ error: 'usuario_id requerido.' }, { status: 400 })
+  }
+  if (!token || token.length < 10) {
+    return Response.json({ error: 'No autorizado.' }, { status: 401 })
+  }
+
+  const authRequest = new Request(request.url, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const user = await getUserFromRequest(authRequest)
+  if (!user) return Response.json({ error: 'No autorizado.' }, { status: 401 })
+  const context = await getEmpresaContext(user)
+  if (!context.activa) return Response.json({ error: 'No hay una empresa activa.' }, { status: 409 })
+  if (user.rol !== 'ADMINISTRACION' && user.id !== usuarioId) {
+    return Response.json({ error: 'No autorizado.' }, { status: 403 })
   }
 
   const encoder = new TextEncoder()

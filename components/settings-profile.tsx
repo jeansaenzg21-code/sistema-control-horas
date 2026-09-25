@@ -32,7 +32,12 @@ export function SettingsProfile() {
 
       const res = await fetch(`/api/usuarios/${usuario?.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('pc_token')
+            ? { Authorization: `Bearer ${localStorage.getItem('pc_token')}` }
+            : {}),
+        },
         body: JSON.stringify(body),
       })
       const data = await res.json()

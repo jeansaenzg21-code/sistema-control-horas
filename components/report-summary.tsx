@@ -2,7 +2,7 @@
 
 import { Clock, TrendingUp, Wallet, FileText } from 'lucide-react'
 import type { Actividad } from '@/lib/types'
-import { esFacturable, esNoFacturable } from '@/lib/utils'
+import { esFacturable, esNoFacturable, formatoHoras } from '@/lib/utils'
 
 interface ReportSummaryProps {
   registros: Actividad[]
@@ -28,9 +28,9 @@ export function ReportSummary({ registros }: ReportSummaryProps) {
     .reduce((acc, r) => acc + calcularHoras(r), 0)
 
   const tarjetas = [
-    { etiqueta: 'Total de horas', valor: `${total.toFixed(1)}h`, icono: Clock, color: 'text-foreground' },
-    { etiqueta: 'Horas facturables', valor: `${facturables.toFixed(1)}h`, icono: TrendingUp, color: 'text-[#c4b5fd]' },
-    { etiqueta: 'Horas no facturables', valor: `${noFacturables.toFixed(1)}h`, icono: Wallet, color: 'text-muted-foreground' },
+    { etiqueta: 'Total de horas', valor: formatoHoras(total), icono: Clock, color: 'text-foreground' },
+    { etiqueta: 'Horas facturables', valor: formatoHoras(facturables), icono: TrendingUp, color: 'text-[#c4b5fd]' },
+    { etiqueta: 'Horas no facturables', valor: formatoHoras(noFacturables), icono: Wallet, color: 'text-muted-foreground' },
     { etiqueta: 'Registros', valor: String(registros.length), icono: FileText, color: 'text-foreground' },
   ]
 

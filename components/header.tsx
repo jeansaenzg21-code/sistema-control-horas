@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Search, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown } from 'lucide-react'
+import { Bell, Search, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, DoorOpen } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useNotificaciones } from '@/lib/notificaciones-context'
 import { cn } from '@/lib/utils'
@@ -13,10 +13,11 @@ interface HeaderProps {
 }
 
 export function Header({ title, subtitle }: HeaderProps) {
-  const { usuario, logout } = useAuth()
+  const { usuario, empresaActiva, logout, salirDeEmpresa } = useAuth()
   const { notificaciones, noLeidas, marcarLeida, marcarTodasLeidas } = useNotificaciones()
   const [notifAbierto, setNotifAbierto] = useState(false)
   const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false)
+  const [saliendoEmpresa, setSaliendoEmpresa] = useState(false)
   const contenedorNotifRef = useRef<HTMLDivElement>(null)
   const contenedorUsuarioRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -55,6 +56,17 @@ export function Header({ title, subtitle }: HeaderProps) {
     router.push('/configuracion')
   }
 
+  const manejarSalirEmpresa = async () => {
+    setMenuUsuarioAbierto(false)
+    setSaliendoEmpresa(true)
+    const resultado = await salirDeEmpresa()
+    if (resultado.ok) {
+      router.replace('/hub')
+      router.refresh()
+    }
+    setSaliendoEmpresa(false)
+  }
+
   const manejarLogout = () => {
     setMenuUsuarioAbierto(false)
     logout()
@@ -67,6 +79,9 @@ export function Header({ title, subtitle }: HeaderProps) {
       <div className="flex-1">
         <h1 className="text-lg font-bold tracking-tight text-foreground">{title}</h1>
         {subtitle && <p className="text-[11px] text-muted-foreground">{subtitle}</p>}
+        {empresaActiva && (
+          <p className="text-[11px] text-[#c4b5fd]">{empresaActiva.nombre}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
@@ -179,7 +194,7 @@ export function Header({ title, subtitle }: HeaderProps) {
               <div className="border-b border-border px-4 py-3">
                 <p className="truncate text-sm font-semibold text-foreground">{usuario.nombre}</p>
                 <p className="text-[11px] capitalize text-muted-foreground">
-                  {usuario.rol === 'admin' ? 'Administrador' : usuario.especialidad || 'Abogado'}
+                  {usuario.rol === 'admin' ? 'Administrador' : usuario.rol === 'jefe_area' ? 'Jefe de área' : usuario.cargo || 'Colaborador'}
                 </p>
               </div>
 
@@ -190,6 +205,15 @@ export function Header({ title, subtitle }: HeaderProps) {
                 >
                   <Settings size={16} className="text-muted-foreground" />
                   Configuración
+                </button>
+                <button
+                  type="button"
+                  onClick={manejarSalirEmpresa}
+                  disabled={saliendoEmpresa || !empresaActiva}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <DoorOpen size={16} className="text-muted-foreground" />
+                  {saliendoEmpresa ? 'Saliendo...' : 'Salir de empresa'}
                 </button>
                 <button
                   onClick={manejarLogout}

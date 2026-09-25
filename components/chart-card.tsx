@@ -1,10 +1,9 @@
 'use client'
 
 import { useMemo } from 'react'
-import { Building2, Calculator, Users } from 'lucide-react'
+import { Building2 } from 'lucide-react'
 import { useRegistros } from '@/lib/use-registros'
-import { useAreas } from '@/lib/areas-context'
-import { fechaLocalISO } from '@/lib/utils'
+import { fechaLocalISO, formatoHoras } from '@/lib/utils'
 
 const paleta = ['#7c3aed', '#8b5cf6', '#c4b5fd']
 
@@ -14,15 +13,8 @@ interface ChartCardProps {
   hasta?: string
 }
 
-const icPorEspecialidad: Record<string, React.ElementType> = {
-  Corporativo: Building2,
-  Tributario: Calculator,
-  Laboral: Users,
-}
-
 export function ChartCard({ areaId = '', desde = '', hasta = '' }: ChartCardProps) {
   const registros = useRegistros()
-  const { especialidades: especialidadesConfiguradas } = useAreas()
 
   const calcularHoras = (r: { inicio: string; fin: string | null; pausa_acumulada_segundos: number }): number => {
     if (!r.fin || !r.inicio) return 0
@@ -30,55 +22,51 @@ export function ChartCard({ areaId = '', desde = '', hasta = '' }: ChartCardProp
     return Math.max(0, (diff - r.pausa_acumulada_segundos) / 3600)
   }
 
-  const especialidades = useMemo(() => {
+  const cargos = useMemo(() => {
     let filtrados = registros
     if (areaId) filtrados = filtrados.filter((r) => String(r.area_id) === areaId)
     if (desde) filtrados = filtrados.filter((r) => fechaLocalISO(r.inicio) >= desde)
     if (hasta) filtrados = filtrados.filter((r) => fechaLocalISO(r.inicio) <= hasta)
 
-    const porEspecialidad = new Map<string, number>(
-      especialidadesConfiguradas
-        .filter((especialidad) => !areaId || String(especialidad.area_id) === areaId)
-        .map((especialidad) => [especialidad.nombre, 0]),
-    )
+    const porCargo = new Map<string, number>()
     for (const r of filtrados) {
-      const esp = r.especialidad || 'Sin especialidad'
-      porEspecialidad.set(esp, (porEspecialidad.get(esp) ?? 0) + calcularHoras(r))
+      const cargo = r.cargo || 'Sin cargo'
+      porCargo.set(cargo, (porCargo.get(cargo) ?? 0) + calcularHoras(r))
     }
-    const total = Array.from(porEspecialidad.values()).reduce((acc, h) => acc + h, 0)
-    return Array.from(porEspecialidad.entries())
+    const total = Array.from(porCargo.values()).reduce((acc, h) => acc + h, 0)
+    return Array.from(porCargo.entries())
       .map(([nombre, horas]) => ({
         nombre,
         horas,
         porcentaje: total === 0 ? 0 : Math.round((horas / total) * 100),
       }))
       .sort((a, b) => b.horas - a.horas)
-  }, [registros, especialidadesConfiguradas, areaId, desde, hasta])
+  }, [registros, areaId, desde, hasta])
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-border bg-card p-4">
       <div className="mb-4">
-        <h2 className="text-sm font-semibold text-foreground">Resumen por especialidad</h2>
+        <h2 className="text-sm font-semibold text-foreground">Resumen por cargo</h2>
         <p className="text-xs text-muted-foreground">Horas registradas en el período</p>
       </div>
 
       <div className="flex flex-1 flex-col justify-center space-y-4">
-        {especialidades.map((especialidad, indice) => {
-          const Icono = icPorEspecialidad[especialidad.nombre] ?? Building2
+        {cargos.map((cargo, indice) => {
+          const Icono = Building2
           return (
-            <div key={especialidad.nombre} className="flex items-center gap-3">
+            <div key={cargo.nombre} className="flex items-center gap-3">
               <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#7c3aed]/15">
                 <Icono size={16} className="text-[#c4b5fd]" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="mb-1.5 flex items-baseline justify-between">
                   <span className="text-sm font-medium text-foreground">
-                    {especialidad.nombre}
+                    {cargo.nombre}
                   </span>
                   <span className="text-sm">
-                    <span className="font-semibold text-foreground">{especialidad.horas.toFixed(1)} h</span>
+                    <span className="font-semibold text-foreground">{formatoHoras(cargo.horas)}</span>
                     <span className="ml-2 text-xs font-medium text-muted-foreground">
-                      {especialidad.porcentaje} %
+                      {cargo.porcentaje} %
                     </span>
                   </span>
                 </div>
@@ -86,7 +74,7 @@ export function ChartCard({ areaId = '', desde = '', hasta = '' }: ChartCardProp
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{
-                      width: `${especialidad.porcentaje}%`,
+                      width: `${cargo.porcentaje}%`,
                       backgroundColor: paleta[indice % paleta.length],
                     }}
                   />
@@ -95,7 +83,7 @@ export function ChartCard({ areaId = '', desde = '', hasta = '' }: ChartCardProp
             </div>
           )
         })}
-        {especialidades.length === 0 && (
+        {cargos.length === 0 && (
           <p className="py-6 text-center text-sm text-muted-foreground">
             No hay actividades registradas en esa fecha.
           </p>

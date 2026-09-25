@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { ActivityWidget, WidgetProvider } from 'paredes-cano-shared'
 
 export function ActivityWidgetWrapper() {
-  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad } =
+  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad, tiempoPausaMs } =
     useActividad()
   const { usuario } = useAuth()
   const router = useRouter()
@@ -18,6 +18,7 @@ export function ActivityWidgetWrapper() {
         usuario: usuario
           ? { id: usuario.id, nombre: usuario.nombre, usuario: usuario.usuario, rol: usuario.rol }
           : null,
+        tiempoPausaMs,
         pausarActividad,
         reanudarActividad,
         finalizarActividad,

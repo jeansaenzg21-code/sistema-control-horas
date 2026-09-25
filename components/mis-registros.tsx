@@ -211,6 +211,7 @@ export function MisRegistros() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {fila.registro.tipo_actividad_nombre || ''}
+                        {fila.registro.proyecto_nombre ? ` · ${fila.registro.proyecto_nombre}` : ''}
                         {esFacturable(fila.registro.facturable)
                           ? ' · Facturable'
                           : esNoFacturable(fila.registro.facturable)

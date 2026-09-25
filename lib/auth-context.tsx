@@ -9,7 +9,16 @@ import {
   type ReactNode,
 } from 'react'
 
-export type Rol = 'personal' | 'supervisor' | 'admin'
+export type Rol = 'personal' | 'supervisor' | 'jefe_area' | 'admin'
+
+export interface Empresa {
+  id: number
+  nombre: string
+  descripcion: string | null
+  pais: string
+  ciudad: string | null
+  logo: string | null
+}
 
 export interface Usuario {
   id: number
@@ -18,42 +27,70 @@ export interface Usuario {
   usuario: string
   rol: Rol
   area_id: number | null
+  cargo: string | null
   especialidad: string | null
   supervisor_id: number | null
   activo: boolean
   created_at: string
   area_nombre?: string | null
+  empresa_id: number | null
 }
 
 interface AuthContextValue {
   usuario: Usuario | null
   cargando: boolean
   usuarios: Usuario[]
+  empresaActiva: Empresa | null
+  empresasDisponibles: Empresa[]
+  requiereEmpresa: boolean
   login: (credenciales: { usuario: string; password: string }) => Promise<{ ok: boolean; error?: string }>
   logout: () => void
   cargarUsuarios: () => Promise<void>
+  recargarContextoEmpresa: () => Promise<boolean>
+  salirDeEmpresa: () => Promise<{ ok: boolean; error?: string }>
+  entrarEnEmpresa: (empresaId: number) => Promise<{ ok: boolean; error?: string }>
 }
 
 function mapRol(dbRol: string): Rol {
   if (dbRol === 'SUPERVISOR') return 'supervisor'
+  if (dbRol === 'JEFE_AREA') return 'jefe_area'
   if (dbRol === 'ADMINISTRACION') return 'admin'
   return 'personal'
 }
 
 function normalizeUsuario(raw: Record<string, unknown>): Usuario {
   return {
-    id: raw.id as number,
-    nombre: raw.nombre as string,
-    correo: (raw.correo as string) || '',
-    usuario: raw.usuario as string,
-    rol: mapRol(raw.rol as string),
-    area_id: raw.area_id as number | null,
-    especialidad: raw.especialidad as string | null,
-    supervisor_id: raw.supervisor_id as number | null,
+    id: Number(raw.id),
+    nombre: String(raw.nombre || ''),
+    correo: String(raw.correo || ''),
+    usuario: String(raw.usuario || ''),
+    rol: mapRol(String(raw.rol || 'PERSONAL')),
+    area_id: raw.area_id == null ? null : Number(raw.area_id),
+    cargo: raw.cargo == null ? null : String(raw.cargo),
+    especialidad: raw.especialidad == null ? null : String(raw.especialidad),
+    supervisor_id: raw.supervisor_id == null ? null : Number(raw.supervisor_id),
     activo: Boolean(raw.activo),
-    created_at: raw.created_at as string,
-    area_nombre: (raw.area_nombre as string) || null,
+    created_at: String(raw.created_at || ''),
+    area_nombre: raw.area_nombre == null ? null : String(raw.area_nombre),
+    empresa_id: raw.empresa_id == null ? null : Number(raw.empresa_id),
   }
+}
+
+function normalizeEmpresa(raw: Record<string, unknown>): Empresa {
+  return {
+    id: Number(raw.id),
+    nombre: String(raw.nombre || ''),
+    descripcion: raw.descripcion == null ? null : String(raw.descripcion),
+    pais: String(raw.pais || 'Perú'),
+    ciudad: raw.ciudad == null ? null : String(raw.ciudad),
+    logo: raw.logo == null ? null : String(raw.logo),
+  }
+}
+
+function limpiarSesionLocal() {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem('pc_sesion')
+  localStorage.removeItem('pc_token')
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -61,36 +98,91 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [usuarios, setUsuarios] = useState<Usuario[]>([])
+  const [empresaActiva, setEmpresaActiva] = useState<Empresa | null>(null)
+  const [empresasDisponibles, setEmpresasDisponibles] = useState<Empresa[]>([])
+  const [requiereEmpresa, setRequiereEmpresa] = useState(false)
   const [cargando, setCargando] = useState(true)
 
-  useEffect(() => {
-    const sesionId = localStorage.getItem('pc_sesion')
-    if (sesionId) {
-      cargarUsuarios().then(() => {
-        setCargando(false)
+  const cargarUsuarios = useCallback(async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+    if (!token) {
+      setUsuarios([])
+      return
+    }
+
+    try {
+      const res = await fetch('/api/usuarios', {
+        headers: { Authorization: `Bearer ${token}` },
       })
-    } else {
-      setCargando(false)
+      if (res.ok) {
+        const data = await res.json()
+        setUsuarios(data.map((item: Record<string, unknown>) => normalizeUsuario(item)))
+      }
+    } catch {
+      setUsuarios([])
     }
   }, [])
 
-  const cargarUsuarios = useCallback(async () => {
+  const cargarContextoEmpresa = useCallback(async (): Promise<boolean> => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+    if (!token) {
+      setUsuario(null)
+      setEmpresaActiva(null)
+      setEmpresasDisponibles([])
+      setRequiereEmpresa(false)
+      return false
+    }
+
     try {
-      const res = await fetch('/api/usuarios')
-      if (res.ok) {
-        const data = await res.json()
-        const normalized = data.map(normalizeUsuario)
-        setUsuarios(normalized)
-        const sesionId = localStorage.getItem('pc_sesion')
-        if (sesionId) {
-          const encontrado = normalized.find((u: Usuario) => u.id === Number(sesionId) && u.activo)
-          if (encontrado) setUsuario(encontrado)
-        }
+      const res = await fetch('/api/auth/session', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        limpiarSesionLocal()
+        setUsuario(null)
+        setEmpresaActiva(null)
+        setEmpresasDisponibles([])
+        setRequiereEmpresa(false)
+        return false
       }
+
+      setUsuario(normalizeUsuario(data.usuario))
+      setEmpresaActiva(data.empresa_activa ? normalizeEmpresa(data.empresa_activa) : null)
+      setEmpresasDisponibles(
+        Array.isArray(data.empresas)
+          ? data.empresas.map((item: Record<string, unknown>) => normalizeEmpresa(item))
+          : []
+      )
+      setRequiereEmpresa(Boolean(data.requiere_empresa))
+      return true
     } catch {
-      // Sin conexión
+      return false
     }
   }, [])
+
+  useEffect(() => {
+    let vigente = true
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+    if (!token) {
+      limpiarSesionLocal()
+      setCargando(false)
+      return
+    }
+
+    cargarContextoEmpresa()
+      .then((ok) => {
+        if (ok && vigente) return cargarUsuarios()
+        return undefined
+      })
+      .finally(() => {
+        if (vigente) setCargando(false)
+      })
+
+    return () => {
+      vigente = false
+    }
+  }, [cargarContextoEmpresa, cargarUsuarios])
 
   useEffect(() => {
     if (!cargando && usuario) {
@@ -109,23 +201,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!res.ok) {
         return { ok: false, error: data.error || 'Error al iniciar sesión.' }
       }
+
       const normalized = normalizeUsuario(data.usuario)
       setUsuario(normalized)
       localStorage.setItem('pc_sesion', String(normalized.id))
-      if (data.token) {
-        localStorage.setItem('pc_token', data.token)
-        fetch('/api/widget/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token: data.token,
-            usuarioId: normalized.id,
-            usuario: normalized.usuario,
-            nombre: normalized.nombre,
-            rol: normalized.rol,
-          }),
-        }).catch(() => {})
-      }
+      if (data.token) localStorage.setItem('pc_token', data.token)
+      await cargarContextoEmpresa()
+      await cargarUsuarios()
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'No se pudo conectar al servidor.' }
+    }
+  }, [cargarContextoEmpresa, cargarUsuarios])
+
+  const salirDeEmpresa = useCallback(async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+    if (!token) return { ok: false, error: 'La sesión no está disponible.' }
+
+    try {
+      const res = await fetch('/api/auth/empresa', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (!res.ok) return { ok: false, error: data.error || 'No se pudo salir de la empresa.' }
+      setEmpresaActiva(null)
+      setUsuario((actual) => actual ? { ...actual, empresa_id: null } : actual)
+      setUsuarios([])
+      setRequiereEmpresa(true)
+      return { ok: true }
+    } catch {
+      return { ok: false, error: 'No se pudo conectar al servidor.' }
+    }
+  }, [])
+
+  const entrarEnEmpresa = useCallback(async (empresaId: number) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+    if (!token) return { ok: false, error: 'La sesión no está disponible.' }
+
+    try {
+      const res = await fetch('/api/auth/empresa', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ empresa_id: empresaId }),
+      })
+      const data = await res.json()
+      if (!res.ok) return { ok: false, error: data.error || 'No se pudo ingresar a la empresa.' }
+      setEmpresaActiva(normalizeEmpresa(data.empresa_activa))
+      setUsuario((actual) => actual ? { ...actual, empresa_id: empresaId } : actual)
+      setRequiereEmpresa(false)
       await cargarUsuarios()
       return { ok: true }
     } catch {
@@ -134,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [cargarUsuarios])
 
   const logout = useCallback(() => {
-    const token = localStorage.getItem('pc_token')
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
     if (token) {
       fetch('/api/auth/session', {
         method: 'DELETE',
@@ -143,12 +270,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       fetch('/api/widget/sync', { method: 'DELETE' }).catch(() => {})
     }
     setUsuario(null)
-    localStorage.removeItem('pc_sesion')
-    localStorage.removeItem('pc_token')
+    setUsuarios([])
+    setEmpresaActiva(null)
+    setEmpresasDisponibles([])
+    setRequiereEmpresa(false)
+    limpiarSesionLocal()
   }, [])
 
   return (
-    <AuthContext.Provider value={{ usuario, cargando, usuarios, login, logout, cargarUsuarios }}>
+    <AuthContext.Provider value={{
+      usuario,
+      cargando,
+      usuarios,
+      empresaActiva,
+      empresasDisponibles,
+      requiereEmpresa,
+      login,
+      logout,
+      cargarUsuarios,
+      recargarContextoEmpresa: cargarContextoEmpresa,
+      salirDeEmpresa,
+      entrarEnEmpresa,
+    }}>
       {children}
     </AuthContext.Provider>
   )

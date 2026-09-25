@@ -10,6 +10,7 @@ import {
   type Actividad,
   type CompactOverride,
   type WidgetUsuario,
+  API_BASE_URL,
 } from 'paredes-cano-shared'
 
 const MARGEN_PANEL_ABIERTO = 24
@@ -136,6 +137,7 @@ export function App() {
   const [token, setToken] = useState<string | null>(null)
   const [actividadActual, setActividadActual] = useState<Actividad | null>(null)
   const [override, setOverride] = useState<CompactOverride | null>(null)
+  const [tiempoPausaMs, setTiempoPausaMs] = useState<number | null>(null)
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const usuarioRef = useRef<WidgetUsuario | null>(null)
 
@@ -165,7 +167,7 @@ export function App() {
 
   const syncWidget = useCallback(async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/widget/sync', {
+      const res = await fetch('${API_BASE_URL}/api/widget/sync', {
         signal: AbortSignal.timeout(4000),
       })
       if (!res.ok) return
@@ -196,7 +198,7 @@ export function App() {
   useEffect(() => {
     let es: EventSource | null = null
     try {
-      es = new EventSource('http://localhost:3000/api/auth/stream')
+      es = new EventSource('${API_BASE_URL}/api/auth/stream')
       es.addEventListener('auth-changed', (evento) => {
         try {
           const data = JSON.parse((evento as MessageEvent).data) as { tipo?: string }
@@ -228,7 +230,7 @@ export function App() {
   const cargarActividad = useCallback(async () => {
     if (!token) return
     try {
-      const res = await fetch('http://localhost:3000/api/actividades/actual', {
+      const res = await fetch('${API_BASE_URL}/api/actividades/actual', {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(5000),
       })
@@ -239,6 +241,13 @@ export function App() {
       if (res.ok) {
         const data = await res.json()
         setActividadActual(data || null)
+        if (data && data.estado === 'PAUSADA') {
+          const dur = Number(data.duracion_segundos || 0)
+          const pausas = Number(data.pausa_acumulada_segundos || 0)
+          setTiempoPausaMs(Math.max(0, (dur - pausas) * 1000))
+        } else if (!data || data.estado === 'EN_CURSO') {
+          setTiempoPausaMs(null)
+        }
       }
     } catch {}
   }, [token, deactivateWidget])
@@ -247,7 +256,7 @@ export function App() {
     if (!token || !usuario) return
     cargarActividad()
     const es = new EventSource(
-      `http://localhost:3000/api/actividades/stream?usuario_id=${usuario.id}`,
+      `${API_BASE_URL}/api/actividades/stream?usuario_id=${usuario.id}&token=${encodeURIComponent(token)}`,
     )
     es.addEventListener('activity-changed', () => {
       cargarActividad()
@@ -262,19 +271,17 @@ export function App() {
   const pausarActividad = useCallback(async () => {
     if (!actividadActual || !token) return
     try {
-      await fetch(`http://localhost:3000/api/actividades/${actividadActual.id}/pausar`, {
+      await fetch(`${API_BASE_URL}/api/actividades/${actividadActual.id}/pausar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({}),
       })
-      const duracionHastaPausa = Math.max(
-        0,
-        Math.floor((Date.now() - new Date(actividadActual.inicio).getTime()) / 1000),
-      )
+      const elapsed = Math.max(0, Date.now() - new Date(actividadActual.inicio).getTime())
+      const pausas = (actividadActual.pausa_acumulada_segundos || 0) * 1000
+      setTiempoPausaMs(Math.max(0, elapsed - pausas))
       setActividadActual((prev) => (prev ? {
         ...prev,
         estado: 'PAUSADA',
-        duracion_segundos: duracionHastaPausa,
       } : null))
     } catch {}
   }, [actividadActual, token])
@@ -282,11 +289,12 @@ export function App() {
   const reanudarActividad = useCallback(async () => {
     if (!actividadActual || !token) return
     try {
-      await fetch(`http://localhost:3000/api/actividades/${actividadActual.id}/continuar`, {
+      await fetch(`${API_BASE_URL}/api/actividades/${actividadActual.id}/continuar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({}),
       })
+      setTiempoPausaMs(null)
       setActividadActual((prev) => (prev ? { ...prev, estado: 'EN_CURSO' } : null))
     } catch {}
   }, [actividadActual, token])
@@ -294,24 +302,22 @@ export function App() {
   const finalizarActividad = useCallback(async () => {
     if (!actividadActual || !token) return
     try {
-      await fetch(`http://localhost:3000/api/actividades/${actividadActual.id}/finalizar`, {
+      await fetch(`${API_BASE_URL}/api/actividades/${actividadActual.id}/finalizar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({}),
       })
+      setTiempoPausaMs(null)
       setActividadActual(null)
     } catch {}
   }, [actividadActual, token])
 
   const handlePanelToggle = useCallback(async (abierto: boolean) => {
     if (!abierto) await new Promise((r) => setTimeout(r, 100))
-    await hideWindow()
     try {
       await aplicarVentanaCompacta(abierto, setOverride)
     } catch (e) {
       console.error('[tauri] panel toggle failed', e)
-    } finally {
-      await showWindow()
     }
   }, [])
 
@@ -322,6 +328,7 @@ export function App() {
       value={{
         actividadActual,
         usuario,
+        tiempoPausaMs,
         pausarActividad,
         reanudarActividad,
         finalizarActividad,

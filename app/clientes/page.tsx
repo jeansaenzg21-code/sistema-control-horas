@@ -11,10 +11,10 @@ export default function ClientesPage() {
   const router = useRouter()
 
   useEffect(() => {
-    if (!cargando && usuario?.rol !== 'admin') router.replace('/')
+    if (!cargando && usuario?.rol !== 'admin' && usuario?.rol !== 'jefe_area') router.replace('/')
   }, [cargando, usuario, router])
 
-  if (cargando || !usuario || usuario.rol !== 'admin') return null
+  if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area')) return null
 
   return (
     <MainLayout title="Clientes" subtitle="Registra y administra los clientes de Paredes Cano">

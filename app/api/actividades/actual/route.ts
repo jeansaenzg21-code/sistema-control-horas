@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
-import { getUserFromRequest } from '@/lib/auth'
+import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 
 export async function GET(request: Request) {
   try {
@@ -8,11 +8,15 @@ export async function GET(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 })
     }
+    const context = await getEmpresaContext(user)
+    if (!context.activa) {
+      return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
+    }
 
     const [rows] = await pool.query(
       `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
         a.inicio, a.fin, a.estado, a.revisado_por, a.revisado_en, a.observacion_revision, a.created_at,
-        u.nombre AS usuario_nombre, u.especialidad, u.supervisor_id,
+        u.nombre AS usuario_nombre, u.cargo, u.especialidad, u.supervisor_id,
         ta.nombre AS tipo_actividad_nombre,
         c.nombre AS cliente_nombre,
         COALESCE(
@@ -26,11 +30,12 @@ export async function GET(request: Request) {
        FROM actividades a
        INNER JOIN usuarios u ON u.id = a.usuario_id
        INNER JOIN tipos_actividad ta ON ta.id = a.tipo_actividad_id
+       INNER JOIN areas ar ON ar.id = u.area_id
        LEFT JOIN clientes c ON c.id = a.cliente_id
-       WHERE a.usuario_id = ? AND a.estado IN ('EN_CURSO', 'PAUSADA')
+       WHERE a.usuario_id = ? AND ar.empresa_id = ? AND a.estado IN ('EN_CURSO', 'PAUSADA')
        ORDER BY a.created_at DESC
        LIMIT 1`,
-      [user.id]
+      [user.id, context.activa.id]
     )
 
     const actividades = rows as Array<Record<string, unknown>>

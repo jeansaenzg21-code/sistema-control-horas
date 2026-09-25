@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, UserRound } from 'lucide-react'
+import { Clock, Plus, Pencil, Trash2, UserRound } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { SettingsHorario } from './settings-horario'
 
 interface SettingsUsersProps {
   areaId: number
-  especialidades: string[]
 }
 
 interface FormularioUsuario {
@@ -14,11 +14,20 @@ interface FormularioUsuario {
   correo: string
   usuario: string
   password: string
-  especialidad: string
+  cargo: string
 }
 
-export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
+function getHeaders() {
+  const token = localStorage.getItem('pc_token')
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+}
+
+export function SettingsUsers({ areaId }: SettingsUsersProps) {
   const { usuarios, usuario: actual, cargarUsuarios } = useAuth()
+  const esJefeArea = actual?.rol === 'jefe_area'
   const [formularioAbierto, setFormularioAbierto] = useState(false)
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [formulario, setFormulario] = useState<FormularioUsuario>({
@@ -26,15 +35,14 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
     correo: '',
     usuario: '',
     password: '',
-    especialidad: especialidades[0] || '',
+    cargo: '',
   })
   const [error, setError] = useState('')
   const [exito, setExito] = useState('')
+  const [horarioDe, setHorarioDe] = useState<{ id: number; nombre: string } | null>(null)
 
   const usuariosArea = usuarios.filter((u) => u.area_id === areaId && u.rol === 'personal')
   const enModoEdicion = formularioAbierto
-
-  const opcionesEspecialidad = especialidades.length > 0 ? especialidades : ['Corporativo', 'Tributario', 'Laboral']
 
   const comenzarNuevo = () => {
     setFormularioAbierto(true)
@@ -44,7 +52,7 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
       correo: '',
       usuario: '',
       password: '',
-      especialidad: opcionesEspecialidad[0] || '',
+      cargo: '',
     })
     setError('')
     setExito('')
@@ -58,7 +66,7 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
       correo: '',
       usuario: '',
       password: '',
-      especialidad: opcionesEspecialidad[0] || '',
+      cargo: '',
     })
     setError('')
     setExito('')
@@ -74,7 +82,7 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
       correo: u.correo,
       usuario: u.usuario,
       password: '',
-      especialidad: u.especialidad || '',
+      cargo: u.cargo || '',
     })
     setError('')
     setExito('')
@@ -105,9 +113,11 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
         nombre: formulario.nombre,
         correo: formulario.correo,
         usuario: formulario.usuario,
-        rol: 'personal',
-        area_id: areaId,
-        especialidad: formulario.especialidad,
+        cargo: formulario.cargo,
+      }
+      if (!esJefeArea || !editandoId) {
+        body.rol = 'personal'
+        body.area_id = areaId
       }
       if (formulario.password) {
         body.password = formulario.password
@@ -115,7 +125,7 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify(body),
       })
       const data = await res.json()
@@ -127,7 +137,7 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
       setExito(editandoId ? 'Usuario actualizado correctamente.' : 'Usuario creado correctamente.')
       setFormularioAbierto(false)
       setEditandoId(null)
-      setFormulario({ nombre: '', correo: '', usuario: '', password: '', especialidad: opcionesEspecialidad[0] || '' })
+      setFormulario({ nombre: '', correo: '', usuario: '', password: '', cargo: '' })
       await cargarUsuarios()
     } catch {
       setError('No se pudo conectar al servidor.')
@@ -141,17 +151,21 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
     }
     if (!window.confirm(`¿Eliminar al usuario "${nombre}"?`)) return
     try {
-      const res = await fetch(`/api/usuarios/${id}`, { method: 'DELETE' })
-      if (res.ok) {
-        await cargarUsuarios()
-        if (editandoId === id) {
-          setFormularioAbierto(false)
-          setEditandoId(null)
-          setFormulario({ nombre: '', correo: '', usuario: '', password: '', especialidad: opcionesEspecialidad[0] || '' })
-        }
-        setError('')
-        setExito('')
+      setError('')
+      setExito('')
+      const res = await fetch(`/api/usuarios/${id}`, { method: 'DELETE', headers: getHeaders() })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error || 'No se pudo eliminar.')
+        return
       }
+      await cargarUsuarios()
+      if (editandoId === id) {
+        setFormularioAbierto(false)
+        setEditandoId(null)
+        setFormulario({ nombre: '', correo: '', usuario: '', password: '', cargo: '' })
+      }
+      setExito(data.desactivado ? data.message : 'Usuario eliminado correctamente.')
     } catch {
       setError('No se pudo eliminar.')
     }
@@ -164,9 +178,9 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Usuarios del área</h2>
+          <h2 className="text-sm font-semibold text-foreground">Usuarios de la división</h2>
           <p className="text-sm text-muted-foreground">
-            Estos usuarios solo acceden a los módulos de esta área.
+            {esJefeArea ? 'Administra los colaboradores de tu área.' : 'Estos usuarios solo acceden a los módulos de esta división.'}
           </p>
         </div>
         {!enModoEdicion && (
@@ -230,18 +244,14 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
               />
             </div>
             <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-medium text-foreground">Especialidad</label>
-              <select
-                value={formulario.especialidad}
-                onChange={(e) => manejarCambio('especialidad', e.target.value)}
+              <label className="mb-1.5 block text-sm font-medium text-foreground">Cargo</label>
+              <input
+                type="text"
+                value={formulario.cargo}
+                onChange={(e) => manejarCambio('cargo', e.target.value)}
                 className={inputClase}
-              >
-                {opcionesEspecialidad.map((esp) => (
-                  <option key={esp} value={esp}>
-                    {esp}
-                  </option>
-                ))}
-              </select>
+                placeholder="Ej. Jefe de marketing"
+              />
             </div>
           </div>
 
@@ -275,11 +285,21 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
         </form>
       )}
 
+      {!enModoEdicion && (error || exito) && (
+        <p className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+          error
+            ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+            : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+        }`}>
+          {error || exito}
+        </p>
+      )}
+
       {usuariosArea.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-border bg-card/50 p-6 text-center">
           <UserRound size={28} className="mx-auto mb-2 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            Este área aún no tiene usuarios asignados.
+            Esta división aún no tiene usuarios asignados.
           </p>
         </div>
       ) : (
@@ -306,7 +326,7 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
                     )}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {u.rol} · {u.especialidad || 'Sin especialidad'}
+                    {u.rol} · {u.cargo || 'Sin cargo'}
                   </p>
                 </div>
               </div>
@@ -315,6 +335,16 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
                   <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-400">
                     Inactivo
                   </span>
+                )}
+                {!esJefeArea && (
+                  <button
+                    type="button"
+                    onClick={() => setHorarioDe({ id: u.id, nombre: u.nombre })}
+                    aria-label={`Horario de ${u.nombre}`}
+                    className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-[#7c3aed]/10 hover:text-[#c4b5fd]"
+                  >
+                    <Clock size={16} />
+                  </button>
                 )}
                 <button
                   type="button"
@@ -337,6 +367,8 @@ export function SettingsUsers({ areaId, especialidades }: SettingsUsersProps) {
           ))}
         </div>
       )}
+
+      {horarioDe && <SettingsHorario usuario={horarioDe} onClose={() => setHorarioDe(null)} />}
     </div>
   )
 }

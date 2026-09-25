@@ -11,12 +11,12 @@ export default function Consolidacion() {
   const router = useRouter()
 
   useEffect(() => {
-    if (!cargando && usuario?.rol !== 'admin') {
+    if (!cargando && usuario?.rol !== 'admin' && usuario?.rol !== 'jefe_area') {
       router.replace('/')
     }
   }, [cargando, usuario, router])
 
-  if (cargando || !usuario || usuario.rol !== 'admin') return null
+  if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area')) return null
 
   return (
     <MainLayout title="Consolidación" subtitle="Horas consolidadas de todos los consultores">

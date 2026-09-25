@@ -14,16 +14,19 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children, title, subtitle }: MainLayoutProps) {
-  const { usuario, cargando } = useAuth()
+  const { usuario, empresaActiva, cargando } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!cargando && !usuario) {
+    if (cargando) return
+    if (!usuario) {
       router.replace('/login')
+    } else if (!empresaActiva) {
+      router.replace('/hub')
     }
-  }, [cargando, usuario, router])
+  }, [cargando, usuario, empresaActiva, router])
 
-  if (cargando || !usuario) return null
+  if (cargando || !usuario || !empresaActiva) return null
 
   return (
     <div className="flex min-h-screen bg-background">

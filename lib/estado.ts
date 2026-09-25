@@ -26,6 +26,12 @@ export const ESTADO_ACTIVIDAD: Record<EstadoActividad, EstadoEstilo> = {
     text: 'text-amber-400',
     badge: 'bg-amber-400/10 text-amber-400 border border-amber-400/25',
   },
+  CORRECCION_SOLICITADA: {
+    label: 'Corrección solicitada',
+    dot: 'bg-sky-400',
+    text: 'text-sky-400',
+    badge: 'bg-sky-400/10 text-sky-400 border border-sky-400/25',
+  },
   APROBADA: {
     label: 'Aprobada',
     dot: 'bg-emerald-400',
