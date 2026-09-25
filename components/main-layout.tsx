@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
@@ -16,6 +16,7 @@ interface MainLayoutProps {
 export function MainLayout({ children, title, subtitle }: MainLayoutProps) {
   const { usuario, empresaActiva, cargando } = useAuth()
   const router = useRouter()
+  const [menuAbierto, setMenuAbierto] = useState(false)
 
   useEffect(() => {
     if (cargando) return
@@ -30,10 +31,14 @@ export function MainLayout({ children, title, subtitle }: MainLayoutProps) {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar />
+      <Sidebar abierto={menuAbierto} onCerrar={() => setMenuAbierto(false)} />
 
-      <div className="flex flex-1 flex-col pl-64">
-        <Header title={title} subtitle={subtitle} />
+      <div className="flex min-w-0 flex-1 flex-col md:pl-64">
+        <Header
+          title={title}
+          subtitle={subtitle}
+          onAbrirMenu={() => setMenuAbierto(true)}
+        />
 
         <main className="flex-1 overflow-y-auto bg-background">
           <div className="mx-auto max-w-7xl px-4 py-3">{children}</div>
