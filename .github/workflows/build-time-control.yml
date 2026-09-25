@@ -1,0 +1,64 @@
+name: Build Time Control
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build standalone package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+        env:
+          NODE_ENV: production
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: build
+          DB_PASSWORD: build-only
+          DB_NAME: time_control_build
+          TZ: America/Lima
+          WIDGET_SYNC_ENABLED: 'false'
+
+      - name: Assemble standalone package
+        shell: bash
+        run: |
+          test -f .next/standalone/server.js
+          test -d public
+          test -d .next/static
+          mkdir -p .next/standalone/public .next/standalone/.next/static
+          cp -R public/. .next/standalone/public/
+          cp -R .next/static/. .next/standalone/.next/static/
+          find .next/standalone -type f -name '.env*' -delete
+          test -z "$(find .next/standalone -type f -name '.env*' -print -quit)"
+          tar -czf time-control-linux.tar.gz -C .next/standalone .
+
+      - name: Upload standalone package
+        uses: actions/upload-artifact@v4
+        with:
+          name: time-control-linux
+          path: time-control-linux.tar.gz
+          if-no-files-found: error
+          retention-days: 14
