@@ -253,10 +253,15 @@ export async function renovarSession(
   try {
     await conexion.beginTransaction()
 
+    // `activo` vive en `usuarios`, no en `sesiones`: hay que unir para poder
+    // comprobarlo. Sirve para que al desactivar una cuenta su sesion deje de
+    // renovarse, en vez de seguir viva hasta el vencimiento.
     const [filas] = await conexion.query<RowDataPacket[]>(
-      `SELECT id, usuario_id, refresh_token, refresh_anterior, refresh_anterior_expira_en, activo
-         FROM sesiones
-        WHERE refresh_token = ? OR (refresh_anterior = ? AND refresh_anterior_expira_en > NOW())
+      `SELECT s.id, s.usuario_id, u.activo
+         FROM sesiones s
+         INNER JOIN usuarios u ON u.id = s.usuario_id
+        WHERE s.refresh_token = ?
+           OR (s.refresh_anterior = ? AND s.refresh_anterior_expira_en > NOW())
         FOR UPDATE`,
       [refreshToken, refreshToken]
     )
