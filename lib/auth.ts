@@ -266,6 +266,9 @@ export async function renovarSession(
   refreshToken: string
 ): Promise<{ token: string; refreshToken: string; expiraAcceso: Date; expiraRenovacion: Date; usuarioId: number } | null> {
   if (!refreshToken || refreshToken.length < 10) return null
+  // Sin la migración aplicada no hay token de renovación que renovar. Se
+  // responde "no hay sesión" en lugar de reventar con un error de columna.
+  if (!(await renovacionDisponible())) return null
 
   const conexion = await pool.getConnection()
   try {
@@ -328,6 +331,8 @@ export async function renovarSession(
 
 /** Cierra la sesión de UN dispositivo, sin tocar las de los demás. */
 export async function cerrarSesionDispositivo(refreshToken: string): Promise<void> {
+  // Sin la migración no hay sesiones revocables por token de renovación.
+  if (!(await renovacionDisponible())) return
   await pool.query('DELETE FROM sesiones WHERE refresh_token = ? OR refresh_anterior = ?', [refreshToken, refreshToken])
 }
 
@@ -343,6 +348,8 @@ export async function cerrarRestoDeSesiones(usuarioId: number, refreshTokenActua
 
 /** Lista los dispositivos con sesión abierta del usuario, marcando el actual. */
 export async function listarSesiones(usuarioId: number, idSesionActual: number | null) {
+  // Sin la migración no hay sesiones por dispositivo que listar.
+  if (!(await renovacionDisponible())) return []
   const [filas] = await pool.query<RowDataPacket[]>(
     `SELECT id, dispositivo, ultimo_uso, expira_en, refresh_expira_en, created_at
        FROM sesiones
@@ -363,6 +370,7 @@ export async function listarSesiones(usuarioId: number, idSesionActual: number |
 
 /** Id de la sesión a la que pertenece un token de renovación, si sigue viva. */
 export async function idSesionPorRefresh(refreshToken: string): Promise<number | null> {
+  if (!(await renovacionDisponible())) return null
   const [filas] = await pool.query<RowDataPacket[]>(
     'SELECT id FROM sesiones WHERE (refresh_token = ? OR refresh_anterior = ?) AND refresh_expira_en > NOW() LIMIT 1',
     [refreshToken, refreshToken]
@@ -422,7 +430,16 @@ export function cookiesSesion(acceso: string, expiraAcceso: Date, refresh: strin
 }
 
 export async function cleanExpiredSessions(): Promise<void> {
-  await pool.query(
-    `DELETE FROM sesiones WHERE expira_en < NOW() AND (refresh_token IS NULL OR refresh_expira_en < NOW())`
-  )
+  // Misma degradacion que `createSession`: si la migracion de sesiones
+  // persistentes todavia no esta aplicada, la tabla no tiene esas columnas y
+  // esta consulta reventaba con 500 en CADA intento de login, dejando el
+  // sistema sin acceso para todo el mundo. Con la comprobacion previa, se usa
+  // el criterio antiguo mientras la migracion no exista.
+  if (await renovacionDisponible()) {
+    await pool.query(
+      `DELETE FROM sesiones WHERE expira_en < NOW() AND (refresh_token IS NULL OR refresh_expira_en < NOW())`
+    )
+    return
+  }
+  await pool.query(`DELETE FROM sesiones WHERE expira_en < NOW()`)
 }
