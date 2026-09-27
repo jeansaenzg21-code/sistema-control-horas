@@ -6,6 +6,12 @@ import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { horarioDeHoy, enRangoHorario, minutosAcumuladosHoy, aMinutos } from '@/lib/horarios'
 import { esJefeDeArea } from '@/lib/permisos'
 import { estructuraProyectosDisponible } from '@/lib/proyectos'
+import {
+  buscarPorIdOperacion,
+  columnaIdOperacionDisponible,
+  normalizarIdOperacion,
+  validarMarcaTiempoCliente,
+} from '@/lib/operaciones-moviles'
 
 async function tieneColumnaProyecto(): Promise<boolean> {
   const [rows] = await pool.query<RowDataPacket[]>(
@@ -165,13 +171,19 @@ export async function POST(request: Request) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return NextResponse.json({ error: 'El cuerpo de la solicitud no es válido.' }, { status: 400 })
     }
-    const { usuario_id, tipo_actividad_id, cliente_id, descripcion, facturable, proyecto_id } = body
+    const { usuario_id, tipo_actividad_id, cliente_id, descripcion, facturable, proyecto_id, inicio, id_operacion } = body
     const usuarioObjetivoId = Number(usuario_id)
     const tipoActividadId = Number(tipo_actividad_id)
     const clienteId = cliente_id == null || cliente_id === '' ? null : Number(cliente_id)
     const descripcionTexto = descripcion == null ? null : typeof descripcion === 'string' ? descripcion.trim() || null : undefined
     const tieneProyecto = await tieneColumnaProyecto() && await estructuraProyectosDisponible()
     const proyectoId = proyecto_id == null || proyecto_id === '' ? null : Number(proyecto_id)
+    const idOperacion = normalizarIdOperacion(id_operacion)
+    const marcaInicio = validarMarcaTiempoCliente(inicio, 'hora de inicio')
+
+    if (marcaInicio !== null && !marcaInicio.ok) {
+      return NextResponse.json({ error: marcaInicio.error }, { status: 400 })
+    }
 
     if (descripcionTexto === undefined) {
       return NextResponse.json({ error: 'La descripción no es válida.' }, { status: 400 })
@@ -195,6 +207,15 @@ export async function POST(request: Request) {
     }
     if (user.rol !== 'ADMINISTRACION' && usuarioObjetivoId !== user.id) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
+    }
+
+    // Reintento de la app móvil: si la operación ya se aplicó se devuelve la
+    // misma actividad en lugar de crear una segunda.
+    if (idOperacion) {
+      const previa = await buscarPorIdOperacion(idOperacion, context.activa.id)
+      if (previa) {
+        return NextResponse.json({ ok: true, actividad: previa, duplicada: true })
+      }
     }
 
     const [usuariosValidos] = await pool.query<RowDataPacket[]>(
@@ -270,18 +291,18 @@ export async function POST(request: Request) {
       }
     }
 
-    const [existe] = await pool.query<RowDataPacket[]>(
-      `SELECT id FROM actividades WHERE usuario_id = ? AND estado IN ('EN_CURSO', 'PAUSADA')`,
-      [usuarioObjetivoId]
-    )
-    if (existe.length > 0) {
-      return NextResponse.json({ error: 'Ya tienes una actividad activa. Finaliza o pausa la actual antes de crear una nueva.' }, { status: 409 })
-    }
+    // La comprobación de "no tener una actividad activa" NO se puede hacer aquí:
+    // sería un check-then-act y dos peticiones simultáneas (web y móvil, o doble
+    // toque) pasarían las dos el control y guardarían dos actividades. Se hace
+    // dentro de una transacción con bloqueo de la fila del usuario; ver más abajo.
 
     // Control de horario de trabajo del usuario (si tiene configurado para hoy).
+
     const horario = await horarioDeHoy(usuarioObjetivoId)
     if (horario) {
-      const ahora = new Date()
+      // Si la app móvil enviadas la hora de inicio, el horario se valida contra
+      // ese momento y no contra la hora de sincronización.
+      const ahora = marcaInicio !== null && marcaInicio.ok ? marcaInicio.fecha : new Date()
       if (!enRangoHorario(horario.hora_inicio, horario.hora_fin, ahora)) {
         const inicio = horario.hora_inicio.slice(0, 5)
         const fin = horario.hora_fin.slice(0, 5)
@@ -306,40 +327,116 @@ export async function POST(request: Request) {
       }
     }
 
-    const [result] = await pool.query(
-      tieneProyecto
-        ? `INSERT INTO actividades (usuario_id, cliente_id, tipo_actividad_id, descripcion, facturable, proyecto_id, inicio, estado)
-           VALUES (?, ?, ?, ?, ?, ?, NOW(), 'EN_CURSO')`
-        : `INSERT INTO actividades (usuario_id, cliente_id, tipo_actividad_id, descripcion, facturable, inicio, estado)
-           VALUES (?, ?, ?, ?, ?, NOW(), 'EN_CURSO')`,
-      tieneProyecto
-        ? [usuarioObjetivoId, clienteId, tipoActividadId, descripcionTexto, facturable ?? null, proyectoId]
-        : [usuarioObjetivoId, clienteId, tipoActividadId, descripcionTexto, facturable ?? null]
-    )
+    const inicioCliente = marcaInicio !== null && marcaInicio.ok ? marcaInicio.fecha : null
+    const registraOperacion = (await columnaIdOperacionDisponible()) && idOperacion !== null
+    const columnas = ['usuario_id', 'cliente_id', 'tipo_actividad_id', 'descripcion', 'facturable']
+    const valores: Array<string | number | Date | null> = [
+      usuarioObjetivoId,
+      clienteId,
+      tipoActividadId,
+      descripcionTexto,
+      (facturable ?? null) as string | number | null,
+    ]
+    if (tieneProyecto) {
+      columnas.push('proyecto_id')
+      valores.push(proyectoId)
+    }
+    if (registraOperacion) {
+      columnas.push('id_operacion')
+      valores.push(idOperacion)
+    }
+    if (inicioCliente) {
+      columnas.push('inicio')
+      valores.push(inicioCliente)
+    }
 
-    const insertId = (result as { insertId: number }).insertId
+    // El proyecto/join solo hace falta para dar forma a la respuesta.
     const proyectoCampos = tieneProyecto ? 'a.proyecto_id, pr.nombre AS proyecto_nombre,' : ''
     const proyectoJoin = tieneProyecto ? 'LEFT JOIN proyectos pr ON pr.id = a.proyecto_id AND pr.empresa_id = ar.empresa_id' : ''
-    const [nueva] = await pool.query<RowDataPacket[]>(
-      `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
-        ${proyectoCampos} a.inicio, a.fin, a.estado, a.created_at,
-        u.nombre AS usuario_nombre, u.cargo, u.especialidad, u.area_id,
-        ta.nombre AS tipo_actividad_nombre,
-        ar.nombre AS area_nombre,
-        c.nombre AS cliente_nombre
-       FROM actividades a
-       INNER JOIN usuarios u ON u.id = a.usuario_id
-       INNER JOIN tipos_actividad ta ON ta.id = a.tipo_actividad_id
-       INNER JOIN areas ar ON ar.id = u.area_id
-       ${proyectoJoin}
-       LEFT JOIN clientes c ON c.id = a.cliente_id
-       WHERE a.id = ?`,
-      [insertId]
-    )
+
+    // Se serializa todo el alta por usuario. El bloqueo va sobre `usuarios`
+    // porque esa fila SIEMPRE existe: un `SELECT ... FOR UPDATE` sobre
+    // `actividades` no bloquearía nada cuando todavía no hay ninguna fila
+    // activa, que es exactamente el caso en el que se produce la carrera.
+    const conexion = await pool.getConnection()
+    let actividadCreada: Record<string, unknown> | null = null
+    try {
+      await conexion.beginTransaction()
+
+      await conexion.query('SELECT id FROM usuarios WHERE id = ? FOR UPDATE', [usuarioObjetivoId])
+
+      // Dentro de la transacción y con el usuario bloqueado, este SELECT ve la
+      // commits de cualquier alta concurrente de ese mismo usuario.
+      const [activas] = await conexion.query<RowDataPacket[]>(
+        `SELECT id FROM actividades
+         WHERE usuario_id = ? AND estado IN ('EN_CURSO', 'PAUSADA')
+         LIMIT 1`,
+        [usuarioObjetivoId]
+      )
+      if (activas.length > 0) {
+        await conexion.rollback()
+        return NextResponse.json(
+          {
+            error: 'Ya tienes una actividad activa. Finaliza o pausa la actual antes de crear una nueva.',
+            code: 'ACTIVIDAD_ACTIVA',
+            actividad_id: Number(activas[0].id),
+          },
+          { status: 409 }
+        )
+      }
+
+      try {
+        const [result] = await conexion.query(
+          `INSERT INTO actividades (${columnas.join(', ')}, estado)
+           VALUES (${columnas.map(() => '?').join(', ')}, 'EN_CURSO')`,
+          valores
+        )
+        const insertId = (result as { insertId: number }).insertId
+
+        const [nueva] = await conexion.query<RowDataPacket[]>(
+          `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
+            ${proyectoCampos} a.inicio, a.fin, a.estado, a.created_at,
+            u.nombre AS usuario_nombre, u.cargo, u.especialidad, u.area_id,
+            ta.nombre AS tipo_actividad_nombre,
+            ar.nombre AS area_nombre,
+            c.nombre AS cliente_nombre
+           FROM actividades a
+           INNER JOIN usuarios u ON u.id = a.usuario_id
+           INNER JOIN tipos_actividad ta ON ta.id = a.tipo_actividad_id
+           INNER JOIN areas ar ON ar.id = u.area_id
+           ${proyectoJoin}
+           LEFT JOIN clientes c ON c.id = a.cliente_id
+           WHERE a.id = ?`,
+          [insertId]
+        )
+        actividadCreada = nueva[0] as Record<string, unknown>
+      } catch (error) {
+        // Choca con el índice único de id_operacion: es un reintento de una
+        // operación que YA se había guardado. Se devuelve la fila original en
+        // lugar de crear una segunda, que es lo que evita horas duplicadas.
+        if ((error as { code?: string }).code === 'ER_DUP_ENTRY' && idOperacion) {
+          await conexion.rollback()
+          const previa = await buscarPorIdOperacion(idOperacion, context.activa.id)
+          if (previa) {
+            return NextResponse.json({ ok: true, actividad: previa, duplicada: true })
+          }
+        }
+        throw error
+      }
+
+      await conexion.commit()
+    } catch (error) {
+      try {
+        await conexion.rollback()
+      } catch {}
+      throw error
+    } finally {
+      conexion.release()
+    }
 
     notifyActivityChange(usuarioObjetivoId)
 
-    return NextResponse.json({ ok: true, actividad: nueva[0] })
+    return NextResponse.json({ ok: true, actividad: actividadCreada })
   } catch (error) {
     console.error('Error al crear actividad:', error)
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })

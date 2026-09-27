@@ -162,6 +162,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+    if (!token || !usuario || !empresaActiva || usuario.rol === 'admin') return
+
+    const controller = new AbortController()
+    void fetch('/api/widget/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        token,
+        usuarioId: usuario.id,
+        usuario: usuario.usuario,
+        nombre: usuario.nombre,
+        rol: usuario.rol,
+      }),
+      signal: controller.signal,
+    }).catch(() => {})
+
+    return () => controller.abort()
+  }, [usuario, empresaActiva])
+
+  useEffect(() => {
     let vigente = true
     const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
     if (!token) {

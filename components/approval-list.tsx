@@ -30,7 +30,7 @@ import type { ObservacionTimeline, TipoObservacion } from '@/lib/observaciones-u
 import { esVisibleParaTrabajador, normalizarEstadoAtencion, normalizarVisibilidad } from '@/lib/observaciones-ui'
 import { StatusBadge } from './status-badge'
 import { FacturableBadge } from './facturable-badge'
-import { cn, esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
+import { cn, esFacturable, esNoFacturable, fechaLocalISO, formatHora } from '@/lib/utils'
 
 type Filtro = 'pendientes' | 'aprobadas' | 'rechazadas' | 'correccion'
 type AccionInicial = 'responder' | 'corregir' | 'reenviar' | 'rechazar' | null
@@ -712,7 +712,7 @@ export function ApprovalList() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 lg:justify-end">
-                  <div className="text-right"><p className="font-semibold text-foreground">{formatDuracion(actividad)}</p><p className="text-xs text-muted-foreground">{String(actividad.inicio).split('T')[1]?.slice(0, 5) ?? '—'} – {actividad.fin ? String(actividad.fin).split('T')[1]?.slice(0, 5) : '—'}</p></div>
+                  <div className="text-right"><p className="font-semibold text-foreground">{formatDuracion(actividad)}</p><p className="text-xs text-muted-foreground">{formatHora(actividad.inicio)} – {actividad.fin ? formatHora(actividad.fin) : '—'}</p></div>
                   <FacturableBadge valor={actividad.facturable} />
                   <StatusBadge estado={actividad.estado} />
                   <div className="flex flex-wrap items-center gap-2">
@@ -927,7 +927,7 @@ function DetalleActividadModal({
             <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
               <DatoGrupo etiqueta="Tipo" valor={actividad.tipo_actividad_nombre || '—'} />
               <DatoGrupo etiqueta="Cliente" valor={actividad.cliente_nombre || 'Sin cliente'} />
-              <DatoGrupo etiqueta="Horario / Duración" valor={`${String(actividad.inicio).split('T')[1]?.slice(0, 5) ?? '—'} – ${actividad.fin ? String(actividad.fin).split('T')[1]?.slice(0, 5) : '—'} · ${formatDuracion(actividad)}`} />
+              <DatoGrupo etiqueta="Horario / Duración" valor={`${formatHora(actividad.inicio)} – ${actividad.fin ? formatHora(actividad.fin) : '—'} · ${formatDuracion(actividad)}`} />
             </div>
 
             <div className="mb-3 rounded-lg border border-border bg-muted/20 p-2.5">
