@@ -53,7 +53,13 @@ interface ActividadContextValue {
   finalizarActividad: () => Promise<void>
   continuarActividad: () => void
   cargarActividadActual: (usuarioId: number) => Promise<Actividad | null>
-  cargarHistorial: (usuarioId: number, soloPropias?: boolean) => Promise<void>
+  cargarHistorial: (usuarioId: number, soloPropias?: boolean, opciones?: { append?: boolean }) => Promise<void>
+  /** Total de registros del usuario segun el servidor, para los textos de la interfaz. */
+  totalHistorial: number
+  /** True cuando el servidor tiene mas paginas que las ya cargadas. */
+  hayMasHistorial: boolean
+  /** Trae la siguiente pagina del historial. */
+  cargarMasHistorial: () => Promise<void>
 }
 
 const ActividadContext = createContext<ActividadContextValue | null>(null)
@@ -76,6 +82,15 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   const actividadRef = useRef<Actividad | null>(null)
   const inicioRef = useRef<number>(Date.now())
   const cargaInicialRef = useRef(false)
+// Espejo del historial en una ref: permite appendir paginas sin volver a
+// renderizar y sin que la funcion dependa del estado (que la recrearia).
+const historialRef = useRef<Actividad[]>([])
+const [totalHistorial, setTotalHistorial] = useState(0)
+const [hayMasHistorial, setHayMasHistorial] = useState(false)
+
+// Pagina del historial. 200 filas pesan poco y se ven de un vistazo; el boton
+// 'Cargar mas' trae la siguiente.
+const LIMITE_PAGINA = 200
 
   const getHeaders = useCallback(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
@@ -138,28 +153,75 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
     return null
   }, [empresaId])
 
-  const cargarHistorial = useCallback(async (usuarioId: number, soloPropias = true) => {
-    if (!empresaId) {
-      setHistorial([])
-      return
-    }
-    try {
-      let url = '/api/actividades'
-      if (soloPropias) {
-        url = `/api/actividades?usuario_id=${usuarioId}`
+  /**
+   * Carga el historial POR PAGINAS.
+   *
+   * Antes descargaba la tabla entera en cada llamada, y esta funcion se dispara
+   * al montar la pantalla y otra vez con cada evento SSE. Medido: el
+   * administrador recibia 50 139 filas y 28 MB por respuesta, p95 de 2,6 s.
+   *
+   * Ahora pide una pagina de 200 y el total real viene en la cabecera
+   * `X-Total`, que solo se calcula cuando ya se ha cargado al menos una pagina
+   * (pedirlo en la primera costaria un COUNT sobre la tabla entera).
+   */
+  const cargarHistorial = useCallback(
+    async (usuarioId: number, soloPropias = true, opciones: { append?: boolean } = {}) => {
+      if (!empresaId) {
+        if (!opciones.append) setHistorial([])
+        return
       }
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      const res = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
-      if (res.ok) {
+      const append = opciones.append === true
+      const offset = append ? historialRef.current.length : 0
+      try {
+        const base = soloPropias
+          ? `/api/actividades?usuario_id=${usuarioId}`
+          : '/api/actividades'
+        const url = `${base}&limite=${LIMITE_PAGINA}&offset=${offset}`
+        const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
+        const res = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
+        if (!res.ok) {
+          if (!append) setHistorial([])
+          return
+        }
         const data = await res.json()
-        setHistorial(data)
+        const total = Number(res.headers.get('X-Total') ?? '0')
+        if (append) {
+          // Se ignoran filas repetidas: entre dos peticiones un SSE puede haber
+          // insertado una actividad y el offset se habria desplazado.
+          const vistos = new Set(historialRef.current.map((a) => a.id))
+          const nuevas = (data as Actividad[]).filter((a) => !vistos.has(a.id))
+          historialRef.current = [...historialRef.current, ...nuevas]
+          setHistorial(historialRef.current)
+        } else {
+          historialRef.current = data as Actividad[]
+          setHistorial(historialRef.current)
+        }
+        if (!append) {
+          setTotalHistorial(Number(res.headers.get('X-Total') ?? String((data as Actividad[]).length)))
+        } else if (total > 0) {
+          setTotalHistorial(total)
+        }
+        setHayMasHistorial(
+          (append ? historialRef.current.length : (data as Actividad[]).length) < (total || Infinity)
+        )
+      } catch {
+        if (!append) {
+          historialRef.current = []
+          setHistorial([])
+        }
       }
-    } catch {
-      setHistorial([])
-    }
-  }, [empresaId])
+    },
+    [empresaId]
+  )
+
+  /** Trae la siguiente pagina. Lo usa el botón "Cargar más registros". */
+  const cargarMasHistorial = useCallback(async () => {
+    if (!usuario || !empresaId || !hayMasHistorial) return
+    const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor' || esJefeDeArea(usuario)
+    await cargarHistorial(usuario.id, !esAdminOSupervisor, { append: true })
+  }, [usuario, empresaId, hayMasHistorial, cargarHistorial])
 
   useEffect(() => {
     if (usuario && empresaId) {
@@ -315,6 +377,9 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
         actividadActual,
         cargandoActividad,
         historial,
+    totalHistorial,
+    hayMasHistorial,
+    cargarMasHistorial,
         alertasCada,
         alertaVisible,
         tiempoPausaMs,

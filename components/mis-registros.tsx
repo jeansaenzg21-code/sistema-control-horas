@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import { StatusBadge } from './status-badge'
 import { useRegistros } from '@/lib/use-registros'
+import { useActividad } from '@/lib/actividad-context'
 import type { Actividad } from '@/lib/types'
 import { esFacturable, esNoFacturable, fechaLocalISO, formatHora } from '@/lib/utils'
 
@@ -62,6 +63,7 @@ type Fila =
 
 export function MisRegistros() {
   const registros = useRegistros()
+  const { hayMasHistorial, cargarMasHistorial } = useActividad()
   const [mes, setMes] = useState(mesKeyActual)
   const [visibles, setVisibles] = useState(POR_PAGINA)
   const [sobrescrito, setSobrescrito] = useState<Record<string, boolean>>({})
@@ -236,13 +238,21 @@ export function MisRegistros() {
               })}
             </tbody>
           </table>
-          {visibles < filas.length && (
+          {(visibles < filas.length || hayMasHistorial) && (
             <div className="border-t border-border p-3 text-center">
               <button
-                onClick={() => setVisibles((v) => v + POR_PAGINA)}
+                onClick={() => {
+                  // Antes solo revelaba filas que YA estaban descargadas: el
+                  // historial completo se habia pedido entero al montar. Ahora,
+                  // si el servidor tiene mas paginas, se piden de verdad.
+                  setVisibles((v) => v + POR_PAGINA)
+                  if (visibles >= filas.length) void cargarMasHistorial()
+                }}
                 className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-[#7c3aed]/40 hover:text-[#7c3aed]"
               >
-                Cargar más registros
+                {hayMasHistorial && visibles >= filas.length
+                  ? 'Cargar más registros del servidor'
+                  : 'Cargar más registros'}
               </button>
             </div>
           )}
