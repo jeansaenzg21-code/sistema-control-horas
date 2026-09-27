@@ -209,14 +209,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
-    // Reintento de la app móvil: si la operación ya se aplicó se devuelve la
-    // misma actividad en lugar de crear una segunda.
-    if (idOperacion) {
-      const previa = await buscarPorIdOperacion(idOperacion, context.activa.id)
-      if (previa) {
-        return NextResponse.json({ ok: true, actividad: previa, duplicada: true })
-      }
-    }
+    // La comprobacion de idempotencia NO se hace aqui. Esta fuera de la
+    // transaccion, asi que dos peticiones identicas podrian pasar las dos y
+    // crear dos filas. Se resuelve dentro de la transaccion, con el usuario
+    // bloqueado y antes de mirar la actividad activa.
 
     const [usuariosValidos] = await pool.query<RowDataPacket[]>(
       `SELECT u.id FROM usuarios u INNER JOIN areas ar ON ar.id = u.area_id
@@ -345,10 +341,16 @@ export async function POST(request: Request) {
       columnas.push('id_operacion')
       valores.push(idOperacion)
     }
-    if (inicioCliente) {
-      columnas.push('inicio')
-      valores.push(inicioCliente)
-    }
+    // `inicio` se escribe SIEMPRE. La columna es NOT NULL y no tiene valor por
+    // defecto, así que antes, si un cliente no mandaba su marca de tiempo, el
+    // INSERT omitía la columna y MySQL respondia 1364
+    // (ER_NO_DEFAULT_FOR_FIELD): un 500 en toda alta de actividad. Ahora, si el
+    // cliente no la manda, la pone NOW() del SERVIDOR, que es la referencia que
+    // el propio sistema declara como autoritativa. Se usa el reloj de MySQL y no
+    // el del proceso de Node para que no dependa de la hora de la maquina que
+    // sirve la API.
+    columnas.push('inicio')
+    valores.push(inicioCliente)
 
     // El proyecto/join solo hace falta para dar forma a la respuesta.
     const proyectoCampos = tieneProyecto ? 'a.proyecto_id, pr.nombre AS proyecto_nombre,' : ''
@@ -365,6 +367,28 @@ export async function POST(request: Request) {
 
       await conexion.query('SELECT id FROM usuarios WHERE id = ? FOR UPDATE', [usuarioObjetivoId])
 
+      // ORDEN IMPORTANTE.
+      //
+      // Primero se resuelve la idempotencia y despues se aplica la regla de "una
+      // sola actividad activa". Al reves, un reintento del movil (la respuesta
+      // anterior se perdio y el trabajador pulsa otra vez) llegaba al alta con su
+      // misma id_operacion, se encontraba con que ya habia una actividad activa
+      // y recibia un 409. El movil no podia distinguir "mi operacion ya se
+      // guardo" de "tengo otra actividad distinta en curso", y se quedaba
+      // esperando sin poder asociar su servidor_id.
+      //
+      // La busqueda va acotada al usuario que hace la peticion: aunque dos
+      // personas compartieran id_operacion, nadie recibe la actividad de otro.
+      if (idOperacion) {
+        const previa = await buscarPorIdOperacion(idOperacion, context.activa.id, usuarioObjetivoId, conexion)
+        if (previa) {
+          await conexion.rollback()
+          // Respuesta recuperable: el movil asocia el servidor_id y da la
+          // sincronizacion por completada, sin crear una segunda fila.
+          return NextResponse.json({ ok: true, actividad: previa, duplicada: true })
+        }
+      }
+
       // Dentro de la transacción y con el usuario bloqueado, este SELECT ve la
       // commits de cualquier alta concurrente de ese mismo usuario.
       const [activas] = await conexion.query<RowDataPacket[]>(
@@ -375,20 +399,25 @@ export async function POST(request: Request) {
       )
       if (activas.length > 0) {
         await conexion.rollback()
+        // No se devuelve el id de la actividad existente. Deliberadamente: si se
+        // devolviera, un movil que reintenta por error podria quedarse con la
+        // actividad de OTRA operacion y dar por sincronizadas horas que no son
+        // las suyas. El movil debe conservar su registro local y resolverlo.
         return NextResponse.json(
           {
             error: 'Ya tienes una actividad activa. Finaliza o pausa la actual antes de crear una nueva.',
             code: 'ACTIVIDAD_ACTIVA',
-            actividad_id: Number(activas[0].id),
           },
           { status: 409 }
         )
       }
 
       try {
+        // Para `inicio` el marcador es COALESCE(?, NOW()): si el cliente no
+        // envio marca de tiempo, entra la hora del servidor.
+        const marcadores = columnas.map((c) => (c === 'inicio' ? 'COALESCE(?, NOW())' : '?')).join(', ')
         const [result] = await conexion.query(
-          `INSERT INTO actividades (${columnas.join(', ')}, estado)
-           VALUES (${columnas.map(() => '?').join(', ')}, 'EN_CURSO')`,
+          `INSERT INTO actividades (${columnas.join(', ')}, estado) VALUES (${marcadores}, 'EN_CURSO')`,
           valores
         )
         const insertId = (result as { insertId: number }).insertId
@@ -411,15 +440,30 @@ export async function POST(request: Request) {
         )
         actividadCreada = nueva[0] as Record<string, unknown>
       } catch (error) {
-        // Choca con el índice único de id_operacion: es un reintento de una
-        // operación que YA se había guardado. Se devuelve la fila original en
-        // lugar de crear una segunda, que es lo que evita horas duplicadas.
+        // Choca con el indice unico de id_operacion. Con la comprobacion previa
+        // hecha dentro de la transicion esto casi no puede ocurrir: solo si dos
+        // hilos con el MISMO id_operacion llegan a la vez y uno gana el INSERT.
+        // Se comprueba el codigo de MySQL ANTES de asumir nada, porque un
+        // ER_DUP_ENTRY tambien puede venir de otro indice unico (por ejemplo
+        // `usuario`), y en ese caso la fila no seria la operacion buscada.
         if ((error as { code?: string }).code === 'ER_DUP_ENTRY' && idOperacion) {
           await conexion.rollback()
-          const previa = await buscarPorIdOperacion(idOperacion, context.activa.id)
+          const previa = await buscarPorIdOperacion(idOperacion, context.activa.id, usuarioObjetivoId)
           if (previa) {
             return NextResponse.json({ ok: true, actividad: previa, duplicada: true })
           }
+          // Choca con el indice unico pero la fila NO es de este usuario: el
+          // identificador de operacion ya esta en uso por otra cuenta. No se
+          // devuelve esa fila (seria filtrar la actividad de otro) ni se responde
+          // un 500 por un dato que el cliente controla. Se informa sin revelar de
+          // quien es la actividad.
+          return NextResponse.json(
+            {
+              error: 'Identificador de operación duplicado. Genera uno nuevo e inténtalo de nuevo.',
+              code: 'ID_OPERACION_DUPLICADO',
+            },
+            { status: 409 }
+          )
         }
         throw error
       }

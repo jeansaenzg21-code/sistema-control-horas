@@ -1,5 +1,5 @@
 import pool from '@/lib/db'
-import { RowDataPacket } from 'mysql2'
+import { PoolConnection, RowDataPacket } from 'mysql2/promise'
 
 // La app móvil registra actividades sin conexión y las envía después. Para que
 // las horas reflejen el momento real del registro y para que un reintento no
@@ -65,10 +65,22 @@ export function validarMarcaTiempoCliente(valor: unknown, etiqueta: string): Res
   return { ok: true, fecha }
 }
 
-export async function buscarPorIdOperacion(idOperacion: string, empresaId: number): Promise<Record<string, unknown> | null> {
+/**
+ * Busca una operacion ya guardada por su `id_operacion`.
+ *
+ * `usuarioId` es OBLIGATORIO a proposito: sin el, si dos trabajadores distintos
+ * acaban usando el mismo `id_operacion` por accidente, el segundo recibiria en
+ * su respuesta la actividad del primero, con sus horas. Con el, la busqueda
+ * solo puede devolver una fila del propio usuario.
+ */
+export async function buscarPorIdOperacion(
+  idOperacion: string,
+  empresaId: number,
+  usuarioId: number,
+  conexion?: PoolConnection,
+): Promise<Record<string, unknown> | null> {
   if (!(await columnaIdOperacionDisponible())) return null
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
+  const sql = `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
             a.proyecto_id, pr.nombre AS proyecto_nombre, a.inicio, a.fin, a.estado, a.created_at,
             u.nombre AS usuario_nombre, u.cargo,
             ta.nombre AS tipo_actividad_nombre,
@@ -80,9 +92,13 @@ export async function buscarPorIdOperacion(idOperacion: string, empresaId: numbe
      INNER JOIN areas ar ON ar.id = u.area_id
      LEFT JOIN proyectos pr ON pr.id = a.proyecto_id AND pr.empresa_id = ar.empresa_id
      LEFT JOIN clientes c ON c.id = a.cliente_id
-     WHERE a.id_operacion = ? AND ar.empresa_id = ?
-     LIMIT 1`,
-    [idOperacion, empresaId]
-  )
+     WHERE a.id_operacion = ? AND a.usuario_id = ? AND ar.empresa_id = ?
+     LIMIT 1`
+  const params = [idOperacion, usuarioId, empresaId]
+  // Con conexion se lee dentro de la transaccion del alta, para que la
+  // comprobacion y el INSERT sean atomicos. Sin ella, se usa el pool.
+  const [rows] = conexion
+    ? await conexion.query<RowDataPacket[]>(sql, params)
+    : await pool.query<RowDataPacket[]>(sql, params)
   return (rows as Array<Record<string, unknown>>)[0] ?? null
 }
