@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { useRegistros } from '@/lib/use-registros'
+import { useHistorialRango } from '@/lib/use-historial-rango'
 import { esFacturable, fechaLocalISO } from '@/lib/utils'
 
 const COLORES = ['#7c3aed', '#8b5cf6', '#c4b5fd', '#a78bfa', '#6d28d9', '#ddd6fe']
@@ -18,7 +18,7 @@ interface AreaChartProps {
 }
 
 export function AreaChart({ areaId = '', desde = '', hasta = '' }: AreaChartProps) {
-  const registros = useRegistros()
+  const { registros } = useHistorialRango(desde ?? '', hasta ?? '')
 
   const calcularHoras = (r: { inicio: string; fin: string | null; pausa_acumulada_segundos: number }): number => {
     if (!r.fin || !r.inicio) return 0

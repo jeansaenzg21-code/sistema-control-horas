@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Building2, CalendarDays, ChevronLeft, ChevronRight, Clock, TrendingUp, Wallet } from 'lucide-react'
 import { StatusBadge } from './status-badge'
 import { FacturableBadge } from './facturable-badge'
-import { useActividad } from '@/lib/actividad-context'
+import { useHistorialRango } from '@/lib/use-historial-rango'
 import { useAreas } from '@/lib/areas-context'
 import type { Actividad } from '@/lib/types'
 import { cn, esFacturable, esNoFacturable, fechaLocalISO, formatoHoras } from '@/lib/utils'
@@ -35,22 +35,26 @@ function esNoFacturada(r: Actividad): boolean {
 }
 
 export function ConsolidationTable() {
-  const { historial } = useActividad()
   const { areas } = useAreas()
   const [areaId, setAreaId] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
+
+  // La consolidacion SUMA horas, asi que necesita el rango COMPLETO desde el
+  // servidor. Con el historial paginado del contexto, un trabajador con mas de
+  // 200 actividades consolidaba de menos y el total salia mal sin avisar.
+  const { registros: registrosRango, completo: rangoCompleto } = useHistorialRango(desde, hasta)
   const [filtro, setFiltro] = useState<FiltroFactura>('todas')
 
   const registros = useMemo(() => {
-    return historial.filter((registro) => {
+    return registrosRango.filter((registro) => {
       if (areaId && String(registro.area_id ?? '') !== areaId) return false
       const fecha = fechaLocalISO(registro.inicio)
       if (desde && fecha < desde) return false
       if (hasta && fecha > hasta) return false
       return true
     })
-  }, [areaId, desde, hasta, historial])
+  }, [areaId, desde, hasta, registrosRango])
 
   const gruposPorUsuario = useMemo(() => {
     const grupos = new Map<string, GrupoUsuario>()
@@ -112,6 +116,15 @@ export function ConsolidationTable() {
 
   return (
     <div className="space-y-5">
+      {/* Si el periodo tiene mas registros de los que se pueden traer, los
+          totales de abajo NO son los reales. Se dice, en vez de dejar que una
+          cifra incompleta parezca la definitiva. */}
+      {!rangoCompleto && (
+        <p className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+          Este periodo tiene demasiados registros para resumirlos aquí. Acota las
+          fechas para ver el total completo.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {indicadores.map((indicador) => (
           <div key={indicador.etiqueta} className="rounded-xl border border-border bg-card p-4">

@@ -5,7 +5,7 @@ import { MoreVertical } from 'lucide-react'
 import Link from 'next/link'
 import { StatusBadge } from './status-badge'
 import { FacturableBadge } from './facturable-badge'
-import { useRegistros } from '@/lib/use-registros'
+import { useHistorialRango } from '@/lib/use-historial-rango'
 import { useAuth } from '@/lib/auth-context'
 import { fechaLocalISO } from '@/lib/utils'
 
@@ -16,7 +16,7 @@ interface ActivityTableProps {
 }
 
 export function ActivityTable({ areaId = '', desde = '', hasta = '' }: ActivityTableProps) {
-  const registros = useRegistros()
+  const { registros } = useHistorialRango(desde ?? '', hasta ?? '')
   const { usuario } = useAuth()
 
   const actividades = useMemo(() => {
