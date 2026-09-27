@@ -149,10 +149,17 @@ async function getDefaultEmpresaId(usuarioId: number): Promise<number | null> {
 // vuelve a escribir su contraseña mientras el dispositivo siga siendo suyo.
 const ACCESS_TOKEN_HOURS = 12
 const REFRESH_TOKEN_DAYS = 30
-// Ventana de gracia tras rotar el token de renovación. Sin esto, dos pestañas
-// abiertas que renueven en el mismo instante se invalidarían entre ellas y el
-// usuario vería un cierre de sesión espurio.
+// Ventana de gracia tras rotar el token de renovacion. Sin esto, dos pestanas
+// abiertas que renueven en el mismo instante se invalidarian entre ellas y el
+// usuario veria un cierre de sesion espurio.
 const REFRESH_GRACIA_MINUTES = 5
+// Dispersion a la hora de caducidad del token de acceso.
+//
+// Sin esto, los 200 usuarios que inician sesion a las 8:00 reciben tokens que
+// caducan EXACTAMENTE 12 horas despues, tambien a las 20:00. Si esaRenewal fuera
+// al fallar, a las 20:00 los 200 intenta renovar en el mismo segundo. Con esta
+// dispersion, las caducidades quedan repartidas en una ventana de 20 minutos.
+const ACCESS_JITTER_MINUTES = 20
 const COOKIE_REFRESH = 'pc_refresh'
 const COOKIE_ACCESO = 'pc_token'
 
@@ -178,6 +185,17 @@ function masHoras(horas: number): Date {
 function masDias(dias: number): Date {
   const d = new Date()
   d.setDate(d.getDate() + dias)
+  return d
+}
+
+/**
+ * Calcula la caducidad del token de acceso con un Retardo aleatorio por
+ * dispositivo. Sirve para que una avalancha de-principio de jornada no se
+ * convierta en una avalancha de renovaciones 12 horas despues.
+ */
+function caducidadTokenAcceso(): Date {
+  const d = masHoras(ACCESS_TOKEN_HOURS)
+  d.setMinutes(d.getMinutes() + Math.floor(Math.random() * ACCESS_JITTER_MINUTES))
   return d
 }
 
@@ -209,7 +227,7 @@ async function renovacionDisponible(): Promise<boolean> {
 export async function createSession(usuarioId: number, dispositivo?: string | null): Promise<SesionEmitida> {
   const token = generateToken()
   const refreshToken = generateToken()
-  const expiraAcceso = masHoras(ACCESS_TOKEN_HOURS)
+  const expiraAcceso = caducidadTokenAcceso()
   const expiraRenovacion = masDias(REFRESH_TOKEN_DAYS)
   const empresaId = await getDefaultEmpresaId(usuarioId)
 
@@ -279,7 +297,7 @@ export async function renovarSession(
 
     const nuevoAcceso = generateToken()
     const nuevoRefresh = generateToken()
-    const expiraAcceso = masHoras(ACCESS_TOKEN_HOURS)
+    const expiraAcceso = caducidadTokenAcceso()
     // El token de acceso puede renovar aunque la fila haya pasado su expira_en:
     // mientras el de renovación siga vivo, la sesión sigue existiendo. Si no,
     // un usuario que trabaja 12 h seguidas se quedaría fuera.

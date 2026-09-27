@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { useAuth } from './auth-context'
 import { esJefeDeArea } from './permisos'
+import { ControlStream, crearStreamSse } from './sse'
 
 export interface Actividad {
   id: number
@@ -91,6 +92,11 @@ const [hayMasHistorial, setHayMasHistorial] = useState(false)
 // Pagina del historial. 200 filas pesan poco y se ven de un vistazo; el boton
 // 'Cargar mas' trae la siguiente.
 const LIMITE_PAGINA = 200
+
+// Estado del stream de eventos. La consulta de seguridad solo se activa cuando
+// NO hay conexion sana.
+const [streamConectado, setStreamConectado] = useState(false)
+const streamRef = useRef<ControlStream | null>(null)
 
   const getHeaders = useCallback(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
@@ -241,14 +247,45 @@ const LIMITE_PAGINA = 200
   useEffect(() => {
     if (!usuario || !empresaId) return
     const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor' || esJefeDeArea(usuario)
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    const es = new EventSource(`/api/actividades/stream?usuario_id=${usuario.id}&token=${encodeURIComponent(token || '')}`)
-    es.addEventListener('activity-changed', () => {
-      cargarActividadActual(usuario.id)
-      cargarHistorial(usuario.id, !esAdminOSupervisor)
+
+    const alCambiar = () => {
+      void cargarActividadActual(usuario.id)
+      void cargarHistorial(usuario.id, !esAdminOSupervisor)
+    }
+
+    // Sin token en la URL. La cookie HttpOnly la envia el navegador sola en las
+    // peticiones del mismo origen, tambien en un EventSource. Con el token en la
+    // query quedaba escrito en los logs de Nginx, en el historial y en el
+    // Referer de cualquier recurso de la pagina.
+    const control = crearStreamSse({
+      url: `/api/actividades/stream?usuario_id=${usuario.id}`,
+      eventos: ['activity-changed'],
+      alEvento: (nombre) => {
+        if (nombre === 'activity-changed') alCambiar()
+      },
+      alEstado: (nuevo) => {
+        setStreamConectado(nuevo === 'conectado')
+      },
     })
-    return () => es.close()
+    streamRef.current = control
+
+    // Red de seguridad, y SOLO cuando el stream no esta sano. Antes habia un
+    // sondeo permanente ademas del SSE: cada usuarioGenerating una consulta cada
+    // 30 s para enterarse de lo que el stream ya le habia dicho. Si el stream se
+    // cae, se repone con un intervalo mas espaciado en vez de desaparecer.
+    const seguridad = window.setInterval(() => {
+      if (control.estado() === 'conectado') return
+      alCambiar()
+    }, 60_000)
+
+    return () => {
+      window.clearInterval(seguridad)
+      control.cerrar()
+      streamRef.current = null
+      setStreamConectado(false)
+    }
   }, [usuario, empresaId, cargarActividadActual, cargarHistorial])
+
 
   const configurarAlertas = useCallback((minutos: number) => {
     setAlertasCada(minutos)

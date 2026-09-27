@@ -255,16 +255,70 @@ export function App() {
   useEffect(() => {
     if (!token || !usuario) return
     cargarActividad()
-    const es = new EventSource(
-      `${API_BASE_URL}/api/actividades/stream?usuario_id=${usuario.id}&token=${encodeURIComponent(token)}`,
-    )
-    es.addEventListener('activity-changed', () => {
-      cargarActividad()
-    })
-    const id = setInterval(cargarActividad, 30000)
+
+    let fuente: EventSource | null = null
+    let temporizador: ReturnType<typeof setTimeout> | null = null
+    let seguridad: ReturnType<typeof setInterval> | null = null
+    let intento = 0
+    let cerrado = false
+
+    const abrir = () => {
+      if (cerrado) return
+      if (fuente) {
+        try {
+          fuente.close()
+        } catch {}
+        fuente = null
+      }
+      const es = new EventSource(
+        `${API_BASE_URL}/api/actividades/stream?usuario_id=${usuario.id}&token=${encodeURIComponent(token)}`,
+      )
+      fuente = es
+
+      es.onopen = () => {
+        intento = 0
+        if (seguridad) {
+          clearInterval(seguridad)
+          seguridad = null
+        }
+      }
+      es.addEventListener('activity-changed', () => {
+        cargarActividad()
+      })
+      es.onerror = () => {
+        if (cerrado || fuente !== es) return
+        try {
+          es.close()
+        } catch {}
+        fuente = null
+        // El widget es una app de escritorio: si el servidor cae, reconectar
+        // cada 3 s sin limite abre y cierra conexiones sin parar. Se reconecta
+        // con espera creciente y algo de dispersion.
+        intento += 1
+        const espera = Math.min(60_000, 2000 * 2 ** Math.min(intento, 10))
+        const jitter = espera * 0.25 * (Math.random() * 2 - 1)
+        temporizador = setTimeout(abrir, Math.max(500, Math.round(espera + jitter)))
+        if (!seguridad) {
+          // Mientras no haya stream, una consulta de seguridad cada 60 s. Antes
+          // habia una cada 30 s aunque el stream estuviera perfecto.
+          seguridad = setInterval(() => {
+            if (!fuente) cargarActividad()
+          }, 60_000)
+        }
+      }
+    }
+
+    abrir()
+
     return () => {
-      es.close()
-      clearInterval(id)
+      cerrado = true
+      if (temporizador) clearTimeout(temporizador)
+      if (seguridad) clearInterval(seguridad)
+      if (fuente) {
+        try {
+          fuente.close()
+        } catch {}
+      }
     }
   }, [token, usuario, cargarActividad])
 

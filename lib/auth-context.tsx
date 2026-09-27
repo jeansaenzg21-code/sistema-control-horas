@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -102,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [empresasDisponibles, setEmpresasDisponibles] = useState<Empresa[]>([])
   const [requiereEmpresa, setRequiereEmpresa] = useState(false)
   const [cargando, setCargando] = useState(true)
+  const temporizadorRenovacionRef = useRef<number | null>(null)
 
   const cargarUsuarios = useCallback(async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
@@ -184,6 +186,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => controller.abort()
   }, [usuario, empresaActiva])
+
+  // Renovacion ANTICIPADA y escalonada.
+  //
+  // Sin esto el token solo se renueva cuando una peticion recibe un 401. Si los
+  // tokens vencieran todos a la vez, las renovaciones ocurririan en el mismo
+  // segundo. El servidor ya reparte las caducidades en una ventana de 20
+  // minutos; aqui cada usuario renueva por su cuenta un poco antes de caducar,
+  // y solo con la pestana visible, para no renovar en segundo plano sin parar.
+  //
+  // La cookie de renovacion es HttpOnly: la envia el navegador sola, no hay que
+  // leerla. El token de acceso se sigue guardando porque lo necesitan las
+  // peticiones que lo mandan en la cabecera Authorization.
+  useEffect(() => {
+    if (!usuario) return
+    const MARGEN_MINUTOS = 45
+
+    const revisar = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      try {
+        const res = await fetch('/api/auth/sesion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+        })
+        if (!res.ok) return
+        const datos = (await res.json()) as { token?: string }
+        if (typeof datos.token === 'string' && datos.token.length > 20) {
+          localStorage.setItem('pc_token', datos.token)
+        }
+      } catch {
+        // Sin red no se renueva. El proximo 401 reintentara y, si el token de
+        // renovacion sigue vivo, el usuario no llega a ver el login.
+      }
+    }
+
+    const programar = () => {
+      if (temporizadorRenovacionRef.current !== null) {
+        window.clearTimeout(temporizadorRenovacionRef.current)
+      }
+      // Se añade un retardo aleatorio hasta 5 minutos: si 200 usuarios entran a
+      // la vez, sus renovaciones no se alinean en un mismo segundo.
+      const espera = (MARGEN_MINUTOS + Math.random() * 5) * 60 * 1000
+      temporizadorRenovacionRef.current = window.setTimeout(revisar, espera)
+    }
+
+    programar()
+    document.addEventListener('visibilitychange', programar)
+    return () => {
+      if (temporizadorRenovacionRef.current !== null) {
+        window.clearTimeout(temporizadorRenovacionRef.current)
+        temporizadorRenovacionRef.current = null
+      }
+      document.removeEventListener('visibilitychange', programar)
+    }
+  }, [usuario])
 
   useEffect(() => {
     let vigente = true
