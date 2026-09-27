@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { Building2 } from 'lucide-react'
-import { useHistorialRango } from '@/lib/use-historial-rango'
+import { useResumenActividades } from '@/lib/use-resumen'
 import { fechaLocalISO, formatoHoras } from '@/lib/utils'
 
 const paleta = ['#7c3aed', '#8b5cf6', '#c4b5fd']
@@ -14,34 +14,18 @@ interface ChartCardProps {
 }
 
 export function ChartCard({ areaId = '', desde = '', hasta = '' }: ChartCardProps) {
-  const { registros } = useHistorialRango(desde ?? '', hasta ?? '')
-
-  const calcularHoras = (r: { inicio: string; fin: string | null; pausa_acumulada_segundos: number }): number => {
-    if (!r.fin || !r.inicio) return 0
-    const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
-    return Math.max(0, (diff - r.pausa_acumulada_segundos) / 3600)
-  }
+  // El resumen por cargo se calcula en el servidor. Antes se bajaba el
+  // historial entero al navegador y se sumaba aqui.
+  const { resumen } = useResumenActividades({ desde, hasta, areaId })
 
   const cargos = useMemo(() => {
-    let filtrados = registros
-    if (areaId) filtrados = filtrados.filter((r) => String(r.area_id) === areaId)
-    if (desde) filtrados = filtrados.filter((r) => fechaLocalISO(r.inicio) >= desde)
-    if (hasta) filtrados = filtrados.filter((r) => fechaLocalISO(r.inicio) <= hasta)
-
-    const porCargo = new Map<string, number>()
-    for (const r of filtrados) {
-      const cargo = r.cargo || 'Sin cargo'
-      porCargo.set(cargo, (porCargo.get(cargo) ?? 0) + calcularHoras(r))
-    }
-    const total = Array.from(porCargo.values()).reduce((acc, h) => acc + h, 0)
-    return Array.from(porCargo.entries())
-      .map(([nombre, horas]) => ({
-        nombre,
-        horas,
-        porcentaje: total === 0 ? 0 : Math.round((horas / total) * 100),
-      }))
-      .sort((a, b) => b.horas - a.horas)
-  }, [registros, areaId, desde, hasta])
+    const total = resumen.por_cargo.reduce((acc, c) => acc + c.horas, 0)
+    return resumen.por_cargo.map((c) => ({
+      nombre: c.cargo,
+      horas: c.horas,
+      porcentaje: total === 0 ? 0 : Math.round((c.horas / total) * 100),
+    }))
+  }, [resumen.por_cargo])
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-border bg-card p-4">

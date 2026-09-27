@@ -5,7 +5,7 @@ import { MoreVertical } from 'lucide-react'
 import Link from 'next/link'
 import { StatusBadge } from './status-badge'
 import { FacturableBadge } from './facturable-badge'
-import { useHistorialRango } from '@/lib/use-historial-rango'
+import { useRegistros } from '@/lib/use-registros'
 import { useAuth } from '@/lib/auth-context'
 import { fechaLocalISO } from '@/lib/utils'
 
@@ -16,7 +16,9 @@ interface ActivityTableProps {
 }
 
 export function ActivityTable({ areaId = '', desde = '', hasta = '' }: ActivityTableProps) {
-  const { registros } = useHistorialRango(desde ?? '', hasta ?? '')
+  // Solo se pintan las 5 filas mas recientes: la paginacion del historial es
+  // suficiente y evita traer un periodo entero.
+  const registros = useRegistros()
   const { usuario } = useAuth()
 
   const actividades = useMemo(() => {

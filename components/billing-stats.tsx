@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { TrendingUp, Wallet } from 'lucide-react'
 import { KPICard } from './kpi-card'
-import { useHistorialRango } from '@/lib/use-historial-rango'
+import { useResumenActividades } from '@/lib/use-resumen'
 import { esFacturable, esNoFacturable, fechaLocalISO, formatoHoras } from '@/lib/utils'
 
 interface BillingStatsProps {
@@ -13,33 +13,13 @@ interface BillingStatsProps {
 }
 
 export function BillingStats({ areaId = '', desde = '', hasta = '' }: BillingStatsProps) {
-  const { registros } = useHistorialRango(desde ?? '', hasta ?? '')
+  // Los tres totales se agregan en el servidor, no sumando filas en el navegador.
+  const { resumen } = useResumenActividades({ desde, hasta, areaId })
 
   const horas = useMemo(() => {
-    let enRango = registros
-    if (areaId) enRango = enRango.filter((r) => String(r.area_id) === areaId)
-    if (desde) enRango = enRango.filter((r) => fechaLocalISO(r.inicio) >= desde)
-    if (hasta) enRango = enRango.filter((r) => fechaLocalISO(r.inicio) <= hasta)
-
-    const calcularHoras = (r: { inicio: string; fin: string | null; pausa_acumulada_segundos: number }): number => {
-      if (!r.fin || !r.inicio) return 0
-      const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
-      return Math.max(0, (diff - r.pausa_acumulada_segundos) / 3600)
-    }
-
-    const facturadas = enRango
-      .filter((r) => r.estado === 'APROBADA' && esFacturable(r.facturable))
-      .reduce((acc, r) => acc + calcularHoras(r), 0)
-    const noFacturadas = enRango
-      .filter(
-        (r) =>
-          r.estado === 'RECHAZADA' ||
-          (r.estado === 'APROBADA' && esNoFacturable(r.facturable)),
-      )
-      .reduce((acc, r) => acc + calcularHoras(r), 0)
-    const comparativa = facturadas + noFacturadas
-    return { comparativa, facturadas, noFacturadas }
-  }, [registros, areaId, desde, hasta])
+    const t = resumen.totales
+    return { comparativa: t.horas_facturadas + t.horas_no_facturadas, facturadas: t.horas_facturadas, noFacturadas: t.horas_no_facturadas }
+  }, [resumen.totales])
 
   const pct = (valor: number) =>
     horas.comparativa === 0 ? '0.0' : ((valor / horas.comparativa) * 100).toFixed(1)
