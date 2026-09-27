@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { useHistorialRango } from '@/lib/use-historial-rango'
+import { useResumenActividades } from '@/lib/use-resumen'
 import { esFacturable, fechaLocalISO } from '@/lib/utils'
 
 const COLORES = ['#7c3aed', '#8b5cf6', '#c4b5fd', '#a78bfa', '#6d28d9', '#ddd6fe']
@@ -18,31 +18,13 @@ interface AreaChartProps {
 }
 
 export function AreaChart({ areaId = '', desde = '', hasta = '' }: AreaChartProps) {
-  const { registros } = useHistorialRango(desde ?? '', hasta ?? '')
+  // Solo lo aprobado y facturable, agregado en el servidor.
+  const { resumen } = useResumenActividades({ desde, hasta, areaId })
 
-  const calcularHoras = (r: { inicio: string; fin: string | null; pausa_acumulada_segundos: number }): number => {
-    if (!r.fin || !r.inicio) return 0
-    const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
-    return Math.max(0, (diff - r.pausa_acumulada_segundos) / 3600)
-  }
-
-  const datos = useMemo(() => {
-    const mapa = new Map<string, number>()
-    for (const r of registros) {
-      if (r.estado !== 'APROBADA' || !esFacturable(r.facturable)) continue
-      if (areaId && String(r.area_id) !== areaId) continue
-      const fechaReg = fechaLocalISO(r.inicio)
-      if (desde && fechaReg < desde) continue
-      if (hasta && fechaReg > hasta) continue
-      const horas = calcularHoras(r)
-      const esp = r.cargo || 'Sin cargo'
-      mapa.set(esp, (mapa.get(esp) ?? 0) + horas)
-    }
-    return Array.from(mapa.entries())
-      .map(([nombre, horas]) => ({ nombre, horas }))
-      .filter((d) => d.horas > 0)
-      .sort((a, b) => b.horas - a.horas)
-  }, [registros, areaId, desde, hasta])
+  const datos = useMemo(
+    () => resumen.por_cargo_facturable.filter((d) => d.horas > 0).map((d) => ({ nombre: d.cargo, horas: d.horas })),
+    [resumen.por_cargo_facturable]
+  )
 
   const total = datos.reduce((acc, d) => acc + d.horas, 0)
 

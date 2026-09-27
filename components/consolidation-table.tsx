@@ -37,12 +37,15 @@ function esNoFacturada(r: Actividad): boolean {
 export function ConsolidationTable() {
   const { areas } = useAreas()
   const [areaId, setAreaId] = useState('')
-  const [desde, setDesde] = useState('')
-  const [hasta, setHasta] = useState('')
+  const [desde, setDesde] = useState(() => `${new Date().getFullYear()}-01-01`)
+  const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10))
 
-  // La consolidacion SUMA horas, asi que necesita el rango COMPLETO desde el
-  // servidor. Con el historial paginado del contexto, un trabajador con mas de
-  // 200 actividades consolidaba de menos y el total salia mal sin avisar.
+  // La consolidacion necesita las filas del periodo, porque al elegir una
+  // persona se listan sus registros de 10 en 10. El rango arranca en el 1 de
+  // enero del año en curso en vez de "todo el historico": sin fechas, traer
+  // todo son decenas de miles de filas al navegador. Los selectores de fecha
+  // siguen a la vista para ampliar o acotar el periodo, y el aviso de
+  // `rangoCompleto` aparece si aun asi se supera el tope.
   const { registros: registrosRango, completo: rangoCompleto } = useHistorialRango(desde, hasta)
   const [filtro, setFiltro] = useState<FiltroFactura>('todas')
 

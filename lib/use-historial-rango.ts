@@ -46,7 +46,7 @@ export function useHistorialRango(
   hasta: string,
   opciones: { usuarioId?: number | null; soloPropias?: boolean; todaEmpresa?: boolean } = {}
 ): ResultadoRango {
-  const { usuarioId = null, soloPropias = true, todaEmpresa = false } = opciones
+  const { usuarioId = null, todaEmpresa = false } = opciones
   const [registros, setRegistros] = useState<Actividad[]>([])
   const [cargando, setCargando] = useState(false)
   const [completo, setCompleto] = useState(true)
@@ -57,6 +57,20 @@ export function useHistorialRango(
   const clave = `${desde}|${hasta}|${usuarioId ?? ''}|${todaEmpresa ? 'todos' : 'propios'}`
 
   const cargar = useCallback(async () => {
+    // Un rango SIN fechas puede ser de años, y entonces son decenas de miles de
+    // filas. Para quien solo necesita numeros esta es la via equivocada: existe
+    // /api/actividades/resumen, que devuelve los agregados ya calculados. Para
+    // una lista de filas, /api/actividades paginado.
+    //
+    // Si se pide aqui sin rango y el conjunto es grande, NO se intenta: se avisa
+    // por `completo` en vez de colgar el navegador bajando 12 MB.
+    if (!desde || !hasta) {
+      setRegistros([])
+      setTotal(0)
+      setCompleto(false)
+      return
+    }
+
     const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
     if (!token) return
 
@@ -120,8 +134,7 @@ export function useHistorialRango(
     } finally {
       if (pedido === pedidoRef.current) setCargando(false)
     }
-    void soloPropias
-  }, [clave, desde, hasta, usuarioId, todaEmpresa, soloPropias])
+  }, [clave, desde, hasta, usuarioId, todaEmpresa])
 
   useEffect(() => {
     void cargar()
