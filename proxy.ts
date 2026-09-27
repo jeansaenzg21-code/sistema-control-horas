@@ -23,6 +23,13 @@ function permitido(origin: string | null): origin is string {
   return origin != null && ORIGENES_PERMITIDOS.has(origin)
 }
 
+// Cabeceras que un cliente puede enviar. `X-Cliente` la usa la app móvil para
+// pedir el token de renovación en el cuerpo del login: la web no puede leer una
+// cookie HttpOnly, así que el móvil lo recibe por respuesta. Sin esta cabecera en
+// la lista, el navegador rechaza el login del móvil con un error de CORS en el
+// "preflight" antes de llegar al servidor.
+const CABECERAS_PERMITIDAS = 'Content-Type, Authorization, X-Cliente'
+
 export function proxy(request: Request) {
   const origin = request.headers.get('origin')
 
@@ -31,7 +38,7 @@ export function proxy(request: Request) {
     if (permitido(origin)) {
       response.headers.set('Access-Control-Allow-Origin', origin)
       response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-      response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+      response.headers.set('Access-Control-Allow-Headers', CABECERAS_PERMITIDAS)
       response.headers.set('Access-Control-Max-Age', '86400')
       response.headers.set('Vary', 'Origin')
     }

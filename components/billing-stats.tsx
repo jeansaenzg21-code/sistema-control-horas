@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { TrendingUp, Wallet } from 'lucide-react'
 import { KPICard } from './kpi-card'
-import { useRegistros } from '@/lib/use-registros'
+import { useHistorialRango } from '@/lib/use-historial-rango'
 import { esFacturable, esNoFacturable, fechaLocalISO, formatoHoras } from '@/lib/utils'
 
 interface BillingStatsProps {
@@ -13,7 +13,7 @@ interface BillingStatsProps {
 }
 
 export function BillingStats({ areaId = '', desde = '', hasta = '' }: BillingStatsProps) {
-  const registros = useRegistros()
+  const { registros } = useHistorialRango(desde ?? '', hasta ?? '')
 
   const horas = useMemo(() => {
     let enRango = registros
