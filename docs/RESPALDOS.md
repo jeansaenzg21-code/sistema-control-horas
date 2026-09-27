@@ -1,118 +1,121 @@
-# Respaldos: qué tenemos y qué falta
+# Respaldos: procedimiento verificado
 
-## Lo que hay hoy
+## Estado actual
 
-| Qué | Dónde | Cuándo | Alcance |
+| Respaldo | Ubicación | Alcance | Verificado |
 |---|---|---|---|
-| Parcial | `C:\Users\tsoporte\Respaldos\ParedesCano\paredescano-actividades-sesiones-20260927.sql` | 27/09/2026 14:25 | **Solo 2 de 16 tablas** |
+| **Completo** | `C:\Users\tsoporte\Respaldos\ParedesCano\paredescano-COMPLETO-20260927.sql` | 16 tablas, estructura y datos | **Sí, restaurado y comparado** |
+| Parcial anterior | `C:\Users\tsoporte\Respaldos\ParedesCano\paredescano-actividades-sesiones-20260927.sql` | 2 tablas | Insuficiente, se conserva por si acaso |
 
-**Cubre:** `actividades` (15 filas) y `sesiones` (3 filas), con `--complete-insert`,
-que genera los `INSERT` con los valores literales. Se puede restaurar sin
-depender del orden de las columnas.
+Fuera de los repositorios. **Nunca se sube a Git**: contiene 61 usuarios con sus
+hashes de contraseña y los tokens de sesión.
 
-**NO cubre.** Y esto es lo importante: **el respaldo actual NO permite restaurar
-la base.** Faltan 14 tablas, entre ellas las que contienen datos que no se
-pueden regenerar:
+## El error que casi te cuesta el respaldo
 
-| Tabla | Por qué no se puede regenerar |
-|---|---|
-| `usuarios` | 61 personas: nombre, **hash de contraseña**, rol, área, supervisor |
-| `areas` | 17 áreas con su empresa y su jefe |
-| `clientes` | 2 clientes |
-| `tipos_actividad` | 22 tipos, con la marca de general o específico |
-| `horarios` | franjas de trabajo por persona (vacía hoy, pero es configuración) |
-| `proyectos`, `proyecto_participantes`, `proyecto_areas` | estructura de proyectos |
-| `excepciones`, `observaciones`, `observaciones_cumplimiento` | historial de revisiones |
-| `pausas` | pausas registradas |
-| `notificaciones` | avisos enviados |
-| `empresa` | datos de la empresa |
+La primera versión del volcado **estaba dañada** y no me di cuenta hasta que
+restauré y comparé. Dos motivos, ambos por usar PowerShell:
 
-Si se perdiera la base ahora mismo, **no se podrían recuperar los usuarios ni sus
-contraseñas**, y habría que volver a crear 61 cuentas a mano.
+1. **`>` en PowerShell 5.1 sobre un comando nativo convierte la salida.** El
+   archivo salió en UTF-16 (119 910 bytes en vez de 59 954) y con los acentos
+   rotos.
+2. **Restaurar con `Get-Content -Raw | mysql` también rompe el UTF-8**, porque
+   PowerShell decodifica como ANSI antes de pasar la cadena.
 
-## Por qué se hizo así
+Un `mysqldump` que "termina bien" puede producir un archivo inútil. **Por eso
+hace falta restaurarlo y compararlo**, y no basta con mirar el código de salida.
 
-El respaldo se tomó justo antes de las migraciones, y solo de las dos tablas que
-esas migraciones tocaban. Fue una medida de seguridad para poder deshacer
-`id_operacion` y las columnas de sesión, no un respaldo del sistema. **Seidx
- should've dicho antes que no es un respaldo completo.**
+## Procedimiento correcto (PowerShell)
 
-## Procedimiento para obtener un respaldo completo y seguro
+Siempre con `cmd /c`, que redirige en binario:
 
-Hacerlo **antes de desplegar**. Los `.sql` con datos personales no se suben al
-repositorio: van fuera, como el actual.
+```powershell
+# VOLCADO
+$env:MYSQL_PWD="<clave>"
+cmd /c "`"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe`" `
+  -u root -h 127.0.0.1 `
+  --single-transaction --quick `
+  --routines --triggers --events `
+  --hex-blob --default-character-set=utf8mb4 `
+  --set-gtid-purged=OFF --column-statistics=0 --no-tablespaces `
+  paredescano > `"C:\ruta\respaldo.sql`" 2>nul"
 
-### 1. Completo, con estructura y datos
+# RESTAURACION
+cmd /c "`"C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe`" `
+  -u root -h 127.0.0.1 --default-character-set=utf8mb4 --binary-mode=1 `
+  paredescano_restaurada < `"C:\ruta\respaldo.sql`""
+
+# VERIFICACION
+node tests/verificar-restauracion.js paredescano paredescano_restaurada
+```
+
+En Linux o macOS no hay problema: `mysqldump ... > archivo.sql` y
+`mysql base < archivo.sql` ya son binarios.
+
+## Por qué `--single-transaction` es válido aquí
+
+Comprobado antes de usarlo: **las 16 tablas son InnoDB**. No hay ninguna
+`MyISAM` ni `MEMORY`, así que el volcado dentro de una transacción da un
+archivo coherente sin bloquear la base.
+
+No protege frente a un `ALTER TABLE` concurrente, que sí rompería la coherencia.
+Antes de volcar hay que comprobar que no hay DDL en curso:
+
+```sql
+SELECT id, command, time, info FROM information_schema.PROCESSLIST
+ WHERE command NOT IN ('Sleep','Daemon') AND id <> CONNECTION_ID();
+```
+
+Si no devuelve filas, se puede volcar.
+
+## Qué verifica `tests/verificar-restauracion.js`
+
+No se queda en los conteos de filas, que pueden coincidir con datos distintos:
+
+- **CRC32 sobre los valores de cada fila**, con las columnas descubiertas del
+  esquema. Un `SUM(CRC32(CONCAT_WS('|', ...)))` por tabla.
+- Número de índices, columnas y claves foráneas.
+- **Integridad referencial** de la base restaurada: ninguna actividad sin
+  usuario, ninguna sesión sin usuario, ningún supervisor inexistente.
+- Una muestra de usuario, para confirmar que el hash de contraseña llega íntegro.
+
+Resultado de la ejecución de hoy:
+
+```
+16 tablas (5 vacías)   con contenido distinto: 0
+indices 80/80   columnas 146/146   claves foraneas 32/32
+huerfanas: 0 en actividades, usuarios, sesiones y notificaciones
+Muestra: Administrador (hash $2b$...)
+RESULTADO: restauracion CORRECTA
+```
+
+## Para un servidor Linux
 
 ```bash
-# En el servidor. --single-transaction da un punto de coherencia sin bloquear.
 mysqldump -u root -p \
-  --single-transaction \
-  --routines --triggers --events \
+  --single-transaction --quick \
+  --routines --triggers --events --hex-blob \
   --default-character-set=utf8mb4 \
-  --hex-blob \
   --set-gtid-purged=OFF \
-  paredescano > /var/backups/paredescano-completo-$(date +%Y%m%d-%H%M).sql
+  paredescano > /var/backups/paredescano-$(date +%Y%m%d-%H%M).sql
+
+# Verificar de verdad
+mysql -u root -p -e "CREATE DATABASE prueba CHARACTER SET utf8mb4"
+mysql -u root -p prueba < /var/backups/paredescano-*.sql
+node tests/verificar-restauracion.js paredescano prueba
+mysql -u root -p -e "DROP DATABASE prueba"
 ```
 
-Lo que hace cada opción y por qué:
+## Copia fuera del servidor
 
-- `--single-transection`: vuelca dentro de una transacción, así el archivo es
-  coherente aunque entren usuarios mientras se genera. Sin esta opción, un
-  `INSERT` y un `DELETE` simultáneos dejan el respaldo inconsistente.
-- `--routines --triggers --events`: la base podría tener procedimientos o
-  disparadores que no están en el código.
-- `--hex-blob`: los campos binarios se guardan en hexadecimal, sin problemas de
-  codificación.
-- `--set-gtid-purged=OFF`: evita que un `PURGE` de binlogs afecte a otras
-  réplicas. Importante si algún día hay una.
-
-### 2. Comprobación de que el archivo sirve
-
-Un respaldo sin verificar no es un respaldo:
-
-```bash
-ls -lh /var/backups/paredescano-completo-*.sql
-# debe ser de cientos de KB o mas, no de unos pocos bytes
-
-# Buscar que estan TODAS las tablas
-grep -c "^CREATE TABLE" /var/backups/paredescano-completo-*.sql
-# debe devolver 16
-
-# Probar a restaurarlo en una base vacia
-mysql -u root -p -e "CREATE DATABASE prueba_respaldo CHARACTER SET utf8mb4"
-mysql -u root -p prueba_respaldo < /var/backups/paredescano-completo-*.sql
-mysql -u root -p -e "SELECT COUNT(*) FROM prueba_respaldo.usuarios;"   # 61
-mysql -u root -p -e "SELECT COUNT(*) FROM prueba_respaldo.actividades;" # 15
-mysql -u root -p -e "DROP DATABASE prueba_respaldo;"
+```powershell
+scp root@SERVIDOR:/var/backups/paredescano-*.sql C:\Users\tsoporte\Respaldos\ParedesCano\
 ```
 
-Solo cuando esa restauración de prueba dé los conteos correctos, el respaldo
-existe de verdad.
+Un respaldo en el mismo disco que se quiere proteger no protege de nada. Y una
+segunda copia en otro sitio, porque un VPS también se pierde.
 
-### 3. Copia fuera del servidor
+## Antes de cada despliegue
 
-Un respaldo en el mismo disco que se quiere proteger no protege de nada:
-
-```bash
-scp root@SERVIDOR:/var/backups/paredescano-completo-*.sql  C:\Users\tsoporte\Respaldos\ParedesCano\
-```
-
-Y conviene otra copia en un sitio distinto (nube o disco externo), porque un
-VPS también puede perderse.
-
-### 4. Verificación periódica
-
-El lunes, antes de tocar nada:
-
-1. Comprobar que existe un respaldo **completo** y de menos de 24 h.
-2. Comprobar que alguien lo restauró con éxito alguna vez (el punto 2 de arriba).
-3. Comprobar que hay una copia fuera del servidor.
-
-## Nota sobre los datos personales
-
-El archivo contiene 61 usuarios con sus hashes de contraseña, nombres y correos.
-**No se sube a Git.** Los hashes de bcrypt no se pueden recuperar, pero tampoco
-deben Viajar: si alguien los obtiene, puede atacarlos fuera de línea. Por eso el
-respaldo va en una carpeta fuera de los repositorios, con la base de datos en
-uso y solo accesible por quien administra el servidor.
+1. ¿Existe un respaldo completo de menos de 24 h?
+2. ¿Se restauró con éxito alguna vez con `verificar-restauracion.js`?
+3. ¿Hay una copia fuera del servidor?
