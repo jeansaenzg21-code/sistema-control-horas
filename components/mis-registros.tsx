@@ -5,7 +5,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import { StatusBadge } from './status-badge'
 import { useRegistros } from '@/lib/use-registros'
 import type { Actividad } from '@/lib/types'
-import { esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
+import { esFacturable, esNoFacturable, fechaLocalISO, formatHora } from '@/lib/utils'
 
 const POR_PAGINA = 40
 
@@ -53,7 +53,7 @@ function fechaDeInicio(inicio: string): string {
 }
 
 function horaDeInicio(inicio: string): string {
-  return String(inicio).split('T')[1]?.slice(0, 5) || ''
+  return formatHora(inicio)
 }
 
 type Fila =
@@ -223,7 +223,7 @@ export function MisRegistros() {
                       {horaDeInicio(fila.registro.inicio)}
                     </td>
                     <td className="hidden px-4 py-2.5 text-muted-foreground sm:table-cell">
-                      {fila.registro.fin ? String(fila.registro.fin).split('T')[1]?.slice(0, 5) || '—' : '—'}
+                      {fila.registro.fin ? formatHora(fila.registro.fin) : '—'}
                     </td>
                     <td className="px-4 py-2.5 font-medium text-foreground">
                       {formatDuracion(fila.registro)}

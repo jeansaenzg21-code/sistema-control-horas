@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto'
+import { RowDataPacket } from 'mysql2'
 import pool from './db'
 
 const SESSION_DURATION_HOURS = 72
@@ -45,10 +46,21 @@ function mapEmpresa(row: Record<string, unknown>): EmpresaSesion {
 }
 
 export async function getUserFromRequest(request: Request): Promise<SessionUser | null> {
+  // Dos vias de autenticacion, en este orden:
+  //   1. Cabecera Authorization: Bearer. La usa la app movil y cualquier
+  //      cliente que no pueda tener cookies.
+  //   2. Cookie HttpOnly `pc_token`. La usa la web, que ya no necesita guardar
+  //      el token en localStorage: el navegador la envia solo en cada peticion
+  //      al mismo origen, tambien al abrir un EventSource.
+  // Asi la sesion sobrevive a cerrar y reabrir el navegador, que es justamente
+  // de lo que se trata: que el trabajador no escriba su clave cada vez.
   const authHeader = request.headers.get('Authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
-
-  const token = authHeader.slice(7)
+  let token: string | null = null
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7)
+  } else {
+    token = leerCookieAcceso(request)
+  }
   if (!token || token.length < 10) return null
 
   const [rows] = await pool.query(
@@ -130,24 +142,264 @@ async function getDefaultEmpresaId(usuarioId: number): Promise<number | null> {
   return user[0].empresa_id == null ? null : Number(user[0].empresa_id)
 }
 
-export async function createSession(usuarioId: number): Promise<string> {
+// El token de acceso es corto a propósito: si se filtra, deja de servir en
+//Hours. La permanencia la da el token de renovación, que vive en una cookie
+// HttpOnly o en el almacenamiento seguro del móvil y no viaja en las peticiones
+// de datos. El efecto para el usuario es el de cualquier app: entra una vez y no
+// vuelve a escribir su contraseña mientras el dispositivo siga siendo suyo.
+const ACCESS_TOKEN_HOURS = 12
+const REFRESH_TOKEN_DAYS = 30
+// Ventana de gracia tras rotar el token de renovación. Sin esto, dos pestañas
+// abiertas que renueven en el mismo instante se invalidarían entre ellas y el
+// usuario vería un cierre de sesión espurio.
+const REFRESH_GRACIA_MINUTES = 5
+const COOKIE_REFRESH = 'pc_refresh'
+const COOKIE_ACCESO = 'pc_token'
+
+export const SESSION_DURATIONS = {
+  accessHoras: ACCESS_TOKEN_HOURS,
+  refreshDias: REFRESH_TOKEN_DAYS,
+  cookie: COOKIE_REFRESH,
+}
+
+export interface SesionEmitida {
+  token: string
+  refreshToken: string
+  expiraAcceso: Date
+  expiraRenovacion: Date
+}
+
+function masHoras(horas: number): Date {
+  const d = new Date()
+  d.setHours(d.getHours() + horas)
+  return d
+}
+
+function masDias(dias: number): Date {
+  const d = new Date()
+  d.setDate(d.getDate() + dias)
+  return d
+}
+
+// `sesiones` gana columnas con la migraci�n sql/sesiones_persistentes.sql. Si
+// el c�digo se despliega antes de aplicarla, un INSERT con esas columnas
+// revienta con "Unknown column" y NING�N usuario podr�a entrar. Para que el
+// orden de despliegue no importe, se comprueba una sola vez si las columnas
+// existen y, si no, se usa el INSERT de siempre. El sistema funciona con
+// sesiones antiguas hasta que se aplique la migraci�n, sin romperse.
+let columnasRenovacion: boolean | null = null
+
+async function renovacionDisponible(): Promise<boolean> {
+  if (columnasRenovacion !== null) return columnasRenovacion
+  try {
+    const [filas] = await pool.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total
+         FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'sesiones'
+          AND COLUMN_NAME IN ('refresh_token','refresh_expira_en','dispositivo','ultimo_uso')`
+    )
+    columnasRenovacion = Number(filas[0]?.total ?? 0) === 4
+  } catch {
+    columnasRenovacion = false
+  }
+  return columnasRenovacion
+}
+
+export async function createSession(usuarioId: number, dispositivo?: string | null): Promise<SesionEmitida> {
   const token = generateToken()
-  const expiraEn = new Date()
-  expiraEn.setHours(expiraEn.getHours() + SESSION_DURATION_HOURS)
+  const refreshToken = generateToken()
+  const expiraAcceso = masHoras(ACCESS_TOKEN_HOURS)
+  const expiraRenovacion = masDias(REFRESH_TOKEN_DAYS)
   const empresaId = await getDefaultEmpresaId(usuarioId)
 
+  if (await renovacionDisponible()) {
+    await pool.query(
+      `INSERT INTO sesiones
+         (usuario_id, empresa_id, token, expira_en, refresh_token, refresh_expira_en, dispositivo, ultimo_uso)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [usuarioId, empresaId, token, expiraAcceso, refreshToken, expiraRenovacion, dispositivo ?? null]
+    )
+    return { token, refreshToken, expiraAcceso, expiraRenovacion }
+  }
+
+  // La migraci�n todav�a no est� aplicada: sesi�n antigua, sin renovaci�n.
   await pool.query(
     `INSERT INTO sesiones (usuario_id, empresa_id, token, expira_en) VALUES (?, ?, ?, ?)`,
-    [usuarioId, empresaId, token, expiraEn]
+    [usuarioId, empresaId, token, expiraAcceso]
   )
-
-  return token
+  return { token, refreshToken, expiraAcceso, expiraRenovacion }
 }
 
 export async function deleteSession(token: string): Promise<void> {
   await pool.query(`DELETE FROM sesiones WHERE token = ?`, [token])
 }
 
+/**
+ * Renueva una sesión sin pedir credenciales.
+ *
+ * La rotación y el bloqueo van en la MISMA transacción: se bloquea la fila con
+ * `FOR UPDATE`, de modo que dos renovaciones simultáneas del mismo token se
+ * serializan. La primera rota el token; la segunda, al desbloquear, ya no lo
+ * encuentra vigente y usa el token anterior dentro de la ventana de gracia, que
+ * sigue siendo válido. Así ninguna de las dos invalida a la otra.
+ */
+export async function renovarSession(
+  refreshToken: string
+): Promise<{ token: string; refreshToken: string; expiraAcceso: Date; expiraRenovacion: Date; usuarioId: number } | null> {
+  if (!refreshToken || refreshToken.length < 10) return null
+
+  const conexion = await pool.getConnection()
+  try {
+    await conexion.beginTransaction()
+
+    const [filas] = await conexion.query<RowDataPacket[]>(
+      `SELECT id, usuario_id, refresh_token, refresh_anterior, refresh_anterior_expira_en, activo
+         FROM sesiones
+        WHERE refresh_token = ? OR (refresh_anterior = ? AND refresh_anterior_expira_en > NOW())
+        FOR UPDATE`,
+      [refreshToken, refreshToken]
+    )
+
+    if (filas.length === 0) {
+      await conexion.rollback()
+      return null
+    }
+
+    const fila = filas[0]
+    if (Number(fila.activo) !== 1) {
+      await conexion.rollback()
+      return null
+    }
+
+    const nuevoAcceso = generateToken()
+    const nuevoRefresh = generateToken()
+    const expiraAcceso = masHoras(ACCESS_TOKEN_HOURS)
+    // El token de acceso puede renovar aunque la fila haya pasado su expira_en:
+    // mientras el de renovación siga vivo, la sesión sigue existiendo. Si no,
+    // un usuario que trabaja 12 h seguidas se quedaría fuera.
+    const expiraRenovacion = masDias(REFRESH_TOKEN_DAYS)
+    const finGracia = new Date()
+    finGracia.setMinutes(finGracia.getMinutes() + REFRESH_GRACIA_MINUTES)
+
+    await conexion.query(
+      `UPDATE sesiones
+          SET token = ?, expira_en = ?,
+              refresh_anterior = refresh_token, refresh_anterior_expira_en = ?,
+              refresh_token = ?, refresh_expira_en = ?, ultimo_uso = NOW()
+        WHERE id = ?`,
+      [nuevoAcceso, expiraAcceso, finGracia, nuevoRefresh, expiraRenovacion, fila.id]
+    )
+
+    await conexion.commit()
+    return { token: nuevoAcceso, refreshToken: nuevoRefresh, expiraAcceso, expiraRenovacion, usuarioId: Number(fila.usuario_id) }
+  } catch (error) {
+    try {
+      await conexion.rollback()
+    } catch {}
+    throw error
+  } finally {
+    conexion.release()
+  }
+}
+
+/** Cierra la sesión de UN dispositivo, sin tocar las de los demás. */
+export async function cerrarSesionDispositivo(refreshToken: string): Promise<void> {
+  await pool.query('DELETE FROM sesiones WHERE refresh_token = ? OR refresh_anterior = ?', [refreshToken, refreshToken])
+}
+
+/** Cierra el resto de sesiones del usuario, conservando la actual. */
+export async function cerrarRestoDeSesiones(usuarioId: number, refreshTokenActual: string): Promise<number> {
+  const [result] = await pool.query(
+    `DELETE FROM sesiones
+      WHERE usuario_id = ? AND refresh_token <> ? AND refresh_token IS NOT NULL`,
+    [usuarioId, refreshTokenActual]
+  )
+  return (result as { affectedRows: number }).affectedRows
+}
+
+/** Lista los dispositivos con sesión abierta del usuario, marcando el actual. */
+export async function listarSesiones(usuarioId: number, idSesionActual: number | null) {
+  const [filas] = await pool.query<RowDataPacket[]>(
+    `SELECT id, dispositivo, ultimo_uso, expira_en, refresh_expira_en, created_at
+       FROM sesiones
+      WHERE usuario_id = ? AND refresh_token IS NOT NULL
+      ORDER BY ultimo_uso DESC, id DESC`,
+    [usuarioId]
+  )
+  return filas.map((f) => ({
+    id: Number(f.id),
+    dispositivo: f.dispositivo == null ? null : String(f.dispositivo),
+    ultimo_uso: f.ultimo_uso,
+    expira_en: f.expira_en,
+    expira_en_renovacion: f.refresh_expira_en,
+    creada_en: f.created_at,
+    actual: idSesionActual != null && Number(f.id) === idSesionActual,
+  }))
+}
+
+/** Id de la sesión a la que pertenece un token de renovación, si sigue viva. */
+export async function idSesionPorRefresh(refreshToken: string): Promise<number | null> {
+  const [filas] = await pool.query<RowDataPacket[]>(
+    'SELECT id FROM sesiones WHERE (refresh_token = ? OR refresh_anterior = ?) AND refresh_expira_en > NOW() LIMIT 1',
+    [refreshToken, refreshToken]
+  )
+  return filas.length ? Number(filas[0].id) : null
+}
+
+function leerCookie(request: Request, nombre: string): string | null {
+  const cabecera = request.headers.get('cookie')
+  if (!cabecera) return null
+  for (const parte of cabecera.split(';')) {
+    const [clave, ...resto] = parte.trim().split('=')
+    if (clave === nombre) return decodeURIComponent(resto.join('='))
+  }
+  return null
+}
+
+export function leerCookieRefresh(request: Request): string | null {
+  return leerCookie(request, COOKIE_REFRESH)
+}
+
+export function leerCookieAcceso(request: Request): string | null {
+  return leerCookie(request, COOKIE_ACCESO)
+}
+
+function construirCookie(nombre: string, valor: string, expira: Date, maxAge: number | null): string {
+  const seguro = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+  // HttpOnly en las dos: el JavaScript de la pagina no puede leer ninguna de las
+  // dos credenciales, que es lo que evita que un XSS se lleve la sesion.
+  const vida = maxAge == null ? `Expires=${expira.toUTCString()}` : `Max-Age=${maxAge}`
+  return `${nombre}=${encodeURIComponent(valor)}; Path=/; HttpOnly; SameSite=Lax; ${vida}${seguro}`
+}
+
+export function cookieRefresh(refreshToken: string, expira: Date): string {
+  return construirCookie(COOKIE_REFRESH, refreshToken, expira, null)
+}
+
+export function cookieAcceso(token: string, expira: Date): string {
+  return construirCookie(COOKIE_ACCESO, token, expira, null)
+}
+
+export function cookieVacia(nombre: string): string {
+  return construirCookie(nombre, '', new Date(0), 0)
+}
+
+export function cookieRefreshVacia(): string {
+  return cookieVacia(COOKIE_REFRESH)
+}
+
+export function cookieAccesoVacia(): string {
+  return cookieVacia(COOKIE_ACCESO)
+}
+
+/** Dos cookies en una sola cabecera Set-Cookie. */
+export function cookiesSesion(acceso: string, expiraAcceso: Date, refresh: string, expiraRefresh: Date): string[] {
+  return [cookieAcceso(acceso, expiraAcceso), cookieRefresh(refresh, expiraRefresh)]
+}
+
 export async function cleanExpiredSessions(): Promise<void> {
-  await pool.query(`DELETE FROM sesiones WHERE expira_en < NOW()`)
+  await pool.query(
+    `DELETE FROM sesiones WHERE expira_en < NOW() AND (refresh_token IS NULL OR refresh_expira_en < NOW())`
+  )
 }

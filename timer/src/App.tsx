@@ -167,7 +167,7 @@ export function App() {
 
   const syncWidget = useCallback(async () => {
     try {
-      const res = await fetch('${API_BASE_URL}/api/widget/sync', {
+      const res = await fetch(`${API_BASE_URL}/api/widget/sync`, {
         signal: AbortSignal.timeout(4000),
       })
       if (!res.ok) return
@@ -198,7 +198,7 @@ export function App() {
   useEffect(() => {
     let es: EventSource | null = null
     try {
-      es = new EventSource('${API_BASE_URL}/api/auth/stream')
+      es = new EventSource(`${API_BASE_URL}/api/auth/stream`)
       es.addEventListener('auth-changed', (evento) => {
         try {
           const data = JSON.parse((evento as MessageEvent).data) as { tipo?: string }
@@ -230,7 +230,7 @@ export function App() {
   const cargarActividad = useCallback(async () => {
     if (!token) return
     try {
-      const res = await fetch('${API_BASE_URL}/api/actividades/actual', {
+      const res = await fetch(`${API_BASE_URL}/api/actividades/actual`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(5000),
       })
