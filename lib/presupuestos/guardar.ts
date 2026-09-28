@@ -1,4 +1,4 @@
-// Persistencia del presupuesto importado.
+﻿// Persistencia del presupuesto importado.
 //
 // Reglas que este archivo respeta y que no son opcionales:
 //
@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2'
 
 import pool from '@/lib/db'
+import { buscarPersona, explicarCoincidencia } from '@/lib/presupuestos/nombres'
 import type { AnalisisPresupuesto } from './importar-excel'
 
 export type ResultadoGuardado = {
@@ -35,18 +36,8 @@ function sha256(datos: Buffer): string {
 }
 
 /** Sin acentos, sin mayúsculas y sin espacios dobles, para comparar. */
-function normalizar(s: string | null): string {
-  if (!s) return ''
-  return s
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
 /** Mapa nombre normalizado -> ids de usuario de la empresa. */
-type IndiceUsuarios = Map<string, number[]>
+type IndiceUsuarios = { id: number; nombre: string }[]
 
 async function cargarUsuarios(empresaId: number): Promise<IndiceUsuarios> {
   const [rows] = await pool.query<(RowDataPacket & { id: number; nombre: string })[]>(
@@ -56,39 +47,64 @@ async function cargarUsuarios(empresaId: number): Promise<IndiceUsuarios> {
       WHERE a.empresa_id = ? AND u.activo = TRUE`,
     [empresaId]
   )
-  const indice: IndiceUsuarios = new Map()
-  for (const u of rows) {
-    const clave = normalizar(u.nombre)
-    if (!clave) continue
-    if (!indice.has(clave)) indice.set(clave, [])
-    indice.get(clave)!.push(u.id)
-  }
-  return indice
+  return rows.map((u) => ({ id: u.id, nombre: u.nombre }))
 }
 
 /**
  * Resuelve el nombre del Excel a un usuario de la empresa.
  *
- * Devuelve `usuario_id = NULL` cuando no se puede atribuir con certeza: cero
- * coincidencias, más de una, o un nombre que en realidad es una categoría. En ese
- * caso la asignación queda PENDIENTE_REVIEW y el Líder la confirma a mano.
+ * La comparación es por palabras y sin importar el orden, porque el Excel trae
+ * el nombre primero ("EDUARDO CHISCUL") y el personal se carga con los apellidos
+ * primero ("CHISCUL MOLINA EDUARDO EMILIO"). Aun así, si el nombre encaja con
+ * más de una persona NO se elige ninguna: `usuario_id` queda en NULL y el
+ * Líder lo confirma a mano.
  */
 function resolverUsuario(
   nombre: string | null,
-  indice: IndiceUsuarios
+  personal: IndiceUsuarios
 ): { id: number | null; motivo: string | null } {
+  const encontrada = buscarPersona(nombre, personal)
+  if (encontrada) {
+    return {
+      id: encontrada.usuarioId,
+      motivo: null,
+    }
+  }
+
   if (!nombre) {
-    return { id: null, motivo: 'La fila del Excel no indica a quién se asignan las horas.' }
+    return {
+      id: null,
+      motivo: 'La fila del Excel no indica a quién se asignan las horas.',
+    }
   }
-  const encontrados = indice.get(normalizar(nombre)) ?? []
-  if (encontrados.length === 1) return { id: encontrados[0], motivo: null }
-  if (encontrados.length === 0) {
-    return { id: null, motivo: `"${nombre}" no coincide exactamente con ningún usuario de la empresa.` }
+  // Varias personas encajan: hay que decirlo, no elegir una.
+  const candidatos = personal.filter((u) =>
+    palabrasCoincidentes(nombre, u.nombre).length >= 2
+  )
+  if (candidatos.length > 1) {
+    return {
+      id: null,
+      motivo: `"${nombre}" encaja con ${candidatos.length} personas (${candidatos
+        .map((c) => c.nombre)
+        .join(', ')}). El Líder debe indicar a cuál corresponde.`,
+    }
   }
-  return {
-    id: null,
-    motivo: `"${nombre}" coincide con ${encontrados.length} usuarios. No se puede atribuir sin que el Líder elija.`,
-  }
+  return { id: null, motivo: explicarCoincidencia(nombre, null) }
+}
+
+function palabrasCoincidentes(a: string, b: string): string[] {
+  const pa = new Set(palabrasDe(a))
+  return palabrasDe(b).filter((p) => pa.has(p))
+}
+
+function palabrasDe(s: string): string[] {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-zñ\s]/g, ' ')
+    .split(/\s+/)
+    .filter((p) => p.length > 1)
 }
 
 export async function guardarAnalisis(params: {
@@ -101,7 +117,7 @@ export async function guardarAnalisis(params: {
 }): Promise<ResultadoGuardado> {
   const { empresaId, clienteId, usuarioId, nombreArchivo, archivo, analisis } = params
   const hash = sha256(archivo)
-  const indiceUsuarios = await cargarUsuarios(empresaId)
+  const personal = await cargarUsuarios(empresaId)
 
   const conexion = await pool.getConnection()
   try {
@@ -191,7 +207,7 @@ export async function guardarAnalisis(params: {
       for (const asignacion of servicio.asignaciones) {
         const { id: usuarioAsignado, motivo } = resolverUsuario(
           asignacion.nombreTexto,
-          indiceUsuarios
+          personal
         )
         if (usuarioAsignado === null) {
           pendientes += 1

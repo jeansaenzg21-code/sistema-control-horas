@@ -72,7 +72,6 @@ async function main() {
 
   const cfg = bd()
   const db = await mysql.createConnection(cfg)
-  const nombres = ['JULIA ALAYO', 'EDUARDO CHISCUL', 'Yonny flores']
   const creados = []
   // Se declara fuera del try para que el finally pueda limpiar aunque algo falle
   // a mitad de la importación.
@@ -98,26 +97,17 @@ async function main() {
       [`PRUEBA SANTA ROSA ${Date.now()}`, areaId]
     )
     clienteId = insCliente.insertId
-    // Los tres del Excel, que en la base real NO existen.
-    const marca = crypto.randomBytes(4).toString('hex')
-    for (let i = 0; i < nombres.length; i += 1) {
-      const n = nombres[i]
-      // `usuarios.usuario` es único: cada persona necesita el suyo.
-      const sufijo = `${marca}${i}`
-      const [r] = await db.query(
-        `INSERT INTO usuarios (nombre, usuario, correo, password_hash, rol, area_id, activo)
-         VALUES (?,?,?,?,?,?,TRUE)`,
-        [
-          n,
-          `prueba_${sufijo}`,
-          `prueba_${sufijo}@example.test`,
-          'NO_APLICA_EN_PRUEBAS',
-          'PERSONAL',
-          areaId,
-        ]
-      )
-      creados.push(r.insertId)
-    }
+  // No se crean usuarios con los nombres del Excel: en la base YA existen
+  // (CHISCUL MOLINA EDUARDO EMILIO, FLORES CASTILLO YONNY ALEXANDER,
+  // ALAYO BERECHE JULIA MERCEDES). Crear duplicados haria que el nombre quedara
+  // ambiguo y el importador no adjudicaria a nadie, que no es lo que se quiere
+  // comprobar aqui.
+  const [[refE]] = await db.query("SELECT id FROM usuarios WHERE nombre = 'CHISCUL MOLINA EDUARDO EMILIO' LIMIT 1")
+  const [[refY]] = await db.query("SELECT id FROM usuarios WHERE nombre = 'FLORES CASTILLO YONNY ALEXANDER' LIMIT 1")
+  const [[refJ]] = await db.query("SELECT id FROM usuarios WHERE nombre = 'ALAYO BERECHE JULIA MERCEDES' LIMIT 1")
+  ok(refE.id && refY.id && refJ.id, 'el personal de Santa Rosa esta cargado en la base')
+  const usuarioQueSube = refE.id
+  console.log(`  personal real -> Eduardo=${refE.id} Yonny=${refY.id} Julia=${refJ.id}`)
     console.log(`  cliente de prueba id=${clienteId}, 3 usuarios creados`)
 
     titulo('Primera importacion')
@@ -130,7 +120,7 @@ async function main() {
     const r1 = await guardarAnalisis({
       empresaId,
       clienteId,
-      usuarioId: creados[0],
+      usuarioId: usuarioQueSube,
       nombreArchivo: 'Presupuesto Colegio Santa Rosa (1).xlsx',
       archivo,
       analisis,
@@ -167,12 +157,26 @@ async function main() {
     console.log(`  ${conUsuario.length} con usuario, ${sinUsuario.length} pendientes`)
     ok(conUsuario.length > 0, 'las personas que SI existen quedan vinculadas')
 
-    // Toda vinculacion debe ser exacta: el usuario debe llamarse como el Excel.
-    const vinculacionesIncorrectas = conUsuario.filter((a) =>
-      String(a.nombre_texto).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim() !==
-      String(a.usuario_nombre).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+    // La seguridad NO es que las cadenas sean iguales: el Excel trae el nombre
+    // primero y el personal los apellidos primero. Lo que no puede pasar es que
+    // se adjudiquen a alguien a quien le falte alguna palabra del Excel. El Excel
+    // viene ABREVIADO, asi que sus palabras tienen que estar dentro del nombre
+    // del usuario, no al reves.
+    const palabras = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-zñ\s]/g, ' ').split(/\s+/).filter(Boolean)
+    const vinculacionesIncorrectas = conUsuario.filter((a) => {
+      const delUsuario = new Set(palabras(a.usuario_nombre))
+      return !palabras(a.nombre_texto).every((p) => delUsuario.has(p))
+    })
+    ok(
+      vinculacionesIncorrectas.length === 0,
+      'cada persona vinculada tiene en su nombre TODAS las palabras del Excel',
+      JSON.stringify(vinculacionesIncorrectas.slice(0, 3))
     )
-    ok(vinculacionesIncorrectas.length === 0, 'ninguna vinculacion se hace por parecido', JSON.stringify(vinculacionesIncorrectas))
+    // Y las tres de Santa Rosa tienen que estar enlazadas de verdad.
+    for (const par of [['EDUARDO CHISCUL', 55], ['Yonny flores', 26], ['JULIA ALAYO', 48]]) {
+      const hallada = conUsuario.find((a) => a.nombre_texto === par[0])
+      ok(hallada && hallada.usuario_id === par[1], `"${par[0]}" apunta al personal real (id ${par[1]})`, hallada ? `-> ${hallada.usuario_id} ${hallada.usuario_nombre}` : 'no encontrada')
+    }
 
     const pendientes = sinUsuario.filter((a) => a.estado === 'PENDIENTE_REVISION')
     ok(pendientes.length === sinUsuario.length, 'las que no se pueden atribuir quedan PENDIENTE_REVISION')
@@ -188,7 +192,7 @@ async function main() {
 
     titulo('Reimportar el mismo archivo no duplica')
     const r2 = await guardarAnalisis({
-      empresaId, clienteId, usuarioId: creados[0],
+      empresaId, clienteId, usuarioId: usuarioQueSube,
       nombreArchivo: 'Presupuesto Colegio Santa Rosa (1).xlsx',
       archivo, analisis: await analizarPresupuesto(archivo),
     })
@@ -204,7 +208,7 @@ async function main() {
     titulo('Un archivo distinto crea una version nueva')
     const otro = Buffer.concat([archivo, Buffer.from('\n')])
     const r3 = await guardarAnalisis({
-      empresaId, clienteId, usuarioId: creados[0],
+      empresaId, clienteId, usuarioId: usuarioQueSube,
       nombreArchivo: 'otra version.xlsx', archivo: otro,
       analisis: await analizarPresupuesto(otro),
     })
