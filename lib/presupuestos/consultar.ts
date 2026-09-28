@@ -81,6 +81,61 @@ export async function obtenerAreaDeCliente(
   return rows[0]?.area_id ?? null
 }
 
+function sinAcentos(texto: string | null): string {
+  if (!texto) return ''
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Busca un área por nombre ignorando acentos y mayúsculas.
+ *
+ * El Excel escribe "CONSULTORIA" con tilde y en mayúsculas, y en la base está
+ * "Consultoría". Comparar en crudo no encontraría nada, así que se normaliza.
+ * Si hubiera dos áreas que se normalicen igual, devuelve null: es mejor pedir que
+ * elija que adivinar.
+ */
+export async function buscarAreaPorNombre(
+  nombre: string,
+  empresaId: number
+): Promise<{ id: number; nombre: string } | null> {
+  const [rows] = await pool.query<(RowDataPacket & { id: number; nombre: string })[]>(
+    `SELECT id, nombre FROM areas WHERE empresa_id = ? AND activo = TRUE`,
+    [empresaId]
+  )
+  const objetivo = sinAcentos(nombre)
+  const coincidencias = rows.filter((a) => sinAcentos(a.nombre) === objetivo)
+  return coincidencias.length === 1 ? { id: coincidencias[0].id, nombre: coincidencias[0].nombre } : null
+}
+
+export async function buscarClientePorNombre(
+  nombre: string,
+  empresaId: number
+): Promise<{ id: number; nombre: string } | null> {
+  const objetivo = sinAcentos(nombre)
+  const [rows] = await pool.query<(RowDataPacket & { id: number; nombre: string })[]>(
+    `SELECT c.id, c.nombre
+       FROM clientes c
+       INNER JOIN areas a ON a.id = c.area_id
+      WHERE a.empresa_id = ? AND c.activo = TRUE`,
+    [empresaId]
+  )
+  const coincidencias = rows.filter((c) => sinAcentos(c.nombre) === objetivo)
+  return coincidencias.length === 1 ? { id: coincidencias[0].id, nombre: coincidencias[0].nombre } : null
+}
+
+export async function listarAreas(empresaId: number): Promise<{ id: number; nombre: string }[]> {
+  const [rows] = await pool.query<(RowDataPacket & { id: number; nombre: string })[]>(
+    'SELECT id, nombre FROM areas WHERE empresa_id = ? AND activo = TRUE ORDER BY nombre',
+    [empresaId]
+  )
+  return rows.map((a) => ({ id: a.id, nombre: a.nombre }))
+}
+
 export async function obtenerPresupuestosDeCliente(
   clienteId: number,
   empresaId: number,

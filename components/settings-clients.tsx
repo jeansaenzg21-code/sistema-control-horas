@@ -9,6 +9,7 @@ import { useNotificaciones } from '@/lib/notificaciones-context'
 import { evaluarBolsaHoras } from '@/lib/bolsa-horas'
 import { formatoHoras } from '@/lib/utils'
 import { SettingsClientePresupuestos } from './settings-cliente-presupuestos'
+import { ImportadorPresupuesto } from './cliente-desde-excel'
 
 interface FormularioCliente {
   nombre: string
@@ -61,6 +62,8 @@ export function SettingsClients() {
   const [areaFiltro, setAreaFiltro] = useState<number | ''>('')
   // Cliente al que se le está viendo el presupuesto. El import vive aquí.
   const [presupuestosDe, setPresupuestosDe] = useState<{ id: number; nombre: string } | null>(null)
+  // Alta de cliente leyendo el presupuesto en Excel.
+  const [importandoDesdeExcel, setImportandoDesdeExcel] = useState(false)
 
   useEffect(() => {
     if (!cargando && usuario) void cargarNotificaciones(usuario.id)
@@ -208,11 +211,86 @@ export function SettingsClients() {
           {clientesFiltrados.length} {clientesFiltrados.length === 1 ? 'cliente' : 'clientes'}
         </span>
       </section>
+      {creando && !editandoId && !importandoDesdeExcel && (
+        <section className="rounded-xl border border-border bg-card/40 p-4">
+          <h2 className="text-sm font-semibold text-foreground">Nuevo cliente</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            El presupuesto en Excel ya trae el nombre del cliente y su división. Súbelo y se
+            rellena solo.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setImportandoDesdeExcel(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-[#7c3aed] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#6d28d9]"
+            >
+              <FileSpreadsheet size={14} />
+              Desde un presupuesto en Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFormulario(formularioVacio)
+                setCreando(false)
+              }}
+              className="rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              Crear sin presupuesto
+            </button>
+          </div>
+        </section>
+      )}
 
-      {(creando || editandoId) && (
+      {creando && importandoDesdeExcel && (
+        <ImportadorPresupuesto
+          onCancelar={() => setImportandoDesdeExcel(false)}
+          onListo={async (datos) => {
+            // Primero el cliente, porque presupuesto_servicios y el propio
+            // presupuesto cuelgan de el y no pueden existir sin cliente.
+            const creado = await crearCliente({
+              nombre: datos.nombre,
+              area_id: datos.areaId,
+              horas_contratadas: datos.horas,
+              // El Excel no trae datos de contacto: se dejan vacíos y el usuario
+              // los rellena después si los necesita.
+              ruc: null,
+              correo: null,
+              telefono: null,
+              direccion: null,
+            })
+            if (!creado) {
+              setError('No se pudo crear el cliente.')
+              return
+            }
+            const clienteNuevo = clientes.find((c) => c.nombre.trim() === datos.nombre)
+            if (!clienteNuevo) {
+              setImportandoDesdeExcel(false)
+              return
+            }
+
+            // Y después el presupuesto, reenviando el Excel que ya se había leído.
+            const binario = Uint8Array.from(atob(datos.archivoBase64), (c) => c.charCodeAt(0))
+            const fd = new FormData()
+            fd.append('archivo', new File([binario], datos.nombreArchivo))
+            fd.append('cliente_id', String(clienteNuevo.id))
+            const r = await fetch('/api/presupuestos', { method: 'POST', body: fd })
+            if (!r.ok) {
+              const cuerpo = await r.json().catch(() => ({}))
+              setError(
+                `El cliente se creó, pero el presupuesto no se pudo importar: ${cuerpo.error ?? 'error desconocido'}.`
+              )
+            }
+            setImportandoDesdeExcel(false)
+            setCreando(false)
+            setPresupuestosDe({ id: clienteNuevo.id, nombre: clienteNuevo.nombre })
+          }}
+        />
+      )}
+
+      {(editandoId || (creando && !importandoDesdeExcel)) && (
         <form onSubmit={editandoId ? manejarEditar : manejarCrear} className="rounded-xl border border-border bg-card p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">{editandoId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+            <h2 className="text-sm font-semibold text-foreground">{editandoId ? 'Editar cliente' : 'Nuevo cliente (manual)'}</h2>
             <button type="button" onClick={cancelar} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Cerrar formulario">
               <span className="sr-only">Cerrar</span>
               ×
