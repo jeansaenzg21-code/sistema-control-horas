@@ -67,6 +67,13 @@ export type Observacion = {
 
 export type AnalisisPresupuesto = {
   hojas: string[]
+  /**
+   * Cliente y área que trae el documento. Sirven para crear el cliente al
+   * importar, en vez de pedir que se escriba a mano lo que ya está en el Excel.
+   * Vienen del primer bloque: todos los del documento deben coincidir.
+   */
+  cliente: string | null
+  area: string | null
   servicios: ServicioExtraido[]
   planificacion: SubetapaExtraida[]
   observaciones: Observacion[]
@@ -658,6 +665,8 @@ export async function analizarPresupuesto(archivo: Buffer): Promise<AnalisisPres
 
   return {
     hojas,
+    cliente: bloques[0]?.cliente ?? null,
+    area: bloques[0]?.area ?? null,
     servicios: [...detallados, ...consolidados],
     planificacion,
     observaciones,
