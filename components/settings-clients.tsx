@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Building2, Clock, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, UsersRound } from 'lucide-react'
+import { AlertTriangle, Building2, Clock, FileSpreadsheet, Mail, MapPin, Pencil, Phone, Plus, Search, Trash2, UsersRound } from 'lucide-react'
 import { useClientes, type Cliente } from '@/lib/clientes-context'
 import { useAreas } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 import { useNotificaciones } from '@/lib/notificaciones-context'
 import { evaluarBolsaHoras } from '@/lib/bolsa-horas'
 import { formatoHoras } from '@/lib/utils'
+import { SettingsClientePresupuestos } from './settings-cliente-presupuestos'
 
 interface FormularioCliente {
   nombre: string
@@ -58,6 +59,8 @@ export function SettingsClients() {
   const [error, setError] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [areaFiltro, setAreaFiltro] = useState<number | ''>('')
+  // Cliente al que se le está viendo el presupuesto. El import vive aquí.
+  const [presupuestosDe, setPresupuestosDe] = useState<{ id: number; nombre: string } | null>(null)
 
   useEffect(() => {
     if (!cargando && usuario) void cargarNotificaciones(usuario.id)
@@ -291,6 +294,15 @@ export function SettingsClients() {
                     </p>
                   </div>
                   <div className="flex flex-none gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => setPresupuestosDe({ id: cliente.id, nombre: cliente.nombre })}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      aria-label={`Presupuestos de ${cliente.nombre}`}
+                      title="Importar y revisar presupuestos"
+                    >
+                      <FileSpreadsheet size={14} />
+                    </button>
                     <button type="button" onClick={() => iniciarEdicion(cliente)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Editar ${cliente.nombre}`}><Pencil size={14} /></button>
                     <button type="button" onClick={() => manejarEliminar(cliente.id, cliente.nombre)} className="rounded-md p-1.5 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400" aria-label={`Eliminar ${cliente.nombre}`}><Trash2 size={14} /></button>
                   </div>
@@ -338,11 +350,28 @@ export function SettingsClients() {
                     </span>
                   </p>
                 </div>
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setPresupuestosDe({ id: cliente.id, nombre: cliente.nombre })}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:border-[#7c3aed]/50 hover:bg-muted"
+                  >
+                    <FileSpreadsheet size={13} className="text-[#a78bfa]" />
+                    Presupuestos
+                  </button>
+                </div>
               </article>
             )
           })}
           {clientesFiltrados.length === 0 && clientes.length > 0 && <div className="col-span-full rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No hay clientes que coincidan con la búsqueda.</div>}
         </div>
+      )}
+
+      {presupuestosDe && (
+        <SettingsClientePresupuestos
+          cliente={presupuestosDe}
+          onCerrar={() => setPresupuestosDe(null)}
+        />
       )}
     </div>
   )

@@ -32,13 +32,23 @@ export type DecisionPermiso = {
   esExcepcion: boolean
 }
 
-export type AccionPresupuesto = 'VINCULAR' | 'APROBAR' | 'ACTIVAR_BOLSAS' | 'REPARTIR'
+export type AccionPresupuesto =
+  | 'IMPORTAR'
+  | 'VINCULAR'
+  | 'APROBAR'
+  | 'ACTIVAR_BOLSAS'
+  | 'REPARTIR'
 
 const SIN_PROYECTO_MOTIVO =
   'El presupuesto todavía no está vinculado a un proyecto. Vincúlalo y designa al Líder antes de continuar.'
 
 /**
  * Decide sin tocar la base. `esLiderDelProyecto` ya viene resuelto.
+ *
+ * IMPORTAR es distinto del resto a propósito: cargar el presupuesto del cliente
+ * es parte del trabajo del JEFE DE ÁREA, y lo hace incluso antes de que exista un
+ * proyecto. La regla del Líder aplica a APROBAR, ACTIVAR_BOLSAS y REPARTIR, que
+ * son las que mueven horas contratadas.
  *
  * `accion = 'VINCULAR'` es el único caso válido sin proyecto: ahí lo que hace el
  * ADMIN es crear el vínculo y designar al Líder, que es el paso normal y no una
@@ -49,8 +59,29 @@ export function decidirGestion(params: {
   esAdmin: boolean
   esLiderDelProyecto: boolean
   proyectoId: number | null
+  /** El usuario es jefe del área a la que pertenece ESTE cliente. */
+  esJefeDelAreaDelCliente?: boolean
 }): DecisionPermiso {
-  const { accion, esAdmin, esLiderDelProyecto, proyectoId } = params
+  const { accion, esAdmin, esLiderDelProyecto, proyectoId, esJefeDelAreaDelCliente = false } = params
+
+  // Cargar el presupuesto: el jefe del área del cliente puede, y el admin.
+  if (accion === 'IMPORTAR') {
+    if (esJefeDelAreaDelCliente) {
+      return {
+        permitido: true,
+        motivo: 'Eres el jefe del área de este cliente.',
+        esExcepcion: false,
+      }
+    }
+    if (esAdmin) {
+      return { permitido: true, motivo: 'Actúas como administrador.', esExcepcion: false }
+    }
+    return {
+      permitido: false,
+      motivo: 'Solo el jefe del área del cliente o el administrador pueden importar su presupuesto.',
+      esExcepcion: false,
+    }
+  }
 
   if (proyectoId === null) {
     if (accion !== 'VINCULAR') {
@@ -116,8 +147,10 @@ export async function resolverPermiso(params: {
   usuario: UsuarioConPermisos & { id: number }
   accion: AccionPresupuesto
   proyectoIdForzado?: number | null
+  /** Área a la que pertenece el cliente, para el jefe de área al importar. */
+  areaIdDelCliente?: number | null
 }): Promise<ResultadoPermiso> {
-  const { presupuestoId, usuario, accion, proyectoIdForzado } = params
+  const { presupuestoId, usuario, accion, proyectoIdForzado, areaIdDelCliente = null } = params
 
   let proyectoId = proyectoIdForzado
   if (proyectoId === undefined) {
@@ -135,9 +168,17 @@ export async function resolverPermiso(params: {
 
   const esAdmin = esAdministrador(usuario)
   const esLider = proyectoId === null ? false : await esLiderDeProyecto(proyectoId, usuario.id)
+  const esJefeDelAreaDelCliente =
+    !esAdmin && areaIdDelCliente !== null && usuario.area_id === areaIdDelCliente
 
   return {
-    ...decidirGestion({ accion, esAdmin, esLiderDelProyecto: esLider, proyectoId }),
+    ...decidirGestion({
+      accion,
+      esAdmin,
+      esLiderDelProyecto: esLider,
+      proyectoId,
+      esJefeDelAreaDelCliente,
+    }),
     proyectoId,
     usuarioId: usuario.id,
   }

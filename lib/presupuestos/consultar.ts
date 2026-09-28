@@ -66,6 +66,21 @@ function extraerObservaciones(analisis: unknown): {
     .map((o) => ({ tipo: o.tipo, severidad: o.severidad, mensaje: o.mensaje }))
 }
 
+/** Área a la que pertenece un cliente, o null si no existe en esa empresa. */
+export async function obtenerAreaDeCliente(
+  clienteId: number,
+  empresaId: number
+): Promise<number | null> {
+  const [rows] = await pool.query<(RowDataPacket & { area_id: number })[]>(
+    `SELECT c.area_id
+       FROM clientes c
+       INNER JOIN areas a ON a.id = c.area_id
+      WHERE c.id = ? AND a.empresa_id = ? AND c.activo = TRUE`,
+    [clienteId, empresaId]
+  )
+  return rows[0]?.area_id ?? null
+}
+
 export async function obtenerPresupuestosDeCliente(
   clienteId: number,
   empresaId: number,
