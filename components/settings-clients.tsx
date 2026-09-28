@@ -247,12 +247,19 @@ export function SettingsClients() {
           onListo={async (datos) => {
             // Primero el cliente, porque presupuesto_servicios y el propio
             // presupuesto cuelgan de el y no pueden existir sin cliente.
+            //
+            // `horas_contratadas` se deja en 0 a proposito. Las horas del Excel
+            // NO son horas contratadas todavia: hay 2 h complementarias sin
+            // confirmar, y ese total se recalcula cuando el Lider active las
+            // bolsas. Ademas `clientes.horas_contratadas` es un unico numero para
+            // todo el cliente: escribir ahi el total de un proyecto contaminaria
+            // los saldos de los demas proyectos del mismo cliente.
             const creado = await crearCliente({
               nombre: datos.nombre,
               area_id: datos.areaId,
-              horas_contratadas: datos.horas,
-              // El Excel no trae datos de contacto: se dejan vacíos y el usuario
-              // los rellena después si los necesita.
+              horas_contratadas: 0,
+              // El Excel no trae datos de contacto: se dejan vacios y el usuario
+              // los rellena despues si los necesita.
               ruc: null,
               correo: null,
               telefono: null,

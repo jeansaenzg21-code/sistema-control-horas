@@ -164,11 +164,16 @@ export async function guardarAnalisis(params: {
     let detallados = 0
     let consolidados = 0
 
+    // Nada nace activo. `activo` solo se pone a 1 cuando el Líder activa las
+    // bolsas, y de todos modos solo para los servicios DETALLADOS: los
+    // consolidados son referencia y si arrancaran activos sumarían sus 272 h
+    // encima de las 270 reales, duplicando el alcance del presupuesto.
+
     for (const servicio of analisis.servicios) {
       const [res] = await conexion.query<ResultSetHeader>(
         `INSERT INTO presupuesto_servicios
-           (presupuesto_id, origen, nombre, horas, moneda, importe, fee, fila_origen, nota)
-         VALUES (?, ?, ?, ?, 'USD', ?, ?, ?, ?)`,
+           (presupuesto_id, origen, nombre, horas, moneda, importe, fee, fila_origen, nota, activo)
+         VALUES (?, ?, ?, ?, 'USD', ?, ?, ?, ?, 0)`,
         [
           presupuestoId,
           servicio.origen,
