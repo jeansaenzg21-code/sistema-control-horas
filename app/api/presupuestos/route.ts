@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { analizarPresupuesto } from '@/lib/presupuestos/importar-excel'
 import { guardarAnalisis } from '@/lib/presupuestos/guardar'
+import { resolverPermiso } from '@/lib/presupuestos/permisos'
 
 export const runtime = 'nodejs'
 
@@ -56,6 +57,25 @@ export async function POST(request: Request) {
   }
 
   const bytes = Buffer.from(await archivo.arrayBuffer())
+
+  // Cargar el presupuesto del cliente es parte del trabajo del jefe de ÁREA, así
+  // que se valida que sea el de su área (o el administrador). Esto va en el
+  // backend: esconder el botón no impide nada.
+  const { obtenerAreaDeCliente } = await import('@/lib/presupuestos/consultar')
+  const areaCliente = await obtenerAreaDeCliente(clienteId, context.activa.id)
+  if (areaCliente === null) {
+    return NextResponse.json({ error: 'El cliente no existe en esta empresa.' }, { status: 404 })
+  }
+  const permiso = await resolverPermiso({
+    presupuestoId: 0,
+    usuario: { id: user.id, rol: user.rol, area_id: user.area_id },
+    accion: 'IMPORTAR',
+    proyectoIdForzado: null,
+    areaIdDelCliente: areaCliente,
+  })
+  if (!permiso.permitido) {
+    return NextResponse.json({ error: permiso.motivo }, { status: 403 })
+  }
 
   let analisis
   try {

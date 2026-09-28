@@ -126,6 +126,32 @@ function main() {
     if (esAdmin) ok(!d.esExcepcion, 'VINCULAR por el admin es el paso normal, no una excepcion')
   }
 
+  titulo('Cargar el presupuesto: el jefe del AREA del cliente si puede')
+  // Corrección del negocio: importar es parte del trabajo del jefe de área.
+  const importarComo = (esAdmin, esJefeArea) =>
+    decidirGestion({
+      accion: 'IMPORTAR',
+      esAdmin,
+      esLiderDelProyecto: false,
+      proyectoId: SIN_PROYECTO,
+      esJefeDelAreaDelCliente: esJefeArea,
+    })
+
+  ok(importarComo(false, true).permitido, 'el jefe del área del cliente puede importar su presupuesto')
+  ok(!importarComo(false, true).esExcepcion, 'y no es una excepcion')
+  ok(importarComo(true, false).permitido, 'el administrador tambien puede importar')
+  ok(!importarComo(false, false).permitido, 'un jefe de OTRA area no puede')
+  ok(importarComo(false, false).motivo.length > 0, 'y se le explica por que')
+
+  // Y puede hacerlo sin proyecto: todavia no hay ninguno.
+  ok(importarComo(false, true).permitido, 'puede importar aunque el presupuesto aun no tenga proyecto')
+
+  // El jefe de area NO puede aprobar por el hecho de serlo.
+  ok(
+    !como({ accion: 'APROBAR', esAdmin: false, esLider: false }).permitido,
+    'importar no le da permiso para aprobar'
+  )
+
   titulo('La matriz completa se puede resumir')
   const filas = []
   for (const accion of ACCIONES) {
@@ -135,6 +161,7 @@ function main() {
       jefeAreaNoParticipa: como({ accion, esAdmin: false, esLider: false }).permitido,
       admin: como({ accion, esAdmin: true, esLider: false }).permitido,
       adminEsLider: como({ accion, esAdmin: true, esLider: true }).permitido,
+      jefeAreaImporta: accion === 'IMPORTAR' ? importarComo(false, true).permitido : false,
     })
   }
   console.table(filas)
