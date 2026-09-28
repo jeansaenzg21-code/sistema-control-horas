@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use tauri::Manager;
+
 #[cfg(not(windows))]
 use tauri::{PhysicalPosition, PhysicalSize};
 
@@ -48,6 +50,17 @@ fn set_window_bounds(
 
 fn main() {
     tauri::Builder::default()
+        // Tiene que ir el primero: es el que intercepta el segundo lanzamiento
+        // antes de que se cree ninguna ventana. Sin esto, cada doble clic abría
+        // otra instancia con su propio widget encima.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // Ya hay una instancia: se muestra la que existe en vez de abrir otra.
+            if let Some(ventana) = app.get_webview_window("main") {
+                let _ = ventana.show();
+                let _ = ventana.unminimize();
+                let _ = ventana.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_store::Builder::new().build())
         .invoke_handler(tauri::generate_handler![set_window_bounds])
         .run(tauri::generate_context!())
