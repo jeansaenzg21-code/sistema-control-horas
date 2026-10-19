@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise'
-import bcrypt from 'bcryptjs'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
+import { hashearPassword, validarPassword } from '@/lib/validacion-password'
 
 const SELECT_USUARIO = `
   SELECT u.id, u.nombre, COALESCE(u.correo, '') AS correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad,
@@ -229,7 +229,11 @@ export async function PUT(
       }
     }
     if (password) {
-      const hash = await bcrypt.hash(password, 10)
+      const validacion = validarPassword(password)
+      if (!validacion.ok) {
+        return NextResponse.json({ error: validacion.error }, { status: 400 })
+      }
+      const hash = await hashearPassword(String(password))
       campos.push('password_hash = ?'); valores.push(hash)
     }
 

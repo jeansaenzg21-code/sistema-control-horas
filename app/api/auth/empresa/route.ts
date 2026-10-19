@@ -4,14 +4,9 @@ import {
   getEmpresaContext,
   getEmpresaDisponible,
   getUserFromRequest,
+  hashToken,
+  tokenDeRequest,
 } from '@/lib/auth'
-
-function getToken(request: Request): string | null {
-  const authHeader = request.headers.get('Authorization')
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
-  const token = authHeader.slice(7)
-  return token.length >= 10 ? token : null
-}
 
 export async function GET(request: Request) {
   const user = await getUserFromRequest(request)
@@ -45,14 +40,15 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'No tienes acceso a esa empresa.' }, { status: 403 })
   }
 
-  const token = getToken(request)
+  const token = tokenDeRequest(request)
   if (!token) {
     return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 })
   }
 
+  // La columna guarda el hash del token, no el token.
   await pool.query(
     'UPDATE sesiones SET empresa_id = ? WHERE token = ? AND expira_en > NOW()',
-    [empresaId, token]
+    [empresaId, hashToken(token)]
   )
 
   return NextResponse.json({ ok: true, empresa_activa: empresa })
@@ -64,14 +60,14 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 })
   }
 
-  const token = getToken(request)
+  const token = tokenDeRequest(request)
   if (!token) {
     return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 })
   }
 
   await pool.query(
     'UPDATE sesiones SET empresa_id = NULL WHERE token = ? AND expira_en > NOW()',
-    [token]
+    [hashToken(token)]
   )
 
   return NextResponse.json({ ok: true, empresa_activa: null })

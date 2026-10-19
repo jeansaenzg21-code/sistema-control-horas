@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
-import bcrypt from 'bcryptjs'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { NOMBRES_DIAS } from '@/lib/dias'
 import { horarioValido } from '@/lib/horarios'
 import { clasificarRolPorCargo, tipoCargo } from '@/lib/cargos'
+import { hashearPassword, validarPassword } from '@/lib/validacion-password'
 
 interface FilaImportacion {
   nombre: string
@@ -154,7 +154,8 @@ export async function POST(request: Request) {
         const cargo = cargoDeFila(f)
 
         if (!nombre || !usuario) { errores.push({ fila: numFila, error: 'Falta el nombre o el usuario.' }); continue }
-        if (contrasena.length < 7) { errores.push({ fila: numFila, error: 'La contraseña debe tener al menos 7 caracteres.' }); continue }
+        const validacion = validarPassword(contrasena)
+        if (!validacion.ok) { errores.push({ fila: numFila, error: validacion.error || 'La contraseña no cumple la política.' }); continue }
 
         const clave = usuario.toLowerCase()
         if (usuariosVistos.has(clave)) { omitidos++; continue }
@@ -216,7 +217,7 @@ export async function POST(request: Request) {
         }
         if (!horarioOk) continue
 
-        const hash = await bcrypt.hash(contrasena, 10)
+        const hash = await hashearPassword(contrasena)
         const conn = await pool.getConnection()
         try {
           await conn.beginTransaction()

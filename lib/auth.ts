@@ -1,8 +1,24 @@
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash } from 'crypto'
 import { RowDataPacket } from 'mysql2'
 import pool from './db'
 
 const SESSION_DURATION_HOURS = 72
+
+/**
+ * Hash SHA-256 de una credencial de sesion.
+ *
+ * Lo que se guarda en `sesiones` NO es el token, sino este hash. El token
+ * original solo sale al cliente (cookie HttpOnly en la web, almacenamiento
+ * seguro en el movil). Asi, quien lea la tabla de sesiones no puede
+ * suplantar a nadie: tiene un hash, no la llave.
+ *
+ * Es un hash rapido y no un bcrypt porque el token ya es un secreto aleatorio
+ * de 64 caracteres: no hay diccionario que atacar y no hace falta el costo
+ * de bcrypt. Lo que importa es que sea irreversible.
+ */
+export function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
 
 export interface EmpresaSesion {
   id: number
@@ -112,7 +128,7 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
      FROM sesiones s
      INNER JOIN usuarios u ON u.id = s.usuario_id
      WHERE s.token = ? AND s.expira_en > NOW()`,
-    [token]
+    [hashToken(token)]
   )
 
   const sesiones = rows as Array<Record<string, unknown>>
@@ -280,6 +296,11 @@ async function renovacionDisponible(): Promise<boolean> {
 export async function createSession(usuarioId: number, dispositivo?: string | null): Promise<SesionEmitida> {
   const token = generateToken()
   const refreshToken = generateToken()
+  // En la base se guardan los HASHES. El cliente recibe siempre el token
+  // original; guardar el original seria exactamente el problema que esta
+  // migracion viene a quitar.
+  const tokenHash = hashToken(token)
+  const refreshHash = hashToken(refreshToken)
   const expiraAcceso = caducidadTokenAcceso()
   const expiraRenovacion = masDias(REFRESH_TOKEN_DAYS)
   const empresaId = await getDefaultEmpresaId(usuarioId)
@@ -289,7 +310,7 @@ export async function createSession(usuarioId: number, dispositivo?: string | nu
       `INSERT INTO sesiones
          (usuario_id, empresa_id, token, expira_en, refresh_token, refresh_expira_en, dispositivo, ultimo_uso)
        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [usuarioId, empresaId, token, expiraAcceso, refreshToken, expiraRenovacion, dispositivo ?? null]
+      [usuarioId, empresaId, tokenHash, expiraAcceso, refreshHash, expiraRenovacion, dispositivo ?? null]
     )
     return { token, refreshToken, expiraAcceso, expiraRenovacion }
   }
@@ -297,13 +318,13 @@ export async function createSession(usuarioId: number, dispositivo?: string | nu
   // La migraci�n todav�a no est� aplicada: sesi�n antigua, sin renovaci�n.
   await pool.query(
     `INSERT INTO sesiones (usuario_id, empresa_id, token, expira_en) VALUES (?, ?, ?, ?)`,
-    [usuarioId, empresaId, token, expiraAcceso]
+    [usuarioId, empresaId, tokenHash, expiraAcceso]
   )
   return { token, refreshToken, expiraAcceso, expiraRenovacion }
 }
 
 export async function deleteSession(token: string): Promise<void> {
-  await pool.query(`DELETE FROM sesiones WHERE token = ?`, [token])
+  await pool.query(`DELETE FROM sesiones WHERE token = ?`, [hashToken(token)])
 }
 
 /**
@@ -323,6 +344,9 @@ export async function renovarSession(
   // responde "no hay sesión" en lugar de reventar con un error de columna.
   if (!(await renovacionDisponible())) return null
 
+  // Lo que se busca en la base es el HASH del token de renovacion.
+  const refreshHash = hashToken(refreshToken)
+
   const conexion = await pool.getConnection()
   try {
     await conexion.beginTransaction()
@@ -337,7 +361,7 @@ export async function renovarSession(
         WHERE s.refresh_token = ?
            OR (s.refresh_anterior = ? AND s.refresh_anterior_expira_en > NOW())
         FOR UPDATE`,
-      [refreshToken, refreshToken]
+      [refreshHash, refreshHash]
     )
 
     if (filas.length === 0) {
@@ -353,6 +377,9 @@ export async function renovarSession(
 
     const nuevoAcceso = generateToken()
     const nuevoRefresh = generateToken()
+    // Guardamos los hashes de los tokens nuevos; el cliente recibe los originales.
+    const nuevoAccesoHash = hashToken(nuevoAcceso)
+    const nuevoRefreshHash = hashToken(nuevoRefresh)
     const expiraAcceso = caducidadTokenAcceso()
     // El token de acceso puede renovar aunque la fila haya pasado su expira_en:
     // mientras el de renovación siga vivo, la sesión sigue existiendo. Si no,
@@ -367,7 +394,7 @@ export async function renovarSession(
               refresh_anterior = refresh_token, refresh_anterior_expira_en = ?,
               refresh_token = ?, refresh_expira_en = ?, ultimo_uso = NOW()
         WHERE id = ?`,
-      [nuevoAcceso, expiraAcceso, finGracia, nuevoRefresh, expiraRenovacion, fila.id]
+      [nuevoAccesoHash, expiraAcceso, finGracia, nuevoRefreshHash, expiraRenovacion, fila.id]
     )
 
     await conexion.commit()
@@ -386,7 +413,8 @@ export async function renovarSession(
 export async function cerrarSesionDispositivo(refreshToken: string): Promise<void> {
   // Sin la migración no hay sesiones revocables por token de renovación.
   if (!(await renovacionDisponible())) return
-  await pool.query('DELETE FROM sesiones WHERE refresh_token = ? OR refresh_anterior = ?', [refreshToken, refreshToken])
+  const hash = hashToken(refreshToken)
+  await pool.query('DELETE FROM sesiones WHERE refresh_token = ? OR refresh_anterior = ?', [hash, hash])
 }
 
 /** Cierra el resto de sesiones del usuario, conservando la actual. */
@@ -394,7 +422,7 @@ export async function cerrarRestoDeSesiones(usuarioId: number, refreshTokenActua
   const [result] = await pool.query(
     `DELETE FROM sesiones
       WHERE usuario_id = ? AND refresh_token <> ? AND refresh_token IS NOT NULL`,
-    [usuarioId, refreshTokenActual]
+    [usuarioId, hashToken(refreshTokenActual)]
   )
   return (result as { affectedRows: number }).affectedRows
 }
@@ -424,9 +452,10 @@ export async function listarSesiones(usuarioId: number, idSesionActual: number |
 /** Id de la sesión a la que pertenece un token de renovación, si sigue viva. */
 export async function idSesionPorRefresh(refreshToken: string): Promise<number | null> {
   if (!(await renovacionDisponible())) return null
+  const hash = hashToken(refreshToken)
   const [filas] = await pool.query<RowDataPacket[]>(
     'SELECT id FROM sesiones WHERE (refresh_token = ? OR refresh_anterior = ?) AND refresh_expira_en > NOW() LIMIT 1',
-    [refreshToken, refreshToken]
+    [hash, hash]
   )
   return filas.length ? Number(filas[0].id) : null
 }
@@ -447,6 +476,24 @@ export function leerCookieRefresh(request: Request): string | null {
 
 export function leerCookieAcceso(request: Request): string | null {
   return leerCookie(request, COOKIE_ACCESO)
+}
+
+/**
+ * Credencial de acceso de la peticion, venga por donde venga.
+ *
+ * La app movil y el widget mandan `Authorization: Bearer`. La web manda la
+ * cookie HttpOnly `pc_token`. Esta funcion sirve para las rutas que, ademas de
+ * autenticar, necesitan la credencial misma (por ejemplo para localizar la fila
+ * de `sesiones` y cambiarle la empresa). El token que devuelve es el ORIGINAL:
+* el que haya en la base ya esta hasheado.
+ */
+export function tokenDeRequest(request: Request): string | null {
+  const authHeader = request.headers.get('Authorization')
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7)
+    return token.length >= 10 ? token : null
+  }
+  return leerCookieAcceso(request)
 }
 
 function construirCookie(nombre: string, valor: string, expira: Date, maxAge: number | null): string {
