@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getUserFromRequest, getEmpresaContext, deleteSession } from '@/lib/auth'
+import { getUserFromRequest, getEmpresaContext, deleteSession, tokenDeRequest } from '@/lib/auth'
 
 export async function GET(request: Request) {
   try {
@@ -23,9 +23,11 @@ export async function GET(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const authHeader = request.headers.get('Authorization')
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      await deleteSession(authHeader.slice(7))
+    // La web manda la cookie HttpOnly, el movil la cabecera Bearer: se aceptan
+    // las dos.
+    const token = tokenDeRequest(request)
+    if (token) {
+      await deleteSession(token)
     }
     return NextResponse.json({ ok: true })
   } catch (error) {

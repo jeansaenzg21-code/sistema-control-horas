@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise'
-import bcrypt from 'bcryptjs'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
+import { hashearPassword, validarPassword } from '@/lib/validacion-password'
 
 const SELECT_USUARIOS = `
   SELECT u.id, u.nombre, u.correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad,
@@ -132,8 +132,9 @@ export async function POST(request: Request) {
     if (!nombreLimpio || !usuarioLimpio) {
       return NextResponse.json({ error: 'Nombre y usuario son obligatorios.' }, { status: 400 })
     }
-    if (!password) {
-      return NextResponse.json({ error: 'La contraseña es obligatoria.' }, { status: 400 })
+    const validacion = validarPassword(password)
+    if (!validacion.ok) {
+      return NextResponse.json({ error: validacion.error }, { status: 400 })
     }
     if (!rolDb) {
       return NextResponse.json({ error: 'El rol solicitado no es válido.' }, { status: 400 })
@@ -184,7 +185,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El usuario o correo ya existe.' }, { status: 400 })
     }
 
-    const hash = await bcrypt.hash(password, 10)
+    const hash = await hashearPassword(String(password))
     let id: number
 
     if (rolDb === 'JEFE_AREA') {
