@@ -48,9 +48,17 @@ function deleteSync() {
   } catch {}
 }
 
-function esRolAdmin(rol: string | undefined | null): boolean {
+/**
+ * Roles que no usan el widget de escritorio.
+ *
+ * El widget es un temporizador de REGISTRO de horas. El admin no lo usa porque
+ * no registra horas, y el socio por lo mismo: su perfil es de solo lectura y
+ * cada intento de guardar una actividad rebotaría con 401. Se les borra el
+ * archivo de sincronización para que el proceso de escritorio no los espere.
+ */
+function esSinWidget(rol: string | undefined | null): boolean {
   const r = (rol || '').toUpperCase()
-  return r === 'ADMIN' || r === 'ADMINISTRACION'
+  return r === 'ADMIN' || r === 'ADMINISTRACION' || r === 'SOCIO'
 }
 
 export async function POST(request: Request) {
@@ -60,7 +68,7 @@ export async function POST(request: Request) {
     if (!body.token) {
       return NextResponse.json({ error: 'token requerido' }, { status: 400 })
     }
-    if (esRolAdmin(body.rol)) {
+    if (esSinWidget(body.rol)) {
       deleteSync()
       return NextResponse.json({ ok: false, motivo: 'rol sin widget' })
     }
@@ -87,7 +95,7 @@ export async function GET() {
     if (!data) {
       return NextResponse.json({ synced: false })
     }
-    if (esRolAdmin(data.rol)) {
+    if (esSinWidget(data.rol)) {
       deleteSync()
       return NextResponse.json({ synced: false })
     }

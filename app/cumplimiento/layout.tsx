@@ -11,10 +11,10 @@ export default function CumplimientoLayout({ children }: { children: React.React
   const router = useRouter()
 
   useEffect(() => {
-    if (!cargando && usuario?.rol !== 'admin' && usuario?.rol !== 'jefe_area') router.replace('/')
+    if (!cargando && usuario?.rol !== 'admin' && usuario?.rol !== 'jefe_area' && usuario?.rol !== 'socio') router.replace('/')
   }, [cargando, usuario, router])
 
-  if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area')) return null
+  if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area' && usuario.rol !== 'socio')) return null
 
   return (
     <MainLayout title="Cumplimiento" subtitle="Control de registro de horas por colaborador">

@@ -43,7 +43,7 @@ export function ActivityTable({ areaId = '', desde = '', hasta = '' }: ActivityT
           <p className="text-xs text-muted-foreground">Últimos registros</p>
         </div>
         <Link
-          href={usuario?.rol === 'admin' ? '/consolidacion' : '/actividades'}
+          href={usuario?.rol === 'admin' || usuario?.rol === 'socio' ? '/aprobaciones' : '/actividades'}
           className="text-sm font-medium text-[#c4b5fd] transition-colors hover:text-[#a78bfa]"
         >
           Ver todas →

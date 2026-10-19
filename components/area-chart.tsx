@@ -31,8 +31,11 @@ export function AreaChart({ areaId = '', desde = '', hasta = '' }: AreaChartProp
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="mb-4">
-        <h2 className="text-sm font-semibold text-foreground">Facturado por división</h2>
-        <p className="text-xs text-muted-foreground">Distribución por cargo</p>
+        {/* El título decía "Facturado por división" pero lo que se pinta es el
+            desglose por CARGO (`por_cargo_facturable`). Con la card de al lado
+            ahora.groupby división, un título que miente aquí se nota más. */}
+        <h2 className="text-sm font-semibold text-foreground">Facturado por cargo</h2>
+        <p className="text-xs text-muted-foreground">Solo lo aprobado y facturable</p>
       </div>
 
       {total === 0 ? (

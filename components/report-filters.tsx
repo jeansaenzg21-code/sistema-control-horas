@@ -25,18 +25,30 @@ interface ReportFiltersProps {
 
 export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
   const { areas } = useAreas()
-  const { usuarios } = useAuth()
-  const areaSeleccionada = areas.find((a) => String(a.id) === filtros.areaId)
-  const sinArea = !filtros.areaId
-  const cargosDelArea = areaSeleccionada
-    ? [...new Set(usuarios.filter((usuario) => usuario.area_id === areaSeleccionada.id && usuario.cargo).map((usuario) => usuario.cargo as string))].sort()
-    : []
+  const { usuarios, usuario } = useAuth()
+  // El jefe de área solo puede consultar su propia división: no es una preferencia
+  // suya, es el tope de lo que la API le devuelve. Mostrarle un desplegable con
+  // todas las áreas lo invite a elegir una que le va a salir vacía sin explicación.
+  // Se le fija a la suya y se muestra como campo de solo lectura.
+  const divisionFija = usuario?.rol === 'jefe_area'
+  const areaBloqueada = divisionFija && usuario?.area_id != null ? String(usuario.area_id) : ''
+  const areaSeleccionada = areas.find((a) => String(a.id) === (areaBloqueada || filtros.areaId))
+  // Los cargos salen del area elegida, o de TODAS las areas si no se ha elegido
+  // ninguna. Antes el filtro de cargo se quedaba vacio y bloqueado hasta que se
+  // elegia una division, aunque el reporte entero ya se podia ver sin division.
+  const cargos = areaSeleccionada
+    ? usuarios.filter((u) => u.area_id === areaSeleccionada.id && u.cargo)
+    : usuarios.filter((u) => u.cargo)
+  const cargosDisponibles = [...new Set(cargos.map((u) => u.cargo as string))].sort()
 
   const actualizar = <K extends keyof FiltrosReporte>(clave: K, valor: FiltrosReporte[K]) => {
     onChange({ ...filtros, [clave]: valor })
   }
 
+  // Cambiar de division invalida el cargo: el cargo elegido puede no existir en la
+  // nueva area y dejaria el reporte en cero sin avisar.
   const seleccionarArea = (areaId: string) => {
+    if (divisionFija) return
     onChange({ ...filtros, areaId, cargo: 'todas' })
   }
 
@@ -61,17 +73,29 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
              División
           </label>
           <select
-            value={filtros.areaId}
+            value={areaBloqueada || filtros.areaId}
             onChange={(e) => seleccionarArea(e.target.value)}
-            className={`${estiloControl} cursor-pointer`}
+            disabled={divisionFija && usuario?.area_id != null}
+            className={cn(estiloControl, !divisionFija && 'cursor-pointer')}
           >
-             <option value="">Selecciona una división</option>
-            {areas.map((area) => (
-              <option key={area.id} value={String(area.id)}>
-                {area.nombre}
+            {divisionFija && usuario?.area_id != null ? (
+              <option value={String(usuario.area_id)}>
+                {areas.find((a) => a.id === usuario.area_id)?.nombre ?? 'Tu división'}
               </option>
-            ))}
+            ) : (
+              <>
+                <option value="">Selecciona una división</option>
+                {areas.map((area) => (
+                  <option key={area.id} value={String(area.id)}>
+                    {area.nombre}
+                  </option>
+                ))}
+              </>
+            )}
           </select>
+          {divisionFija && usuario?.area_id != null && (
+            <p className="mt-1 text-[11px] text-muted-foreground">Sólo puedes consultar tu propia división.</p>
+          )}
         </div>
 
         <div>
@@ -82,7 +106,6 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
           <select
             value={filtros.tipo}
             onChange={(e) => seleccionarTipo(e.target.value)}
-            disabled={sinArea}
             className={`${estiloControl} cursor-pointer`}
           >
             {tipos.map((tipo) => (
@@ -102,11 +125,10 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
             <select
               value={filtros.cargo}
               onChange={(e) => actualizar('cargo', e.target.value)}
-              disabled={sinArea}
               className={`${estiloControl} cursor-pointer`}
             >
               <option value="todas">Todos</option>
-              {cargosDelArea.map((cargo) => <option key={cargo} value={cargo.toLowerCase()}>{cargo}</option>)}
+              {cargosDisponibles.map((cargo) => <option key={cargo} value={cargo.toLowerCase()}>{cargo}</option>)}
             </select>
           </div>
         )}
@@ -120,7 +142,6 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
             type="date"
             value={filtros.desde}
             onChange={(e) => actualizar('desde', e.target.value)}
-            disabled={sinArea}
             className={estiloControl}
           />
         </div>
@@ -134,7 +155,6 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
             type="date"
             value={filtros.hasta}
             onChange={(e) => actualizar('hasta', e.target.value)}
-            disabled={sinArea}
             className={estiloControl}
           />
         </div>

@@ -113,13 +113,34 @@ async function registrarCambio(params: {
   )
 }
 
+/**
+ * Resuelve el área a la que pertenece el cliente del presupuesto.
+ *
+ * Sin esto, `resolverPermiso` nunca puede concessionar el permiso al jefe de
+ * área: `areaIdDelCliente` llegaría a null y `esJefeDelAreaDelCliente` saldría
+ * siempre false. Es el dato que convierte "es jefe de área" en "es jefe DEL ÁREA
+ * DE ESTE cliente", que es lo único que da permisos sobre su presupuesto.
+ */
+async function areaDelCliente(presupuestoId: number): Promise<number | null> {
+  const [rows] = await pool.query<(RowDataPacket & { area_id: number | null })[]>(
+    'SELECT c.area_id FROM presupuestos p JOIN clientes c ON c.id = p.cliente_id WHERE p.id = ?',
+    [presupuestoId]
+  )
+  return rows[0]?.area_id ?? null
+}
+
 async function comprobarPermiso(
   presupuestoId: number,
   usuario: UsuarioConPermisos & { id: number },
   accion: AccionPresupuesto,
   justificacion: string | undefined
 ): Promise<{ permitido: boolean; error: string }> {
-  const permiso = await resolverPermiso({ presupuestoId, usuario, accion })
+  const permiso = await resolverPermiso({
+    presupuestoId,
+    usuario,
+    accion,
+    areaIdDelCliente: await areaDelCliente(presupuestoId),
+  })
   if (!permiso.permitido) return { permitido: false, error: permiso.motivo }
   if (permiso.esExcepcion) {
     if (!justificacion || justificacion.trim().length < 10) {
@@ -192,10 +213,16 @@ export async function vincularProyecto(params: {
       [proyectoId, liderId]
     )
 
-    // Los servicios quedan apuntando al proyecto, pero INACTIVOS: nada se activa
-    // hasta que el Líder lo apruebe.
+    // Los servicios quedan apuntando al proyecto. NO se tocan sus `activo`.
+//
+// Antes esta línea era `SET proyecto_id = ?, activo = 0` y tenía sentido: nada se
+// activaba hasta que el Líder aprobara. Con la regla de que el presupuesto entra
+// aprobado y con sus bolsas encendidas al importar, apagar aquí vaciaba el saldo
+// del cliente de golpe (recalcularHorasContratadas suma solo las bolsas activas)
+// y bastaba con vincular un proyecto para perder las horas contratadas.
+
     await db.query(
-      `UPDATE presupuesto_servicios SET proyecto_id = ?, activo = 0 WHERE presupuesto_id = ?`,
+      `UPDATE presupuesto_servicios SET proyecto_id = ? WHERE presupuesto_id = ?`,
       [proyectoId, presupuestoId]
     )
     await db.query(
@@ -230,74 +257,199 @@ export async function vincularProyecto(params: {
   }
 }
 
-/** El Líder confirma una asignación concreta, choosing quién la ejecuta. */
+/** El Líder confirma una asignación concreta, eligiendo quién la ejecuta. */
 export async function confirmarAsignacion(params: {
   asignacionId: number
   usuarioId: number
+  actor: UsuarioConPermisos & { id: number }
   motivo: string
 }): Promise<ResultadoAccion> {
-  const { asignacionId, usuarioId, motivo } = params
-  if (!usuarioId) return { ok: false, error: 'Indica a quién se le asignan las horas.' }
-
-  const [filas] = await pool.query<
-    (RowDataPacket & { presupuesto_id: number; nombre: string; horas: number })[]
-  >(
-    `SELECT s.presupuesto_id, s.nombre, a.horas
-       FROM presupuesto_asignaciones a
-       JOIN presupuesto_servicios s ON s.id = a.servicio_id
-      WHERE a.id = ?`,
-    [asignacionId]
-  )
-  const a = filas[0]
-  if (!a) return { ok: false, error: 'La asignación no existe.' }
-
-  // No se puede superar la bolsa del servicio.
-  // La asignación que se está confirmando se EXCLUYE de la suma: si no, sus
-  // propias horas se contarían dos veces y la comprobación siempre fallaría
-  // (186 h repartidas + 129 h = 315 h sobre una bolsa de 186 h).
-  const [otros] = await pool.query<(RowDataPacket & { total: number })[]>(
-    `SELECT COALESCE(SUM(horas), 0) AS total
-       FROM presupuesto_asignaciones
-      WHERE servicio_id = (SELECT servicio_id FROM presupuesto_asignaciones WHERE id = ?)
-        AND id <> ?`,
-    [asignacionId, asignacionId]
-  )
-  const [bolsa] = await pool.query<(RowDataPacket & { horas: number })[]>(
-    `SELECT horas FROM presupuesto_servicios
-      WHERE id = (SELECT servicio_id FROM presupuesto_asignaciones WHERE id = ?)`,
-    [asignacionId]
-  )
-  // MySQL devuelve los DECIMAL como TEXTO. Si no se convierten con Number, el
-  // `+` de abajo concatena ("57" + "129" = "57129") y la comprobación siempre
-  // dice que se pasa de la bolsa.
-  const horasAsignacion = Number(a.horas)
-  const yaRepartidas = Number(otros[0]?.total ?? 0)
-  const horasBolsa = Number(bolsa[0]?.horas ?? 0)
-  if (redondear(yaRepartidas + horasAsignacion) > horasBolsa) {
-    return {
-      ok: false,
-      error: `La bolsa de "${a.nombre}" tiene ${horasBolsa} h y ya tiene ${yaRepartidas} h repartidas. Repartir ${horasAsignacion} h más la dejaría por encima. Necesita una ampliación aprobada.`,
-    }
-  }
-
-  await pool.query(
-    `UPDATE presupuesto_asignaciones
-        SET usuario_id = ?, estado = 'CONFIRMADA', motivo = ?
-      WHERE id = ?`,
-    [usuarioId, motivo || null, asignacionId]
-  )
-  await registrarCambio({
-    db: pool,
-    presupuestoId: a.presupuesto_id,
-    tipo: 'REDISTRIBUCION',
-    detalle: { asignacionId, usuarioId, horas: a.horas },
-    justificacion: motivo || 'Confirmación de la asignación.',
-    usuarioId: usuarioId,
-  })
-  return { ok: true, mensaje: `${horasAsignacion} h asignadas.` }
+  return confirmarAsignaciones({ ...params, asignacionIds: [params.asignacionId] })
 }
 
-/** El Líder aprueba el presupuesto. Solo si no queda nada bloqueante. */
+/**
+ * Confirma UN CONJUNTO de asignaciones eligiendo quién las ejecuta.
+ *
+ * Por qué un conjunto y no una sola: el Excel de un cliente puede traer VARIAS
+ * cotizaciones del mismo servicio, y la misma persona aparece una vez en cada
+ * una. "MARINELLA SOTO" con 337,5 h aparece dos veces en FORTALECIMIENTO DEL
+ * CONTROL INTERNO, y "HUGO MENDOZA" con 20 h y 5 h en dos bloques más. Son horas
+ * de la misma persona, no personas distintas: si la interfaz las muestra
+ * separadas, el Líder ve a alguien repetido y las horas no cuadran con el equipo,
+ * donde el equipo ya viene agregado por persona.
+ *
+ * Por eso se confirman juntas: repartir la fila es repartir todo lo que el Excel
+ * le asigna a esa etiqueta, y cada fila conserva su bolsa. La suma NO se mete en
+ * una bolsa cualquiera, porque las horas de cada bloque tienen que seguir
+ * contando contra el bloque del que salieron.
+ *
+ * Todo va en una transacción: si una de las filas no cabe en su bolsa, no se
+ * confirma ninguna. Repartir la mitad dejaría el presupuesto en un estado que
+ * ningún Excel describe.
+ */
+export async function confirmarAsignaciones(params: {
+  asignacionIds: number[]
+  /** Persona a la que se le asignan las horas. */
+  usuarioId: number
+  /** Quién ejecuta la acción. Se valida contra el presupuesto. */
+  actor: UsuarioConPermisos & { id: number }
+  motivo: string
+}): Promise<ResultadoAccion> {
+  const { asignacionIds, usuarioId, actor, motivo } = params
+  if (!usuarioId) return { ok: false, error: 'Indica a quién se le asignan las horas.' }
+
+  const unicos = [...new Set(asignacionIds.filter((id) => Number.isInteger(id) && id > 0))]
+  if (unicos.length === 0) return { ok: false, error: 'La asignacion no es valida.' }
+
+  const db = await pool.getConnection()
+  try {
+    await db.beginTransaction()
+
+    const [filas] = await db.query<
+      (RowDataPacket & {
+        id: number
+        presupuesto_id: number
+        servicio_id: number
+        servicio: string
+        horas: string
+        estado: string
+      })[]
+    >(
+      `SELECT a.id, a.servicio_id, a.horas, a.estado, s.presupuesto_id, s.nombre AS servicio
+         FROM presupuesto_asignaciones a
+         JOIN presupuesto_servicios s ON s.id = a.servicio_id
+        WHERE a.id IN (${unicos.map(() => '?').join(',')})`,
+      unicos
+    )
+    if (filas.length === 0) {
+      await db.rollback()
+      return { ok: false, error: 'La asignación no existe.' }
+    }
+
+    // Sin esta comprobación, cualquier usuario autenticado podía Confirmar
+    // horas ajenas: la autorización vivía solo en la ruta y no en la acción.
+    for (const presupuestoId of new Set(filas.map((f) => f.presupuesto_id))) {
+      const permiso = await comprobarPermiso(presupuestoId, actor, 'DISTRIBUIR', motivo)
+      if (!permiso.permitido) {
+        await db.rollback()
+        return { ok: false, error: permiso.error }
+      }
+    }
+
+    // No se puede superar la bolsa de NINGÚN servicio. Las asignaciones que se
+    // van a confirmar se excluyen TODAS de la suma, no solo una: si cada fila
+    // midiera contra un total que incluye a las demás, al confirmar la segunda
+    // se contaría como recién repartida.
+    const porServicio = new Map<number, typeof filas>()
+    for (const f of filas) {
+      const lista = porServicio.get(f.servicio_id) ?? []
+      lista.push(f)
+      porServicio.set(f.servicio_id, lista)
+    }
+
+    const totalPorServicio = new Map<number, number>()
+    for (const [servicioId, delServicio] of porServicio) {
+      const [otros] = await db.query<(RowDataPacket & { total: number })[]>(
+        `SELECT COALESCE(SUM(horas), 0) AS total
+           FROM presupuesto_asignaciones
+          WHERE servicio_id = ? AND id NOT IN (${delServicio.map(() => '?').join(',')})`,
+        [servicioId, ...delServicio.map((f) => f.id)]
+      )
+      const [bolsa] = await db.query<(RowDataPacket & { horas: number })[]>(
+        'SELECT horas FROM presupuesto_servicios WHERE id = ?',
+        [servicioId]
+      )
+      // MySQL devuelve los DECIMAL como TEXTO. Si no se convierten con Number, el
+      // `+` de abajo concatena ("57" + "129" = "57129") y la comprobación siempre
+      // dice que se pasa de la bolsa.
+      const yaRepartidas = Number(otros[0]?.total ?? 0)
+      const horasBolsa = Number(bolsa[0]?.horas ?? 0)
+      const aRepartir = redondear(
+        delServicio.reduce((t, f) => t + Number(f.horas), 0)
+      )
+      if (redondear(yaRepartidas + aRepartir) > horasBolsa) {
+        await db.rollback()
+        return {
+          ok: false,
+          error: `La bolsa de "${delServicio[0].servicio}" tiene ${horasBolsa} h y ya tiene ${yaRepartidas} h repartidas. Repartir ${aRepartir} h más la dejaría por encima. Necesita una ampliación aprobada.`,
+        }
+      }
+      totalPorServicio.set(servicioId, aRepartir)
+    }
+
+    for (const f of filas) {
+      await db.query(
+        `UPDATE presupuesto_asignaciones
+            SET usuario_id = ?, estado = 'CONFIRMADA', motivo = ?
+          WHERE id = ?`,
+        [usuarioId, motivo || null, f.id]
+      )
+    }
+
+    for (const presupuestoId of new Set(filas.map((f) => f.presupuesto_id))) {
+      await registrarCambio({
+        db,
+        presupuestoId,
+        tipo: 'REDISTRIBUCION',
+        detalle: {
+          asignacionIds: filas.filter((f) => f.presupuesto_id === presupuestoId).map((f) => f.id),
+          usuarioId,
+          horas: redondear(
+            filas
+              .filter((f) => f.presupuesto_id === presupuestoId)
+              .reduce((t, f) => t + Number(f.horas), 0)
+          ),
+          porServicio: [...totalPorServicio.entries()].map(([servicioId, horas]) => ({
+            servicioId,
+            horas,
+          })),
+        },
+        justificacion: motivo || 'Confirmación de la asignación.',
+        // El autor del cambio es quien EJECUTA la acción, no el destinatario de las
+        // horas. Antes se guardaba el usuario asignado y la auditoría señalaba a la
+        // persona equivocada como responsable.
+        usuarioId: actor.id,
+      })
+    }
+
+    await db.commit()
+    const totalHoras = redondear(filas.reduce((t, f) => t + Number(f.horas), 0))
+    return {
+      ok: true,
+      mensaje:
+        filas.length === 1
+          ? `${totalHoras} h asignadas.`
+          : `${totalHoras} h asignadas en ${filas.length} bloques del Excel.`,
+    }
+  } catch (error) {
+    await db.rollback()
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Error al confirmar la asignación.',
+    }
+  } finally {
+    db.release()
+  }
+}
+
+/**
+ * Aprueba el presupuesto.
+ *
+ * Solo quedan dos bloqueos, y los dos son sobre el CONTENIDO del documento:
+ * observaciones bloqueantes y una bolsa cuyas horas asignadas superen las
+ * contratadas.
+ *
+ * Lo que YA NO bloquea, por decisión de negocio:
+ *
+ * - Que las asignaciones estejam sin confirmar. Confirmar quién hace qué dentro
+ *   del servicio es una tarea operativa posterior; el alcance contratado ya está
+ *   cerrado con el Excel y no depende de eso.
+ * - Que exista un proyecto vinculado. El cliente es el ancla y el presupuesto
+ *   cuelga de él, no al revés (ver cabecera de sql/presupuestos.sql).
+ *
+ * El presupuesto además llega ya APPROBADO desde la importación, asi que esta
+ * función cubre sobre todo el caso de reimportar o de activar bolsas despues.
+ */
 export async function aprobarPresupuesto(params: {
   presupuestoId: number
   usuario: UsuarioConPermisos & { id: number }
@@ -311,6 +463,8 @@ export async function aprobarPresupuesto(params: {
   const p = await presupuestoCliente(presupuestoId)
   if (!p) return { ok: false, error: 'El presupuesto no existe.' }
 
+  if (p.estado !== 'EN_REVISION') return { ok: false, error: 'Solo un presupuesto presentado para revisión puede aprobarse.' }
+
   const pend = await pendientesDe(presupuestoId)
   if (pend.bloqueantes > 0) {
     return {
@@ -318,28 +472,12 @@ export async function aprobarPresupuesto(params: {
       error: `Quedan ${pend.bloqueantes} observaciones bloqueantes sin resolver. Resuélvelas antes de aprobar.`,
     }
   }
-  if (pend.sinConfirmar > 0) {
-    return {
-      ok: false,
-      error: `Quedan ${pend.sinConfirmar} asignaciones sin confirmar (${pend.horasSinConfirmar} h). Confírmalas o déjalas sin asignar antes de aprobar.`,
-    }
-  }
 
-  const [vínculo] = await pool.query<(RowDataPacket & { proyecto_id: number | null })[]>(
-    'SELECT proyecto_id FROM presupuesto_servicios WHERE presupuesto_id = ? AND proyecto_id IS NOT NULL LIMIT 1',
-    [presupuestoId]
-  )
-  if (!vínculo[0]?.proyecto_id) {
-    return {
-      ok: false,
-      error: 'El presupuesto todavía no está vinculado a un proyecto ni tiene Líder designado.',
-    }
-  }
-
-  await pool.query(
-    `UPDATE presupuestos SET estado = 'APROBADO', revisado_por = ?, revisado_en = NOW() WHERE id = ?`,
+  const [resultado] = await pool.query(
+    `UPDATE presupuestos SET estado = 'APROBADO', revisado_por = ?, revisado_en = NOW() WHERE id = ? AND estado = 'EN_REVISION'`,
     [usuario.id, presupuestoId]
-  )
+  ) as any
+  if ((resultado as { affectedRows?: number }).affectedRows === 0) return { ok: false, error: 'El presupuesto ya fue decidido.' }
   await registrarCambio({
     db: pool,
     presupuestoId,
@@ -352,11 +490,16 @@ export async function aprobarPresupuesto(params: {
 }
 
 /**
- * Activa las bolsas de los servicios DETALLADOS ya confirmados.
+ * Activa las bolsas de los servicios DETALLADOS y COMPLEMENTARIOS.
  *
- * Los COMPLEMENTARIOS y los CONSOLIDADOS no se activan: los complementarios
- * esperan confirmación y los consolidados son referencia. Por eso las 2 horas
- * pendientes no entran en el saldo.
+ * Los CONSOLIDADOS no se activan y no hay que activarlos nunca: son un resumen
+ * de los anteriores y sumarlos duplicaría el alcance.
+ *
+ * Los COMPLEMENTARIOS sí se activan. Antes quedaban fuera porque la bolsa
+ * complementaria de Santa Rosa (las 2 h del Comité) venía sin confirmar y se
+ * prefiería tenerla en cuarentena; pero como la aprobación ya no exige
+ * confirmaciones, y además el selector de servicios de /actividades los ofrece,
+ * dejarlos siempre apagados hacía que un servicio visible no se pudiera imputar.
  */
 export async function activarBolsas(params: {
   presupuestoId: number
@@ -382,7 +525,7 @@ export async function activarBolsas(params: {
       (RowDataPacket & { id: number; nombre: string; horas: number })[]
     >(
       `SELECT id, nombre, horas FROM presupuesto_servicios
-        WHERE presupuesto_id = ? AND origen = 'DETALLADO' AND activo = 0`,
+        WHERE presupuesto_id = ? AND origen IN ('DETALLADO', 'COMPLEMENTARIO') AND activo = 0`,
       [presupuestoId]
     )
 

@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Info, Loader2, Upload, X } from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
 
 type Asignacion = {
   id: number
@@ -67,6 +68,8 @@ export function SettingsClientePresupuestos({
   cliente: Cliente
   onCerrar: () => void
 }) {
+  const { usuario } = useAuth()
+  const puedeImportar = usuario?.rol !== 'admin' && usuario?.rol !== 'socio'
   const [presupuestos, setPresupuestos] = useState<Presupuesto[] | null>(null)
   const [cargando, setCargando] = useState(true)
   const [subiendo, setSubiendo] = useState(false)
@@ -155,6 +158,8 @@ export function SettingsClientePresupuestos({
         </header>
 
         <div className="space-y-4 px-5 py-4">
+          {puedeImportar && (
+          <>
           {/* Zona de importación */}
           <div
             onDragOver={(e) => {
@@ -205,6 +210,8 @@ export function SettingsClientePresupuestos({
               </>
             )}
           </div>
+          </>
+          )}
 
           {error && (
             <p role="alert" className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-400">
@@ -236,7 +243,7 @@ export function SettingsClientePresupuestos({
 }
 
 function PresupuestoVista({ presupuesto }: { presupuesto: Presupuesto }) {
-  const [abierto, setAbierto] = useState(false)
+  const [abierto, setAbierto] = useState(true)
   const detallados = presupuesto.servicios.filter((s) => s.origen === 'DETALLADO')
   const complementarios = presupuesto.servicios.filter((s) => s.origen === 'COMPLEMENTARIO')
   const consolidados = presupuesto.servicios.filter((s) => s.origen === 'CONSOLIDADO')

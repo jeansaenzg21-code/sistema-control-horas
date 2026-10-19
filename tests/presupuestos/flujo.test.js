@@ -1,14 +1,18 @@
 // Flujo completo de presupuestos con el Excel real de Colegio Santa Rosa.
 //
-// Comprueba lo que el usuario pidió:
-//   1. Las 272 h NO se dan por contratadas mientras las 2 complementarias sigan
-//      pendientes. El presupuesto queda en revisión y el saldo del cliente no se
-//      mueve hasta que el Líder confirme.
-//   2. Aprobar sin resolver lo bloqueante NO deja pasar.
-//   3. Un jefe de área que no es Líder del proyecto NO puede aprobar.
-//   4. El saldo del cliente se RECALCULA sobre todos sus proyectos: un segundo
+// Comprueba lo que el usuario pidió, con las reglas VIGENTES:
+//
+//   1. Importar el presupuesto lo deja APROBADO y con las bolsas DETALLADAS y
+//      COMPLEMENTARIAS encendidas. Cargar el Excel es trabajo del jefe de área y
+//      ES la aprobación: no hay un segundo paso ni una espera.
+//   2. Los CONSOLIDADOS nunca se activan: sumarlos duplicaría el alcance.
+//   3. Que las asignaciones sin confirmar NO bloqueen la aprobación. Confirmar
+//      quién hace qué es una tarea posterior, no parte de dar de alta el alcance.
+//   4. El jefe del ÁREA del cliente aprueba sin ser Líder del proyecto; un jefe de
+//      otra área no.
+//   5. El saldo del cliente se RECALCULA sobre todos sus presupuestos: un segundo
 //      presupuesto no pisa el saldo del primero.
-//   5. Que un fallo al importar no deje clientes ni presupuestos a medias.
+//   6. Que un fallo al importar no deje clientes ni presupuestos a medias.
 
 const fs = require('node:fs')
 const path = require('node:path')
@@ -134,7 +138,7 @@ async function main() {
     const archivo = fs.readFileSync('Presupuesto Colegio Santa Rosa (1).xlsx')
     const analisis = await analizarPresupuesto(archivo)
 
-    titulo('Punto 1: las 272 h no se dan por contratadas mientras falten las 2')
+    titulo('Punto 1: importar deja el presupuesto APROBADO y las bolsas encendidas')
     const clienteId = await crearCliente(`FLUJO SANTA ROSA ${marca}`)
     const g = await guardarAnalisis({
       empresaId, clienteId, usuarioId: liderId,
@@ -142,49 +146,47 @@ async function main() {
     })
     ok(g.presupuestoId > 0, `presupuesto importado (id=${g.presupuestoId})`)
 
-    // Con las 2 h sin confirmar, NO se puede aprobar.
-    const proyectoId = await crearProyecto(`Proyecto Santa Rosa ${marca}`, clienteId, liderId)
-    // VINCULAR solo le corresponde al ADMIN segun las reglas del negocio.
-    const [[adminRow]] = await db.query(
-      "SELECT id FROM usuarios WHERE rol = 'ADMINISTRACION' AND activo = TRUE LIMIT 1"
+    const [[estadoTrasImportar]] = await db.query('SELECT estado FROM presupuestos WHERE id = ?', [g.presupuestoId])
+    ok(estadoTrasImportar.estado === 'APROBADO', `queda APROBADO al importar (${estadoTrasImportar.estado})`)
+
+    const [bolsasTrasImportar] = await db.query(
+      `SELECT origen, activo, COALESCE(SUM(horas),0) h FROM presupuesto_servicios
+        WHERE presupuesto_id = ? GROUP BY origen, activo ORDER BY origen`,
+      [g.presupuestoId]
     )
-    const vinculo = await act.vincularProyecto({
-      presupuestoId: g.presupuestoId,
-      proyectoId,
-      liderId,
-      usuario: { id: adminRow.id, rol: 'ADMINISTRACION', area_id: null },
-      justificacion: 'Alta desde el Excel: designando al Lider',
-    })
-    ok(vinculo.ok, 'el presupuesto se vincula y se designa el Lider', vinculo.error)
+    console.log('  bolsas tras importar ->', JSON.stringify(bolsasTrasImportar))
+    const activas = (origen) => Number(bolsasTrasImportar.find((b) => b.origen === origen && Number(b.activo) === 1)?.h ?? 0)
+    const apagadas = (origen) => Number(bolsasTrasImportar.find((b) => b.origen === origen && Number(b.activo) === 0)?.h ?? 0)
+    ok(apagadas('CONSOLIDADO') > 0 || activas('CONSOLIDADO') === 0, 'los CONSOLIDADO nunca quedan activos')
+    ok(activas('CONSOLIDADO') === 0, 'los CONSOLIDADO siguen apagados tras importar')
+    ok(activas('DETALLADO') === 270, `los 270 h DETALLADOS quedan encendidos (${activas('DETALLADO')})`)
+    ok(activas('COMPLEMENTARIO') === 2, `las 2 h COMPLEMENTARIAS quedan encendidas (${activas('COMPLEMENTARIO')})`)
 
-    const [[estadoTrasVincular]] = await db.query('SELECT estado FROM presupuestos WHERE id = ?', [g.presupuestoId])
-    ok(estadoTrasVincular.estado !== 'APROBADO', `queda en ${estadoTrasVincular.estado}, no aprobado`, 'no debe estar APROBADO con pendientes')
+    // El saldo del cliente se recalcula al importar, con las bolsas ya activas.
+    const [[saldo0]] = await db.query('SELECT horas_contratadas FROM clientes WHERE id = ?', [clienteId])
+    ok(Number(saldo0.horas_contratadas) === 272, `el saldo del cliente queda en 272 h al importar (${saldo0.horas_contratadas})`)
 
+    // Punto 3: las asignaciones sin confirmar YA NO bloquean la aprobacion.
     const aprobacionTardia = await act.aprobarPresupuesto({
       presupuestoId: g.presupuestoId,
       usuario: { id: liderId, rol: 'PERSONAL', area_id: areaId },
       justificacion: 'intento',
     })
-    ok(!aprobacionTardia.ok, 'no se puede aprobar con las 2 h sin confirmar', aprobacionTardia.error)
-    ok(/2|complementar|sin confirmar/i.test(aprobacionTardia.error), 'el motivo menciona las horas sin confirmar', aprobacionTardia.error)
+    ok(aprobacionTardia.ok, 'aprobar YA NO exige confirmar las asignaciones', aprobacionTardia.error)
 
-    // Y el saldo del cliente sigue en 0: no se ha contratado nada todavia.
-    const [[saldo0]] = await db.query('SELECT horas_contratadas FROM clientes WHERE id = ?', [clienteId])
-    ok(Number(saldo0.horas_contratadas) === 0, `el saldo del cliente sigue en 0 (${saldo0.horas_contratadas})`)
-
-    titulo('Punto 2: jefe de area que no es Lider no puede aprobar')
+    titulo('Punto 4: el jefe del AREA del cliente aprueba sin ser Lider')
     const porJefe = await act.aprobarPresupuesto({
       presupuestoId: g.presupuestoId,
       usuario: { id: jefeId, rol: 'JEFE_AREA', area_id: areaId },
-      justificacion: 'soy el jefe del area',
+      justificacion: 'soy el jefe del area de este cliente',
     })
-    ok(!porJefe.ok, 'un jefe de area que no es Lider NO aprueba', porJefe.error)
+    ok(porJefe.ok, 'el jefe del área del cliente SI aprueba, sin ser Lider', porJefe.error)
     const porJefeAjeno = await act.aprobarPresupuesto({
       presupuestoId: g.presupuestoId,
       usuario: { id: jefeAjenoId, rol: 'JEFE_AREA', area_id: otraArea.id },
       justificacion: 'soy jefe de otra area',
     })
-    ok(!porJefeAjeno.ok, 'tampoco el jefe de otra area', porJefeAjeno.error)
+    ok(!porJefeAjeno.ok, 'pero un jefe de otra area NO', porJefeAjeno.error)
 
     titulo('Repartir lo pendiente: el Lider confirma las asignaciones')
     // Solo servicios DETALLADOS: en un consolidado las asignaciones ya suman la
@@ -198,49 +200,55 @@ async function main() {
       [g.presupuestoId]
     )
     ok(asigPend.length > 0, `hay asignaciones pendientes (${asigPend.length} consultada)`)
+
+    // Autorizacion en la ACCION, no solo en la ruta: un PERSONAL que no es el
+    // Lider no debe poder confirmar horas ajenas por muchos que cierre la
+    // peticion.
+    const sinPermiso = await act.confirmarAsignacion({
+      asignacionId: asigPend[0].id,
+      usuarioId: liderId,
+      actor: { id: jefeAjenoId, rol: 'JEFE_AREA', area_id: otraArea.id },
+      motivo: 'intento sin autorizacion',
+    })
+    ok(!sinPermiso.ok, 'un jefe de area ajeno NO puede confirmar asignaciones', sinPermiso.error)
+    ok(
+      /l[ií]der/i.test(sinPermiso.ok === false ? sinPermiso.error : ''),
+      'el rechazo explica que solo puede el Lider',
+      sinPermiso.ok === false ? sinPermiso.error : 'no explico nada'
+    )
+
     const confirmada = await act.confirmarAsignacion({
       asignacionId: asigPend[0].id,
       usuarioId: liderId,
+      actor: { id: liderId, rol: 'PERSONAL', area_id: areaId },
       motivo: 'El Lider lo asume mientras se resuelve la identidad',
     })
     ok(confirmada.ok, 'el Lider puede confirmar una asignacion', confirmada.error)
 
-    titulo('Aprobar y activar bolsas')
-    // Quedan pendientes por confirmar, asi que aún no debe dejar pasar.
-    const sigueBloqueado = await act.aprobarPresupuesto({
-      presupuestoId: g.presupuestoId,
-      usuario: { id: liderId, rol: 'PERSONAL', area_id: areaId },
-      justificacion: 'otro intento',
-    })
-    ok(!sigueBloqueado.ok, 'sigue sin poder aprobar mientras queden pendientes', sigueBloqueado.error)
-
-    // Se confirman todas para poder llegar al final del flujo.
-    const [todas] = await db.query(
-      `SELECT a.id, a.horas FROM presupuesto_asignaciones a
-         JOIN presupuesto_servicios s ON s.id = a.servicio_id
-        WHERE s.presupuesto_id = ? AND a.estado = 'PENDIENTE_REVISION'
-          AND s.origen <> 'CONSOLIDADO'`,
+    // La auditoria debe attribution al actor, no a quien se le asignaron las horas.
+    const [[cambio]] = await db.query(
+      `SELECT usuario_id FROM presupuesto_cambios
+        WHERE presupuesto_id = ? AND tipo = 'REDISTRIBUCION'
+        ORDER BY id DESC LIMIT 1`,
       [g.presupuestoId]
     )
-    for (const a of todas) {
-      await db.query('UPDATE presupuesto_asignaciones SET usuario_id = ?, estado = ? WHERE id = ?', [liderId, 'CONFIRMADA', a.id])
-    }
+    ok(
+      Number(cambio.usuario_id) === Number(liderId),
+      'el cambio de reparto queda registrado a nombre de quien lo ejecuto',
+      `usuario_id=${cambio?.usuario_id}`
+    )
 
-    const aprobacion = await act.aprobarPresupuesto({
-      presupuestoId: g.presupuestoId,
-      usuario: { id: liderId, rol: 'PERSONAL', area_id: areaId },
-      justificacion: 'Alcance verificado contra el Excel',
-    })
-    ok(aprobacion.ok, 'ahora si se aprueba', aprobacion.error)
-
+    titulo('Aprobar y activar bolsas')
+    // Las bolsas ya estan encendidas por la importacion, asi que activarBolsas
+    // debe ser idempotente y no reventar.
     const activacion = await act.activarBolsas({
       presupuestoId: g.presupuestoId,
       usuario: { id: liderId, rol: 'PERSONAL', area_id: areaId },
       justificacion: 'Activo las bolsas contratadas',
     })
-    ok(activacion.ok, 'se activan las bolsas', activacion.error)
+    ok(activacion.ok, 'activar bolsas es idempotente y no falla', activacion.error)
 
-    titulo('El saldo se calcula sobre las horas CONFIRMADAS, no sobre el documento')
+    titulo('Punto 2: el saldo se calcula sobre las bolsas ACTIVAS')
     const [activos] = await db.query(
       `SELECT origen, SUM(horas) h FROM presupuesto_servicios WHERE presupuesto_id = ? AND activo = 1 GROUP BY origen`,
       [g.presupuestoId]
@@ -249,33 +257,43 @@ async function main() {
     const comp = Number(activos.find((a) => a.origen === 'COMPLEMENTARIO')?.h ?? 0)
     const cons = Number(activos.find((a) => a.origen === 'CONSOLIDADO')?.h ?? 0)
     console.log(`  activos -> DETALLADO=${det} COMPLEMENTARIO=${comp} CONSOLIDADO=${cons}`)
-    ok(det === 270, `se activan las 270 h detalladas (${det})`)
+    ok(det === 270, `estan activas las 270 h detalladas (${det})`)
     ok(cons === 0, 'los consolidados NO se activan (0)')
-    // El complementario sigue sin activar: son las 2 h que faltaban confirmar.
-    ok(comp === 0, `el complementario todavia no se activa (${comp})`)
+    ok(comp === 2, `las 2 h complementarias SI se activan (${comp})`)
 
     const [[saldo1]] = await db.query('SELECT horas_contratadas FROM clientes WHERE id = ?', [clienteId])
-    ok(Number(saldo1.horas_contratadas) === 270, `el saldo del cliente queda en 270 h (${saldo1.horas_contratadas})`)
+    ok(Number(saldo1.horas_contratadas) === 272, `el saldo del cliente queda en 272 h (${saldo1.horas_contratadas})`)
 
-    titulo('Punto 4: un segundo proyecto NO pisa el saldo del primero')
-    // Se activan las 2 complementarias (ya confirmadas) para que el total suba.
-    await db.query(`UPDATE presupuesto_servicios SET activo = 1 WHERE presupuesto_id = ? AND origen = 'COMPLEMENTARIO'`, [g.presupuestoId])
+    titulo('Punto 5: un segundo presupuesto NO pisa el saldo del primero')
+    const proyectoId = await crearProyecto(`Proyecto Santa Rosa ${marca}`, clienteId, liderId)
+    const [[adminRow]] = await db.query(
+      "SELECT id FROM usuarios WHERE rol = 'ADMINISTRACION' AND activo = TRUE LIMIT 1"
+    )
+    const vinculo = await act.vincularProyecto({
+      presupuestoId: g.presupuestoId,
+      proyectoId,
+      liderId,
+      usuario: { id: adminRow.id, rol: 'ADMINISTRACION', area_id: null },
+      justificacion: 'Alta desde el Excel: designando al Lider',
+    })
+    ok(vinculo.ok, 'el presupuesto se vincula y se designa el Lider', vinculo.error)
+
     await act.recalcularHorasContratadas(db, clienteId)
     const [[saldo2]] = await db.query('SELECT horas_contratadas FROM clientes WHERE id = ?', [clienteId])
-    ok(Number(saldo2.horas_contratadas) === 272, `con el complementario el saldo sube a 272 h (${saldo2.horas_contratadas})`)
+    ok(Number(saldo2.horas_contratadas) === 272, `tras vincular y recalcular sigue en 272 h (${saldo2.horas_contratadas})`)
 
-    titulo('Punto 3: la excepcion del admin exige justificacion')
-    // El admin tendria que actuar de exception, pero primero sin justificacion.
+    titulo('Punto 6: el admin ya no queda como excepcion')
+    // Antes, un admin que no era Líder registraba una EXCEPCION y necesitaba
+    // justificar por escrito. Con el presupuesto colgando del cliente, el admin
+    // actua como parte de la gestion normal.
     const [[admin]] = await db.query("SELECT id FROM usuarios WHERE rol = 'ADMINISTRACION' LIMIT 1")
     if (admin) {
-      const sinJustificar = await act.aprobarPresupuesto({
+      const porAdmin = await act.aprobarPresupuesto({
         presupuestoId: g.presupuestoId,
         usuario: { id: admin.id, rol: 'ADMINISTRACION', area_id: null },
         justificacion: '',
       })
-      // El presupuesto ya esta aprobado, asi que se espera que falle por bloqueos
-      // o por justificacion, pero NUNCA que se apruebe sin justificacion.
-      ok(!sinJustificar.ok || sinJustificar.ok, `admin sin justificacion no se registra como excepcion limpia`)
+      ok(porAdmin.ok, 'el admin aprueba sin justificar y sin que sea excepcion', porAdmin.error)
     } else {
       console.log('  (no hay ADMINISTRACION en la base; se omite)')
     }
@@ -297,7 +315,14 @@ async function main() {
       await db.query('DELETE FROM proyecto_participantes WHERE usuario_id = ?', [uid]).catch(() => {})
       await db.query('DELETE FROM usuarios WHERE id = ?', [uid]).catch(() => {})
     }
-    const [[r]] = await db.query('SELECT COUNT(*) n FROM presupuestos')
+    // Solo se cuentan los presupuestos de los clientes que creo esta prueba.
+    // Contar toda la tabla exigiria una base vacia y fallaria en cuanto haya
+    // presupuesto real, que es justo lo que se esta probando.
+    const [[r]] = await db.query(
+      `SELECT COUNT(*) n FROM presupuestos p
+         JOIN clientes c ON c.id = p.cliente_id
+        WHERE c.nombre LIKE 'FLUJO%' OR c.nombre LIKE 'PRUEBA SANTA ROSA%'`
+    )
     ok(r.n === 0, `no queda ningun presupuesto de prueba (${r.n})`)
     await db.end()
   }

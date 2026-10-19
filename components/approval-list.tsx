@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Bell,
-  Building2,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Eye,
   FileText,
@@ -22,7 +23,6 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useActividad, type Actividad } from '@/lib/actividad-context'
-import { useAreas } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 import { useClientes } from '@/lib/clientes-context'
 import { datosFaltantesActividad, textoDatosFaltantes } from '@/lib/cumplimiento'
@@ -33,6 +33,9 @@ import { FacturableBadge } from './facturable-badge'
 import { cn, esFacturable, esNoFacturable, fechaLocalISO, formatHora } from '@/lib/utils'
 
 type Filtro = 'pendientes' | 'aprobadas' | 'rechazadas' | 'correccion'
+
+/** Registros por página dentro de cada sección. */
+const POR_PAGINA = 10
 type AccionInicial = 'responder' | 'corregir' | 'reenviar' | 'rechazar' | null
 type ModoDecision = 'rechazar' | 'correccion' | null
 
@@ -159,15 +162,30 @@ function facturableNormalizado(valor: unknown): boolean | null {
 
 export function ApprovalList() {
   const { historial } = useActividad()
-  const { areas } = useAreas()
   const { usuario } = useAuth()
   const { clientes } = useClientes()
   const esAdmin = usuario?.rol === 'admin'
   const esSupervisor = usuario?.rol === 'supervisor'
   const esPersonal = usuario?.rol === 'personal'
-  const esRevisor = esAdmin || esSupervisor
-  const [filtro, setFiltro] = useState<Filtro>(() => (esAdmin || esSupervisor ? 'pendientes' : 'aprobadas'))
-  const [divisionId, setDivisionId] = useState<number | ''>('')
+  // El SOCIO consulta pero no revisa: entra en la misma rama que el
+  // administrador para ver todo el alcance de la empresa, pero NO cuenta como
+  // revisor, así que los botones de aprobar, rechazar y solicitar corrección no
+  // se le montan. El bloqueo real está en la API (lib/auth.ts).
+  const esSocio = usuario?.rol === 'socio'
+  const soloLectura = esSocio
+  // El jefe de área revisa los registros de SU área: cuenta como revisor para que
+  // aparezcan aprobar y rechazar. Lo que puede tocar lo decide la API, que
+  // compara el área de la actividad con la suya; aquí solo se decide qué botones
+  // se pintan.
+  const esJefeArea = usuario?.rol === 'jefe_area'
+  const esRevisor = esAdmin || esSupervisor || esJefeArea
+  // El socio NO revisa, pero sí audita: ve el historial completo, incluidas las
+  // notas internas, que al trabajador nunca se le enseñan.
+  const veNotasInternas = esRevisor || esSocio
+  const [filtro, setFiltro] = useState<Filtro>(() =>
+    esSocio ? 'pendientes' : esAdmin || esSupervisor ? 'pendientes' : 'aprobadas',
+  )
+  const [pagina, setPagina] = useState(1)
   const [detalle, setDetalle] = useState<Actividad | null>(null)
   const [detalleAccion, setDetalleAccion] = useState<AccionInicial>(null)
   const [observacionInicial, setObservacionInicial] = useState<number | null>(null)
@@ -217,17 +235,24 @@ export function ApprovalList() {
 
   useEffect(() => {
     if (!usuario) return
+    // El socio no revisa, pero sí debe ver el alcance completo: se le deja el
+    // filtro que eligió en vez de encajarlo en "pendientes" o "aprobadas".
+    if (esSocio) return
     if (esRevisor) {
       setFiltro((actual) => actual === 'aprobadas' ? 'pendientes' : actual)
     } else {
       setFiltro((actual) => actual === 'pendientes' ? 'aprobadas' : actual)
     }
-  }, [usuario, esRevisor])
+  }, [usuario, esRevisor, esSocio])
 
   useEffect(() => {
     setSeleccionadas(new Set())
     setModoSeleccion(false)
-  }, [filtro, divisionId])
+    // Cada sección pagina por su cuenta: al cambiar de filtro se vuelve a la
+    // primera página. Si no, quedarse en la página 4 de "pendientes" y pasar a
+    // "rechazadas", que tiene una, dejaría la lista vacía.
+    setPagina(1)
+  }, [filtro])
 
   useEffect(() => {
     void cargarAprobaciones()
@@ -236,6 +261,12 @@ export function ApprovalList() {
   const cargarTimeline = useCallback(async (actividadId: number) => {
     if (!usuario) return
     const secuencia = ++secuenciaTimeline.current
+    // El timeline se vacía al abrir, no al terminar de cargar. Sin esto, al
+    // pasar de un registro con observaciones a otro se pintaba durante un
+    // instante el historial del anterior y luego se sustituía por el correcto:
+    // un parpadeo que parece un fallo y no lo es. Mientras llega la respuesta
+    // se ve el esqueleto de carga, que es lo que toca.
+    setTimeline([])
     setTimelineCargando(true)
     setTimelineError(null)
     try {
@@ -244,7 +275,7 @@ export function ApprovalList() {
       if (!res.ok) throw new Error(errorDeRespuesta(data, 'No se pudo cargar el historial de observaciones.'))
       if (secuencia !== secuenciaTimeline.current) return
       const datos = normalizarTimeline(data)
-      setTimeline(datos.filter((item) => esRevisor || (esVisibleParaTrabajador(item) && item.tipo !== 'NOTA_INTERNA')))
+      setTimeline(datos.filter((item) => veNotasInternas || (esVisibleParaTrabajador(item) && item.tipo !== 'NOTA_INTERNA')))
     } catch (e) {
       if (secuencia !== secuenciaTimeline.current) return
       setTimeline([])
@@ -252,7 +283,7 @@ export function ApprovalList() {
     } finally {
       if (secuencia === secuenciaTimeline.current) setTimelineCargando(false)
     }
-  }, [usuario, esRevisor])
+  }, [usuario, veNotasInternas])
 
   const abrirDetalle = useCallback((
     actividad: Actividad,
@@ -328,12 +359,21 @@ export function ApprovalList() {
     return historial.filter((actividad) => actividad.usuario_id === usuario.id)
   }, [cargaAprobacionesOk, aprobaciones, historial, esRevisor, usuario])
 
-  const todas = useMemo(() => {
-    if (divisionId === '') return registros
-    return registros.filter((actividad) => String(actividad.area_id) === String(divisionId))
-  }, [registros, divisionId])
+  // El ámbito ya viene recortado del servidor, por ROL: `/api/aprobaciones` no
+  // acepta `area_id` y añade él solo el recorte (`u.area_id` para el jefe,
+  // `u.supervisor_id` para el supervisor, y nada para admin y socio). Por eso
+  // aquí no hay filtro de división: para el jefe solo entrarían los registros de
+  // su área, así que elegir otra no cambiaría nada y "Todas" sería lo único con
+  // sentido. Un control que no puede cambiar el resultado solo confunde.
+  //
+  // `todas` es simplemente `registros`: se mantiene el nombre porque alimenta a
+  // los conteos de las pestañas, a la lista paginada y a la selección masiva.
+  const todas = registros
 
-  const filtrosVisibles: Filtro[] = esRevisor
+  // El socio ve los mismos cuatro filtros que el administrador, entre ellos
+  // "pendientes": los estados de una actividad son estos cuatro y no hay un
+  // "todas" que los agrupe. Es lo que necesita para revisar la empresa entera.
+  const filtrosVisibles: Filtro[] = esRevisor || esSocio
     ? ['pendientes', 'correccion', 'aprobadas', 'rechazadas']
     : ['correccion', 'aprobadas', 'rechazadas']
 
@@ -350,6 +390,22 @@ export function ApprovalList() {
     aprobadas: 'APROBADA',
     rechazadas: 'RECHAZADA',
   }[filtro])
+
+  // Paginación por sección.
+  //
+  // Sin esto la pantalla pintaba las ~700 filas de la empresa de una vez: la
+  // lista tardaba en aparecer y revisar era imposible porque no cabía nada en
+  // pantalla. Cada filtro pagina por su cuenta, así que la página es siempre
+  // relativa a la sección que se está mirando.
+  //
+  // `paginaActual` se acota con `Math.min` porque los datos se recargan solos
+  // (el stream de eventos y el sondeo de seguridad vuelven a pedirlos): si la
+  // sección se queda con menos filas, la página elegida podría ya no existir y
+  // sin el acote se vería una lista vacía.
+  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA))
+  const paginaActual = Math.min(pagina, totalPaginas)
+  const inicioPagina = (paginaActual - 1) * POR_PAGINA
+  const filtradasPagina = filtradas.slice(inicioPagina, inicioPagina + POR_PAGINA)
 
   const pendientesIds = useMemo(
     () => todas.filter((actividad) => actividad.estado === 'PENDIENTE_APROBACION').map((actividad) => actividad.id),
@@ -602,7 +658,7 @@ export function ApprovalList() {
         </div>
       )}
 
-      <div className={cn('grid gap-3', filtrosVisibles.length > 3 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2')}>
+      <div className={cn('grid gap-3', filtrosVisibles.length > 3 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}>
         {filtrosVisibles.map((clave) => (
           <button
             key={clave}
@@ -638,23 +694,6 @@ export function ApprovalList() {
             </button>
           ))}
         </div>
-        <div className="w-full sm:w-64">
-          <label htmlFor="filtro-division-aprobaciones" className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-            <Building2 size={13} />
-            División
-          </label>
-          <select
-            id="filtro-division-aprobaciones"
-            value={divisionId}
-            onChange={(evento) => setDivisionId(evento.target.value ? Number(evento.target.value) : '')}
-            className="h-9 w-full cursor-pointer rounded-lg border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
-          >
-            <option value="">Todas las divisiones</option>
-            {areas.filter((area) => area.activo).map((area) => (
-              <option key={area.id} value={String(area.id)}>{area.nombre}</option>
-            ))}
-          </select>
-        </div>
       </div>
 
       {cargando && (
@@ -662,7 +701,14 @@ export function ApprovalList() {
       )}
       {errorCarga && <p className="text-xs text-rose-400">{errorCarga}</p>}
 
-      {!esRevisor && (
+      {soloLectura && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-[#7c3aed]/30 bg-[#7c3aed]/5 px-4 py-3 text-sm text-foreground">
+          <LockKeyhole size={15} className="mt-0.5 shrink-0 text-[#c4b5fd]" />
+          <p>Consulta de solo lectura: ves todos los registros de la empresa, sin poder aprobar ni modificar nada.</p>
+        </div>
+      )}
+
+      {!esRevisor && !soloLectura && (
         <div className="flex items-center gap-2.5 rounded-xl border border-[#7c3aed]/30 bg-[#7c3aed]/5 px-4 py-3 text-sm text-foreground">
           <Bell size={15} className="shrink-0 text-[#c4b5fd]" />
           <p>Consulta las observaciones visibles de tus registros y responde o corrija cuando corresponda.</p>
@@ -692,12 +738,12 @@ export function ApprovalList() {
         {filtradas.length === 0 && !cargando && (
           <div className="rounded-xl border border-dashed border-border bg-card/50 px-5 py-8 text-center text-sm text-muted-foreground">No hay registros en esta categoría.</div>
         )}
-        {filtradas.map((actividad) => {
+        {filtradasPagina.map((actividad) => {
           const faltantes = datosFaltantesActividad(actividad)
           return (
             <div key={actividad.id} className="overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-[#7c3aed]/40">
-              <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
+              <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:gap-4">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
                   {esRevisor && filtro === 'pendientes' && modoSeleccion && (
                     <input type="checkbox" checked={seleccionadas.has(actividad.id)} onChange={() => alternarSeleccion(actividad.id)} className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-[#7c3aed]" />
                   )}
@@ -711,11 +757,39 @@ export function ApprovalList() {
                     )}
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-3 lg:justify-end">
-                  <div className="text-right"><p className="font-semibold text-foreground">{formatDuracion(actividad)}</p><p className="text-xs text-muted-foreground">{formatHora(actividad.inicio)} – {actividad.fin ? formatHora(actividad.fin) : '—'}</p></div>
-                  <FacturableBadge valor={actividad.facturable} />
-                  <StatusBadge estado={actividad.estado} />
-                  <div className="flex flex-wrap items-center gap-2">
+
+                {/* Columna derecha: dos filas fijas.
+
+                    ANTES los cuatro bloques (duración, facturación, estado y
+                    botones) compartían UNA fila con `flex-wrap`, así que según el
+                    ancho que quedara los badges caían encima de los botones o se
+                    quedaban a su lado: de un registro a otro del mismo listado
+                    cambiaba de sitio. Y como el ancho de cada bloque lo dictaba
+                    su texto ("0min" frente a "1h 30min", "Por definir" frente a
+                    "No facturable"), la fila se desplazaba entera aunque el
+                    contenido fuera el mismo.
+
+                    Ahora los datos van ARRIBA, en una sola línea que se lee como
+                    una frase (hora · duración · facturación), y las acciones
+                    ABAJO, siempre a la derecha y en una fila que no envuelve. Las
+                    dos filas tienen `whitespace-nowrap`, así que su alto no cambia
+                    nunca y las acciones están en el mismo sitio en todos los
+                    registros.
+
+                    El estado NO se pone como badge: cada filtro de esta pantalla
+                    muestra un solo estado (`filtradas`, arriba), así que la
+                    etiqueta repetía en todas las filas lo que ya dice la pestaña
+                    elegida. El estado sigue a la vista en el icono de color de la
+                    izquierda y, con el detalle completo, en el modal. */}
+                <div className="flex w-full shrink-0 flex-col items-end gap-2 lg:w-[300px]">
+                  <div className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                    <span>{formatHora(actividad.inicio)} – {actividad.fin ? formatHora(actividad.fin) : '—'}</span>
+                    <span aria-hidden="true">·</span>
+                    <span className="font-semibold text-foreground">{formatDuracion(actividad)}</span>
+                    <span aria-hidden="true">·</span>
+                    <FacturableBadge valor={actividad.facturable} />
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button onClick={() => abrirDetalle(actividad)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:border-[#7c3aed]/50 hover:text-[#7c3aed]"><Eye size={14} />Ver</button>
                     {esRevisor && actividad.estado === 'PENDIENTE_APROBACION' && <button onClick={() => void manejarAprobar(actividad)} disabled={procesando === `aprobar-${actividad.id}`} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"><CheckCircle2 size={14} />Aprobar</button>}
                     {esRevisor && actividad.estado === 'PENDIENTE_APROBACION' && <button onClick={() => abrirDetalle(actividad, 'rechazar')} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 px-2.5 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/10"><XCircle size={14} />Rechazar</button>}
@@ -727,10 +801,42 @@ export function ApprovalList() {
         })}
       </div>
 
+      {/* Paginación de la sección. Solo aparece cuando hay más de una página:
+          con 10 registros o menos, dos botones que no hacen nada son ruido. */}
+      {totalPaginas > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-2.5">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold tabular-nums text-foreground">{inicioPagina + 1}–{Math.min(inicioPagina + POR_PAGINA, filtradas.length)}</span>
+            {' '}de {filtradas.length} registros
+          </p>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setPagina((p) => Math.max(1, p - 1))}
+              disabled={paginaActual === 1}
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-[#7c3aed]/50 hover:text-[#7c3aed] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-foreground"
+            >
+              <ChevronLeft size={14} />Anterior
+            </button>
+            <span className="px-1 text-xs tabular-nums text-muted-foreground">
+              Página {paginaActual} de {totalPaginas}
+            </span>
+            <button
+              onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+              disabled={paginaActual === totalPaginas}
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-[#7c3aed]/50 hover:text-[#7c3aed] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:text-foreground"
+            >
+              Siguiente<ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {detalle && (
         <DetalleActividadModal
           actividad={detalle}
-          esRevisor={esRevisor}
+            esRevisor={esRevisor}
+            veNotasInternas={veNotasInternas}
+            soloLectura={soloLectura}
           timeline={timeline}
           timelineCargando={timelineCargando}
           timelineError={timelineError}
@@ -771,6 +877,8 @@ export function ApprovalList() {
 function DetalleActividadModal({
   actividad,
   esRevisor,
+  veNotasInternas,
+  soloLectura,
   timeline,
   timelineCargando,
   timelineError,
@@ -792,6 +900,10 @@ function DetalleActividadModal({
 }: {
   actividad: Actividad
   esRevisor: boolean
+  /** Quién ve el historial completo, incluidas las notas internas. */
+  veNotasInternas: boolean
+  /** Perfil SOCIO: consulta sin poder responder ni cambiar nada. */
+  soloLectura: boolean
   timeline: ObservacionTimeline[]
   timelineCargando: boolean
   timelineError: string | null
@@ -849,7 +961,7 @@ function DetalleActividadModal({
     if (ultima) setParentId(ultima.id)
   }, [accionInicial, parentId, timeline])
 
-  const visibles = timeline.filter((item) => esRevisor || (esVisibleParaTrabajador(item) && item.tipo !== 'NOTA_INTERNA'))
+  const visibles = timeline.filter((item) => veNotasInternas || (esVisibleParaTrabajador(item) && item.tipo !== 'NOTA_INTERNA'))
   const puedeCorregir = !esRevisor && actividad.estado === 'CORRECCION_SOLICITADA'
   const actividadTimeline = visibles.filter((item) => item.actividad_id === actividad.id || item.actividad_id == null)
   const pendientesRespuesta = actividadTimeline.filter((item) => item.visibilidad === 'TRABAJADOR' && (item.tipo === 'OBSERVACION' || item.tipo === 'SOLICITUD_CORRECCION') && item.estado_atencion === 'ABIERTA')
@@ -930,17 +1042,21 @@ function DetalleActividadModal({
               <DatoGrupo etiqueta="Horario / Duración" valor={`${formatHora(actividad.inicio)} – ${actividad.fin ? formatHora(actividad.fin) : '—'} · ${formatDuracion(actividad)}`} />
             </div>
 
-            <div className="mb-3 rounded-lg border border-border bg-muted/20 p-2.5">
-              <div className="flex items-center justify-between gap-3">
+            {/* El historial solo se pinta cuando ya tiene datos, nunca mientras
+                carga ni cuando sale vacío. Un esqueleto de carga que un instante
+                después se sustituye por el contenido real se lee como un fallo:
+                el cuadro aparece, cambia de tamaño y vuelve a aparecer. Y un
+                registro recién llegado y sin una sola observación no gana nada
+                con un cuadro que dice "No hay observaciones registradas".
+                Si la carga falla sí se avisa: eso es información, no un parpadeo. */}
+            {!timelineCargando && (timelineError || visibles.length > 0) && (
+              <div className="mb-3 rounded-lg border border-border bg-muted/20 p-2.5">
+                <div className="flex items-center justify-between gap-3">
                 <div><p className="text-xs font-medium text-foreground">Historial de observaciones</p><p className="text-[11px] text-muted-foreground">{visibles.length} evento(s) visible(s)</p></div>
                 {esRevisor && timeline.some((item) => item.visibilidad === 'INTERNA') && <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300"><LockKeyhole size={10} />Incluye notas internas</span>}
               </div>
-              {timelineCargando ? (
-                <div className="mt-2.5 space-y-2"><div className="h-12 animate-pulse rounded-lg bg-muted/70" /><div className="h-12 animate-pulse rounded-lg bg-muted/70" /></div>
-              ) : timelineError ? (
+              {timelineError ? (
                 <p className="mt-2.5 text-[11px] text-rose-400">{timelineError}</p>
-              ) : visibles.length === 0 ? (
-                <p className="mt-2.5 rounded-lg border border-dashed border-border px-2.5 py-3 text-center text-[11px] text-muted-foreground">No hay observaciones registradas.</p>
               ) : (
                 <ol className="relative mt-2.5 ml-1 border-l border-border pl-4">
                   {visibles.map((item) => (
@@ -964,13 +1080,14 @@ function DetalleActividadModal({
                           {item.visibilidad === 'INTERNA' && <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300"><LockKeyhole size={8} />Interna</span>}
                         </div>
                         <p className="mt-1 whitespace-pre-wrap text-[11px] leading-4 text-foreground">{item.contenido}</p>
-                        {!esRevisor && (item.tipo === 'OBSERVACION' || item.tipo === 'SOLICITUD_CORRECCION') && item.estado_atencion === 'ABIERTA' && <button type="button" onClick={() => setParentId(item.id)} className="mt-1.5 text-[10px] font-medium text-[#c4b5fd] hover:text-[#a78bfa]">Responder esta observación</button>}
+                        {!esRevisor && !soloLectura && (item.tipo === 'OBSERVACION' || item.tipo === 'SOLICITUD_CORRECCION') && item.estado_atencion === 'ABIERTA' && <button type="button" onClick={() => setParentId(item.id)} className="mt-1.5 text-[10px] font-medium text-[#c4b5fd] hover:text-[#a78bfa]">Responder esta observación</button>}
                       </div>
                     </li>
                   ))}
                 </ol>
               )}
-            </div>
+              </div>
+            )}
 
             {esRevisor && (
               <div className="rounded-lg border border-border bg-muted/20 p-2.5">
@@ -1008,6 +1125,17 @@ function DetalleActividadModal({
                 onGuardar={() => void guardarCorreccion()}
                 onReenviar={() => void reenviarCorreccion()}
               />
+            ) : soloLectura ? (
+              // El socio lee el historial completo, incluidas las notas internas,
+              // pero no escribe en él. Sin este bloque caería en la rama del
+              // trabajador y aparecería el formulario de respuesta.
+              <div className="flex items-start gap-2 rounded-lg border border-[#7c3aed]/30 bg-[#7c3aed]/5 p-3">
+                <LockKeyhole size={14} className="mt-0.5 shrink-0 text-[#c4b5fd]" />
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  Estás viendo el historial completo de la actividad, incluidas las notas internas.
+                  Tu perfil es de solo lectura: no puedes responder, aprobar ni rechazar.
+                </p>
+              </div>
             ) : !esRevisor ? (
               <div className="rounded-lg border border-border bg-card p-3">
                 <div className="flex items-center gap-1.5"><MessageSquare size={14} className="text-[#c4b5fd]" /><h3 className="text-xs font-semibold text-foreground">Responder observaciones</h3></div>

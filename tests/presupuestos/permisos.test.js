@@ -3,12 +3,15 @@
 // Se prueba `decidirGestion`, que es la función pura que decide. No necesita
 // base de datos: son las reglas del negocio, y tienen que quedar fijas.
 //
-// Lo que se verifica aquí es exactamente lo que pidió el negocio:
-//   - El LIDER del proyecto puede.
-//   - Un Jefe de Área que NO participa, no puede (aunque sea jefe del área).
-//   - Un Jefe de Área que SÍ es LIDER, puede.
-//   - El ADMIN puede, pero como excepción, y con justificación.
-//   - Sin proyecto vinculado solo se puede vincular, y solo el ADMIN.
+// Reglas vigentes (cambiaron cuando el negocio decidió que cargar el presupuesto
+// por parte del jefe de área ES la aprobación):
+//   - El presupuesto cuelga del cliente, no del proyecto: el vínculo con proyecto
+//     es opcional y no da acceso a nadie.
+//   - El JEFE DEL ÁREA del cliente puede importar, aprobar, activar bolsas,
+//     repartir horas y vincular proyecto, tenga o no proyecto.
+//   - El LIDER del proyecto vinculado puede lo mismo sobre su presupuesto.
+//   - El ADMIN puede sobre cualquier presupuesto y ya no es EXCEPCIÓN.
+//   - Un jefe de OTRA área, sin ser líder ni admin, no puede.
 
 const fs = require('node:fs')
 const path = require('node:path')
@@ -56,12 +59,13 @@ const { decidirGestion } = cargarPermisos()
 const PROYECTO = 42
 const SIN_PROYECTO = null
 
-function como({ accion, esAdmin, esLider, proyectoId = PROYECTO }) {
+function como({ accion, esAdmin, esLider, proyectoId = PROYECTO, esJefeArea = false }) {
   return decidirGestion({
     accion,
     esAdmin,
     esLiderDelProyecto: esLider,
     proyectoId,
+    esJefeDelAreaDelCliente: esJefeArea,
   })
 }
 
@@ -76,53 +80,47 @@ function main() {
     ok(d.motivo.includes('Líder') || d.motivo.includes('Lider'), `${accion}: el motivo dice que es el Lider`)
   }
 
-  titulo('Un Jefe de Area que NO participa, no puede')
-  // Es lo que se pidió explícitamente: ser jefe de área no da permiso por sí solo.
+  titulo('El jefe del AREA del cliente puede TODO, sin ser Lider')
+  // Cambio de negocio: el presupuesto cuelga del cliente y cargar el Excel ya es
+  // la decisión de aprobarlo, asi que el jefe del área no necesita un proyecto ni
+  // ser su Líder para aprobarlo, activarlo ni repartirlo.
+  for (const accion of ['IMPORTAR', ...ACCIONES, 'VINCULAR']) {
+    const d = como({ accion, esAdmin: false, esLider: false, esJefeArea: true, proyectoId: SIN_PROYECTO })
+    ok(d.permitido, `${accion}: el jefe del área del cliente puede`, d.motivo)
+    ok(!d.esExcepcion, `${accion}: no es una excepcion`)
+    ok(d.motivo.includes('jefe del área'), `${accion}: el motivo dice que es el jefe del área`, d.motivo)
+  }
+
+  titulo('Un jefe de OTRA area, sin ser Lider ni admin, no puede')
   for (const accion of ACCIONES) {
     const d = como({ accion, esAdmin: false, esLider: false })
-    ok(!d.permitido, `${accion}: sin ser Lider no puede`, d.motivo)
+    ok(!d.permitido, `${accion}: sin ser del área, ni Lider ni admin, no puede`, d.motivo)
     ok(!d.esExcepcion, `${accion}: no se marca como excepcion`)
-    ok(
-      d.motivo.includes('Líder') || d.motivo.includes('Lider'),
-      `${accion}: el motivo explica que hace falta ser Lider`,
-      d.motivo
-    )
+    ok(d.motivo.length > 0, `${accion}: y se le explica por que`, d.motivo)
   }
 
-  titulo('Un Jefe de Area que SI es Lider, si puede')
-  for (const accion of ACCIONES) {
-    const d = como({ accion, esAdmin: false, esLider: true })
-    ok(d.permitido, `${accion}: puede porque es Lider del proyecto`, d.motivo)
-  }
-
-  titulo('El administrador puede, pero es EXCEPCION')
+  titulo('El administrador puede, y ya no es EXCEPCION')
+  // Antes el admin que no era Líder quedaba registrado como excepción con
+  // justificación obligatoria. Con el presupuesto colgando del cliente, el admin
+  // actua como parte de la gestion normal y no como excepción.
   for (const accion of ACCIONES) {
     const d = como({ accion, esAdmin: true, esLider: false })
     ok(d.permitido, `${accion}: el administrador puede`)
-    ok(d.esExcepcion, `${accion}: queda marcado como excepcion`)
-    ok(
-      d.motivo.toLowerCase().includes('excepci') || d.motivo.toLowerCase().includes('excep'),
-      `${accion}: el motivo advierte que es excepcion`,
-      d.motivo
-    )
+    ok(!d.esExcepcion, `${accion}: ya no queda marcado como excepcion`)
+    ok(d.motivo.toLowerCase().includes('administrador'), `${accion}: el motivo dice que actua como administrador`, d.motivo)
   }
 
-  titulo('El administrador que ademas es Lider, no es excepcion')
-  for (const accion of ACCIONES) {
-    const d = como({ accion, esAdmin: true, esLider: true })
-    ok(d.permitido, `${accion}: puede`)
-    ok(!d.esExcepcion, `${accion}: no es excepcion porque es el Lider de verdad`)
-  }
-
-  titulo('Sin proyecto, solo se puede vincular y solo el ADMIN')
+  titulo('El administrador tambien puede sin proyecto')
   for (const accion of ACCIONES) {
     const d = como({ accion, esAdmin: true, esLider: false, proyectoId: SIN_PROYECTO })
-    ok(!d.permitido, `${accion}: no se puede sin proyecto`, d.motivo)
-    ok(d.motivo.includes('proyecto'), `${accion}: el motivo habla del proyecto`, d.motivo)
+    ok(d.permitido, `${accion}: puede sin proyecto`, d.motivo)
+    ok(!d.esExcepcion, `${accion}: no es excepcion`)
   }
+
+  titulo('Un jefe de OTRA area puede VINCULAR solo con admin o siendo del area')
   for (const esAdmin of [true, false]) {
     const d = como({ accion: 'VINCULAR', esAdmin, esLider: false, proyectoId: SIN_PROYECTO })
-    ok(d.permitido === esAdmin, `VINCULAR sin proyecto: ${esAdmin ? 'el admin puede' : 'un jefe de area no puede'}`)
+    ok(d.permitido === esAdmin, `VINCULAR sin proyecto: ${esAdmin ? 'el admin puede' : 'un jefe de OTRA area no puede'}`)
     if (esAdmin) ok(!d.esExcepcion, 'VINCULAR por el admin es el paso normal, no una excepcion')
   }
 
@@ -146,10 +144,10 @@ function main() {
   // Y puede hacerlo sin proyecto: todavia no hay ninguno.
   ok(importarComo(false, true).permitido, 'puede importar aunque el presupuesto aun no tenga proyecto')
 
-  // El jefe de area NO puede aprobar por el hecho de serlo.
+  // Y ahora tambien puede aprobarlo, que antes no podia.
   ok(
-    !como({ accion: 'APROBAR', esAdmin: false, esLider: false }).permitido,
-    'importar no le da permiso para aprobar'
+    como({ accion: 'APROBAR', esAdmin: false, esLider: false, esJefeArea: true, proyectoId: SIN_PROYECTO }).permitido,
+    'y también aprobarlo, sin ser Líder y sin proyecto'
   )
 
   titulo('La matriz completa se puede resumir')
@@ -158,10 +156,11 @@ function main() {
     filas.push({
       accion,
       lider: como({ accion, esAdmin: false, esLider: true }).permitido,
-      jefeAreaNoParticipa: como({ accion, esAdmin: false, esLider: false }).permitido,
+      jefeArea: como({ accion, esAdmin: false, esLider: false, esJefeArea: true }).permitido,
+      jefeAreaSinProyecto: como({ accion, esAdmin: false, esLider: false, esJefeArea: true, proyectoId: SIN_PROYECTO }).permitido,
+      jefeAreaOtraArea: como({ accion, esAdmin: false, esLider: false }).permitido,
       admin: como({ accion, esAdmin: true, esLider: false }).permitido,
-      adminEsLider: como({ accion, esAdmin: true, esLider: true }).permitido,
-      jefeAreaImporta: accion === 'IMPORTAR' ? importarComo(false, true).permitido : false,
+      adminEsExcepcion: como({ accion, esAdmin: true, esLider: false }).esExcepcion,
     })
   }
   console.table(filas)

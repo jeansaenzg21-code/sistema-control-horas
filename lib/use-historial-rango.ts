@@ -93,15 +93,25 @@ export function useHistorialRango(
     // hacia antes de que existiera la paginacion. Se piden todas las paginas
     // hasta el tope, y si se llega al tope se marca como incompleto en vez de
     // fingir que el total es ese.
-    const rango = desde && hasta ? `&desde=${desde}&hasta=${hasta}` : ''
-    const base = todaEmpresa ? '/api/actividades' : `/api/actividades?usuario_id=${usuarioId ?? ''}`
     const acumuladas: Actividad[] = []
     let hayMas = true
     let recortado = false
 
     try {
       while (hayMas && acumuladas.length < TOPE_RANGO) {
-        const url = `${base}${rango}&limite=${PAGINA}&offset=${acumuladas.length}`
+        // Igual que en lib/actividad-context.tsx: la query se arma con
+        // URLSearchParams. Antes se concatenaba a una base que con `todaEmpresa`
+        // no llevaba '?', y la URL caía en 404 en vez de devolver filas.
+        const params = new URLSearchParams({
+          limite: String(PAGINA),
+          offset: String(acumuladas.length),
+        })
+        if (desde && hasta) {
+          params.set('desde', desde)
+          params.set('hasta', hasta)
+        }
+        if (!todaEmpresa && usuarioId != null) params.set('usuario_id', String(usuarioId))
+        const url = `/api/actividades?${params.toString()}`
         const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
         if (!res.ok) break
         const lote = (await res.json()) as Actividad[]

@@ -59,14 +59,41 @@ export async function GET(request: Request) {
     const condiciones = ['p.empresa_id = ?', 'p.activo = TRUE']
     const params: Array<number> = [context.empresaId]
     if (!admin) {
-      condiciones.push(`(
-        p.jefe_id = ?
-        OR EXISTS (
-          SELECT 1 FROM proyecto_participantes acceso
-          WHERE acceso.proyecto_id = p.id AND acceso.usuario_id = ?
-        )
+      // Todas las vías de acceso van en el MISMO grupo OR. Si la del jefe de
+      // área se añadiera como una condición AND aparte, el bloque de jefe del
+      // proyecto seguiría exigiendo participación y la dejaría anulada.
+      const vias: string[] = ['p.jefe_id = ?']
+      params.push(context.user.id)
+      vias.push(`EXISTS (
+        SELECT 1 FROM proyecto_participantes acceso
+        WHERE acceso.proyecto_id = p.id AND acceso.usuario_id = ?
       )`)
-      params.push(context.user.id, context.user.id)
+      params.push(context.user.id)
+      // El jefe del área tiene que ver los proyectos de SUS clientes: es quien
+      // importa y revisa su presupuesto. Sin esta vía, la ficha del cliente le
+      // llegaba sin ningún proyecto y el selector quedaba vacío.
+      if (context.user.area_id) {
+        vias.push(`EXISTS (
+          SELECT 1 FROM clientes c
+           WHERE c.id = p.cliente_id AND c.area_id = ? AND c.activo = TRUE
+        )`)
+        params.push(context.user.area_id)
+      }
+      condiciones.push(`(${vias.join(' OR ')})`)
+    }
+
+    // Filtro opcional por cliente, para la ficha del cliente. Se aplica en SQL
+    // y no en el cliente: si no, un administrador recibiría los proyectos de
+    // todos sus clientes para descartar después los que no le interesan.
+    const url = new URL(request.url)
+    const clienteIdParam = url.searchParams.get('cliente_id')
+    if (clienteIdParam != null && clienteIdParam !== '') {
+      const clienteId = Number(clienteIdParam)
+      if (!Number.isInteger(clienteId) || clienteId <= 0) {
+        return NextResponse.json({ error: 'El cliente no es valido.' }, { status: 400 })
+      }
+      condiciones.push('p.cliente_id = ?')
+      params.push(clienteId)
     }
 
     const [rows] = await pool.query(

@@ -76,7 +76,7 @@ function redondear1(n: number): number {
 export async function GET(request: Request) {
   try {
     const user = await getUserFromRequest(request)
-    if (!user || (!esAdmin(user) && !esJefeDeArea(user))) {
+    if (!user || (!esAdmin(user) && !esJefeDeArea(user) && user.rol !== 'SOCIO')) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
     const context = await getEmpresaContext(user)
@@ -89,12 +89,21 @@ export async function GET(request: Request) {
     const mes = Number(searchParams.get('mes'))
     const usuarioIdParam = searchParams.get('usuario_id')
     const clienteIdParam = searchParams.get('cliente_id')
+    const desdeParam = searchParams.get('desde')
+    const hastaParam = searchParams.get('hasta')
 
     if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) {
       return NextResponse.json({ error: 'El parámetro anio no es válido.' }, { status: 400 })
     }
     if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
       return NextResponse.json({ error: 'El parámetro mes debe estar entre 1 y 12.' }, { status: 400 })
+    }
+    const prefijoMes = `${anio}-${pad(mes)}-`
+    if (desdeParam !== null && !new RegExp(`^${prefijoMes}\\d{2}$`).test(desdeParam)) {
+      return NextResponse.json({ error: 'La fecha desde no pertenece al mes consultado.' }, { status: 400 })
+    }
+    if (hastaParam !== null && !new RegExp(`^${prefijoMes}\\d{2}$`).test(hastaParam)) {
+      return NextResponse.json({ error: 'La fecha hasta no pertenece al mes consultado.' }, { status: 400 })
     }
 
     let usuarioId: number | null = null
@@ -128,14 +137,27 @@ export async function GET(request: Request) {
       areaId = user.area_id
     }
 
-    // ---- 1. Periodo (mes natural completo) ----
-    const desde = fechaStr(anio, mes, 1)
-    const hasta = fechaStr(anio, mes, diasEnMes(anio, mes))
+    // ---- 1. Periodo (mes natural completo, o rango dentro del mes) ----
+    const diasDelMes = diasEnMes(anio, mes)
+    const diaInicio = desdeParam ? Number(desdeParam.slice(8)) : 1
+    const diaFin = hastaParam ? Number(hastaParam.slice(8)) : diasDelMes
+    if (!Number.isInteger(diaInicio) || diaInicio < 1 || diaInicio > diasDelMes) {
+      return NextResponse.json({ error: 'El día desde no es válido.' }, { status: 400 })
+    }
+    if (!Number.isInteger(diaFin) || diaFin < 1 || diaFin > diasDelMes) {
+      return NextResponse.json({ error: 'El día hasta no es válido.' }, { status: 400 })
+    }
+    if (diaFin < diaInicio) {
+      return NextResponse.json({ error: 'El rango de cumplimiento es inválido.' }, { status: 400 })
+    }
+
+    const desde = fechaStr(anio, mes, diaInicio)
+    const hasta = fechaStr(anio, mes, diaFin)
 
     const dias: DiaMolde[] = []
     const semanaPorFechaIso = new Map<string, string>()
     const startsSemana: string[] = []
-    for (let dia = 1; dia <= diasEnMes(anio, mes); dia++) {
+    for (let dia = diaInicio; dia <= diaFin; dia++) {
       const fecha = fechaStr(anio, mes, dia)
       const dd = new Date(Date.UTC(anio, mes - 1, dia))
       const diaSemana = dd.getUTCDay()
@@ -386,7 +408,7 @@ export async function GET(request: Request) {
         mes,
         desde,
         hasta,
-        dias_mes: diasEnMes(anio, mes),
+        dias_mes: dias.length,
         dias,
         semanas,
       },

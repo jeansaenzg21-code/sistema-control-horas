@@ -2,22 +2,31 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2 } from 'lucide-react'
 import { MainLayout } from '@/components/main-layout'
+import { DashboardJefeArea } from '@/components/dashboard-jefe-area'
+import { DashboardAdministrador } from '@/components/dashboard-admin'
 import { DateRangeFilter } from '@/components/date-range-filter'
-import { ChartCard } from '@/components/chart-card'
+import { ResumenPorDivision } from '@/components/resumen-por-division'
 import { AreaChart } from '@/components/area-chart'
 import { BillingStats } from '@/components/billing-stats'
 import { ActivityTable } from '@/components/activity-table'
-import { useAreas } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 
+/**
+ * Panel principal del administrador y del socio.
+ *
+ * El jefe de área tiene el suyo (`DashboardJefeArea`) y se devuelve antes de
+ * montar nada de este archivo. Los dos paneles son distintos de verdad: este ve
+ * la empresa entera, aquel solo su división. Mezclarlos en un mismo componente
+ * haría fácil que un número global se colara en la vista del jefe, que es
+ * exactamente lo que no debe pasar.
+ */
 export default function PanelPrincipal() {
-  const { areas } = useAreas()
   const { usuario, cargando } = useAuth()
   const router = useRouter()
   const esJefeArea = usuario?.rol === 'jefe_area'
-  const [areaId, setAreaId] = useState('')
+  // El administrador ve la empresa entera, así que no elige división: el filtro
+  // obligaba a recordar cuál era "la buena" y ocultaba el resto.
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
 
@@ -25,54 +34,31 @@ export default function PanelPrincipal() {
     if (cargando) return
     if (!usuario) {
       router.replace('/login')
+    } else if (usuario.rol === 'socio') {
+      // El panel es de lectura, así que el socio sí lo ve. Lo que no le vale es
+      // su enlace a /actividades, que es el módulo de registro.
+      return
     } else if (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area') {
       router.replace('/actividades')
     }
   }, [cargando, usuario, router])
 
-  useEffect(() => {
-    if (esJefeArea && usuario?.area_id != null) setAreaId(String(usuario.area_id))
-  }, [esJefeArea, usuario?.area_id])
+  if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area' && usuario.rol !== 'socio')) return null
 
-  if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area')) return null
-
-  const estiloSelect =
-    'w-full cursor-pointer rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50'
+  // El jefe de área tiene su propio panel: más denso, con equipo, cumplimiento,
+  // alertas y cartera de su división. Este es el del administrador y el socio, y
+  // no se toca. Un mismo archivo que devuelve dos cosas distintas acabaría
+  // mezclando lo global con lo del área.
+  if (usuario?.rol === 'admin' || usuario?.rol === 'socio') return <DashboardAdministrador />
+  if (esJefeArea) return <DashboardJefeArea />
 
   return (
-    <MainLayout title="Panel Principal" subtitle="Resumen de tu actividad">
+    <MainLayout title="Panel Principal" subtitle="Resumen de toda la empresa">
       <div className="space-y-3">
         <div className="flex flex-wrap items-end gap-2">
-          {esJefeArea ? (
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
-              <span className="text-xs text-muted-foreground">División</span>
-              <p className="font-medium">{areas.find((area) => String(area.id) === areaId)?.nombre || 'Tu área'}</p>
-            </div>
-          ) : (
-            <div>
-              <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Building2 size={13} />
-                División
-              </label>
-              <select
-                value={areaId}
-                onChange={(e) => setAreaId(e.target.value)}
-                className={estiloSelect}
-              >
-                <option value="">Selecciona una división</option>
-                {areas.map((area) => (
-                  <option key={area.id} value={String(area.id)}>
-                    {area.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           <DateRangeFilter
             desde={desde}
             hasta={hasta}
-            disabled={!areaId}
             onChange={(d, h) => {
               setDesde(d)
               setHasta(h)
@@ -81,12 +67,12 @@ export default function PanelPrincipal() {
         </div>
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          <ChartCard areaId={areaId} desde={desde} hasta={hasta} />
-          <AreaChart areaId={areaId} desde={desde} hasta={hasta} />
-          <BillingStats areaId={areaId} desde={desde} hasta={hasta} />
+          <ResumenPorDivision areaId="" desde={desde} hasta={hasta} />
+          <AreaChart areaId="" desde={desde} hasta={hasta} />
+          <BillingStats areaId="" desde={desde} hasta={hasta} />
         </div>
 
-        <ActivityTable areaId={areaId} desde={desde} hasta={hasta} />
+        <ActivityTable areaId="" desde={desde} hasta={hasta} />
       </div>
     </MainLayout>
   )

@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 
-export type Rol = 'personal' | 'supervisor' | 'jefe_area' | 'admin'
+export type Rol = 'personal' | 'supervisor' | 'jefe_area' | 'admin' | 'socio'
 
 export interface Empresa {
   id: number
@@ -56,7 +56,15 @@ function mapRol(dbRol: string): Rol {
   if (dbRol === 'SUPERVISOR') return 'supervisor'
   if (dbRol === 'JEFE_AREA') return 'jefe_area'
   if (dbRol === 'ADMINISTRACION') return 'admin'
-  return 'personal'
+  if (dbRol === 'SOCIO') return 'socio'
+  if (dbRol === 'PERSONAL') return 'personal'
+  // Antes este `return` sin más convertía cualquier rol desconocido en
+  // 'personal'. Con el socio fue un problema real de seguridad: si el ENUM se
+  // actualiza en la base y la aplicación no, el socio entraba degradado a
+  // 'personal', con permisos de collaborative y SIN el bloqueo de escritura.
+  // Un rol desconocido se trata como el más restrictivo, nunca como el más
+  // permisivo.
+  return 'socio'
 }
 
 function normalizeUsuario(raw: Record<string, unknown>): Usuario {
@@ -165,7 +173,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (!token || !usuario || !empresaActiva || usuario.rol === 'admin') return
+    // El widget es el temporizador de registro. Ni el admin ni el socio
+    // registran horas, así que no se les ofrece ni se les sincroniza.
+    if (!token || !usuario || !empresaActiva || usuario.rol === 'admin' || usuario.rol === 'socio') return
 
     const controller = new AbortController()
     void fetch('/api/widget/sync', {

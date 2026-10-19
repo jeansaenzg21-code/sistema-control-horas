@@ -205,7 +205,13 @@ export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
               <div className="border-b border-border px-4 py-3">
                 <p className="truncate text-sm font-semibold text-foreground">{usuario.nombre}</p>
                 <p className="text-[11px] capitalize text-muted-foreground">
-                  {usuario.rol === 'admin' ? 'Administrador' : usuario.rol === 'jefe_area' ? 'Jefe de área' : usuario.cargo || 'Colaborador'}
+                  {/* `capitalize` no sirve para "Jefe de área": capitalizaría cada
+                      palabra. El texto de los roles ya viene escrito como debe
+                      mostrarse, así que solo se aplica al cargo libre. */}
+                  {usuario.rol === 'admin' ? 'Administrador'
+                    : usuario.rol === 'jefe_area' ? 'Jefe de área'
+                      : usuario.rol === 'socio' ? 'Socio · solo lectura'
+                        : <span className="capitalize">{usuario.cargo || 'Colaborador'}</span>}
                 </p>
               </div>
 

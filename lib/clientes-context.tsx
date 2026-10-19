@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from './auth-context'
+import { notifyClientesChange } from './events'
 
 export interface Cliente {
   id: number
@@ -30,7 +31,7 @@ interface ClientesContextValue {
   clientes: Cliente[]
   cargando: boolean
   cargarClientes: () => Promise<void>
-  crearCliente: (datos: Omit<Cliente, 'id' | 'area_nombre' | 'horas_consumidas' | 'activo' | 'created_at'>) => Promise<{ ok: boolean; error?: string }>
+  crearCliente: (datos: Omit<Cliente, 'id' | 'area_nombre' | 'horas_consumidas' | 'activo' | 'created_at'>) => Promise<{ ok: boolean; error?: string; id?: number }>
   actualizarCliente: (id: number, datos: Partial<Cliente>) => Promise<{ ok: boolean; error?: string }>
   eliminarCliente: (id: number) => Promise<void>
 }
@@ -94,7 +95,15 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
       const data = await res.json()
       if (!res.ok) return { ok: false, error: data.error || 'Error al crear cliente.' }
       await cargarClientes()
-      return { ok: true }
+      // La cartera se calcula aparte (/api/clientes/cartera) y la pintan otros
+      // componentes con su propio estado. Sin este aviso el cliente nuevo no
+      // aparecía en el panel ni en /clientes hasta recargar la página a mano.
+      notifyClientesChange()
+      // El id se devuelve porque la creación desde un Excel necesita colgarle el
+      // presupuesto en el acto: buscarlo después en el estado ya recargado es
+      // frágil, porque `cargarClientes` aún no ha propagado el cliente nuevo a
+      // este render y la búsqueda se queda sin resultado.
+      return { ok: true, id: Number(data.id) }
     } catch {
       return { ok: false, error: 'No se pudo conectar al servidor.' }
     }
@@ -111,6 +120,7 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
       const data = await res.json()
       if (!res.ok) return { ok: false, error: data.error || 'Error al actualizar cliente.' }
       await cargarClientes()
+      notifyClientesChange()
       return { ok: true }
     } catch {
       return { ok: false, error: 'No se pudo conectar al servidor.' }
@@ -126,6 +136,7 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ id }),
       })
       await cargarClientes()
+      notifyClientesChange()
     } catch {
       return
     }

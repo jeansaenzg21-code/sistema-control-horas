@@ -20,6 +20,7 @@ const ROLES = {
   supervisor: 'SUPERVISOR',
   jefe_area: 'JEFE_AREA',
   admin: 'ADMINISTRACION',
+  socio: 'SOCIO',
 } as const
 
 function rolDesdeCliente(valor: unknown): string | null {
@@ -51,6 +52,30 @@ async function soportaRolJefeArea(): Promise<boolean> {
   const fila = (rows as Array<Record<string, unknown>>)[0]
   const tipo = String(fila?.COLUMN_TYPE ?? fila?.column_type ?? Object.values(fila ?? {})[0] ?? '')
   return !tipo || !tipo.toUpperCase().startsWith('ENUM(') || tipo.toUpperCase().includes('JEFE_AREA')
+}
+
+/**
+ * Si el ENUM de `usuarios.rol` admite ya un valor.
+ *
+ * Es una comprobación real y no una constante: sin este rol en la base, un
+ * INSERT con 'SOCIO' no falla en MySQL, entra en modo estricto como cadena
+ * vacía y el usuario se guarda SIN rol. El error aparecería después, en el
+ * login, como un socio que degrade a 'personal' con permisos de colaborador.
+ * Mejor fallar aquí, al crear, diciendo qué migración ejecutar.
+ */
+async function soportaRol(rol: string): Promise<boolean> {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_TYPE
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'usuarios'
+       AND COLUMN_NAME = 'rol'
+     LIMIT 1`
+  )
+  const fila = (rows as Array<Record<string, unknown>>)[0]
+  const tipo = String(fila?.COLUMN_TYPE ?? fila?.column_type ?? Object.values(fila ?? {})[0] ?? '')
+  if (!tipo || !tipo.toUpperCase().startsWith('ENUM(')) return true
+  return tipo.toUpperCase().includes(rol)
 }
 
 async function getContextoActivo(request: Request) {
@@ -118,6 +143,12 @@ export async function POST(request: Request) {
     }
     if (jefeUsuario && (!area_id || Number(area_id) !== context.user.area_id)) {
       return NextResponse.json({ error: 'Sólo puedes crear usuarios en tu área.' }, { status: 403 })
+    }
+    if (rolDb === 'SOCIO' && !(await soportaRol('SOCIO'))) {
+      return NextResponse.json(
+        { error: 'Falta habilitar el rol SOCIO en la base de datos. Ejecuta sql/socio_solo_lectura.sql.' },
+        { status: 503 }
+      )
     }
     if (rolDb === 'JEFE_AREA' && !area_id) {
       return NextResponse.json({ error: 'Debes seleccionar la división del jefe de área.' }, { status: 400 })

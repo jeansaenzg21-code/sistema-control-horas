@@ -412,7 +412,7 @@ CREATE TABLE `usuarios` (
   `usuario` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `correo` varchar(150) COLLATE utf8mb4_unicode_ci NOT NULL,
   `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `rol` enum('PERSONAL','SUPERVISOR','ADMINISTRACION','JEFE_AREA') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `rol` enum('PERSONAL','SUPERVISOR','ADMINISTRACION','JEFE_AREA','SOCIO') COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `area_id` int unsigned NOT NULL,
   `especialidad` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `supervisor_id` int unsigned DEFAULT NULL,

@@ -45,8 +45,20 @@ export async function GET(request: Request) {
         }
       }
     } else if (user.rol === 'JEFE_AREA') {
-      return NextResponse.json({ error: 'Los jefes de área no pueden aprobar registros.' }, { status: 403 })
-    } else if (user.rol !== 'ADMINISTRACION') {
+      // Antes devolvia 403 aqui y el jefe no podia ni LISTAR. Ahora revisa los
+      // registros de su area: el recorte lo hace el propio SQL de abajo con
+      // `u.area_id = ?`, no una comprobacion en el cliente. Si se aprobara el
+      // filtro sin acotar la consulta, un jefe veria (y podria aprobar) toda la
+      // empresa.
+      if (supervisorId != null) {
+        return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
+      }
+      // Sin area asignada no hay recorte posible: el `AND u.area_id = ?` de mas
+      // abajo no se anadiria y la consulta saldria sin filtro de ambito.
+      if (user.area_id == null) {
+        return NextResponse.json({ error: 'No tienes una división asignada.' }, { status: 403 })
+      }
+    } else if (user.rol !== 'ADMINISTRACION' && user.rol !== 'SOCIO') {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
@@ -81,6 +93,12 @@ export async function GET(request: Request) {
     } else if (user.rol === 'SUPERVISOR') {
       query += ' AND u.supervisor_id = ?'
       params.push(user.id)
+    } else if (user.rol === 'ADMINISTRACION') {
+      // El administrador solo revisa las actividades que envian los jefes de área.
+      query += " AND u.rol = 'JEFE_AREA'"
+    } else if (user.rol === 'JEFE_AREA' && user.area_id != null) {
+      query += ' AND u.area_id = ?'
+      params.push(user.area_id)
     }
 
     query += ' ORDER BY a.created_at DESC'

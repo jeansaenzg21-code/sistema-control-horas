@@ -28,7 +28,7 @@ const pestanas = [
 export function CumplimientoNav() {
   const pathname = usePathname()
   const { usuario } = useAuth()
-  const pestanasVisibles = usuario?.rol === 'jefe_area'
+  const pestanasVisibles = usuario?.rol === 'jefe_area' || usuario?.rol === 'socio'
     ? pestanas.filter((p) => p.href !== '/cumplimiento/excepciones')
     : pestanas
 

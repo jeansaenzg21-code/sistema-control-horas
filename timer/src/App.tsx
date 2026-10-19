@@ -186,6 +186,14 @@ export function App() {
         }
         if (!usuarioRef.current || usuarioRef.current.id !== u.id) {
           await activateWidget(u, data.token)
+        } else {
+          // Mismo usuario: no se re-activa, porque reactivar reinicia el tamaño y
+          // la posicion de la ventana. Pero SI se vuelve a mostrar. Sin esto, si
+          // la ventana se oculto por una carrera con el `hide` del arranque (o
+          // porque Windows se la llevo), se quedaba oculta para siempre: el poll
+          // ve al mismo usuario, no repetia activateWidget y nadie llamaba a
+          // showWindow.
+          await showWindow()
         }
       } else if (usuarioRef.current) {
         await deactivateWidget()
@@ -216,13 +224,23 @@ export function App() {
   }, [syncWidget, deactivateWidget])
 
   useEffect(() => {
-    hideWindow()
-    const restore = async () => {
+    let cancelado = false
+    const arrancar = async () => {
+      // El ocultado se ESPERA antes de sincronizar.
+      //
+      // Antes `hideWindow()` se lanzaba sin await y `restore()` corria en
+      // paralelo: el `hide` y el `show` de activateWidget compitian por la misma
+      // ventana. Si el hide caia despues, la ventana se quedaba oculta y ya nadie
+      // la volvia a mostrar.
+      await hideWindow()
+      if (cancelado) return
       await syncWidget()
+      if (cancelado) return
       syncIntervalRef.current = setInterval(syncWidget, 30000)
     }
-    restore()
+    void arrancar()
     return () => {
+      cancelado = true
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current)
     }
   }, [syncWidget, activateWidget])

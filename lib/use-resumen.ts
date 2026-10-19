@@ -34,6 +34,12 @@ export type Resumen = {
     horas: number
   }>
   por_dia: Array<{ dia: string; registros: number; horas: number }>
+  /**
+   * Registros por estado. Lo usa el panel del jefe de área para el donut de
+   * estados y para los contadores de pendientes y observados: con `totales` no
+   * basta, porque ahí solo viene el agregado.
+   */
+  por_estado?: Array<{ estado: string; registros: number; horas: number }>
 }
 
 const VACIO: Resumen = {
@@ -42,6 +48,7 @@ const VACIO: Resumen = {
   por_cargo_facturable: [],
   por_usuario: [],
   por_dia: [],
+  por_estado: [],
 }
 
 export function useResumenActividades(
