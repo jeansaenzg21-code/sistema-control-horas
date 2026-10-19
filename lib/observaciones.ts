@@ -108,14 +108,27 @@ interface ParentRow extends RowDataPacket {
   estado_atencion: EstadoAtencion
 }
 
+/**
+ * Quién puede aprobar o rechazar una actividad.
+ *
+ * El jefe de área entra por su ÁREA, no por su jerarquía: puede revisar lo que
+ * registraron los miembros de su división y nada más. La comparación es por
+ * `area_id` contra la suya y por empresa, así que un jefe no puede colarse en la
+ * de otro aun si se inventa el id de la actividad.
+ *
+ * El supervisor sigue viniendo por su cadena de supervisión, que es más
+ * estrecha: solo sus subordinados directos, aunque sean de otra área.
+ */
 export function puedeRevisarActividad(
   user: SessionUser,
-  actividad: Pick<ActividadObservacion, 'usuario_id' | 'supervisor_id' | 'empresa_id'>,
+  actividad: Pick<ActividadObservacion, 'usuario_id' | 'supervisor_id' | 'area_id' | 'empresa_id'>,
 ): boolean {
   if (user.rol === 'ADMINISTRACION') return true
-  return user.rol === 'SUPERVISOR'
-    && user.empresa_id === actividad.empresa_id
-    && actividad.supervisor_id === user.id
+  if (user.empresa_id !== actividad.empresa_id) return false
+  if (user.rol === 'JEFE_AREA') {
+    return user.area_id != null && user.area_id === actividad.area_id
+  }
+  return user.rol === 'SUPERVISOR' && actividad.supervisor_id === user.id
 }
 
 export function puedeVerActividad(

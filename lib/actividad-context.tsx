@@ -10,15 +10,18 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from './auth-context'
-import { esJefeDeArea } from './permisos'
+import { veActividadDeTodaLaEmpresa } from './permisos'
 import { ControlStream, crearStreamSse } from './sse'
 
 export interface Actividad {
   id: number
   usuario_id: number
   cliente_id: number | null
-  proyecto_id?: number | null
+proyecto_id?: number | null
   proyecto_nombre?: string | null
+  /** Bolsa de horas a la que se imputa la actividad. Cuelga del cliente. */
+  presupuesto_servicio_id?: number | null
+  presupuesto_servicio_nombre?: string | null
   tipo_actividad_id: number
   descripcion: string | null
   facturable: boolean | null
@@ -48,7 +51,7 @@ interface ActividadContextValue {
   alertaVisible: boolean
   tiempoPausaMs: number | null
   configurarAlertas: (minutos: number) => void
-  iniciarActividad: (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; descripcion?: string; facturable?: boolean | null }) => Promise<{ ok: boolean; error?: string }>
+  iniciarActividad: (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; presupuesto_servicio_id?: number | null; descripcion?: string; facturable?: boolean | null }) => Promise<{ ok: boolean; error?: string }>
   pausarActividad: () => Promise<void>
   reanudarActividad: () => Promise<void>
   finalizarActividad: () => Promise<void>
@@ -179,10 +182,22 @@ const streamRef = useRef<ControlStream | null>(null)
       const append = opciones.append === true
       const offset = append ? historialRef.current.length : 0
       try {
-        const base = soloPropias
-          ? `/api/actividades?usuario_id=${usuarioId}`
-          : '/api/actividades'
-        const url = `${base}&limite=${LIMITE_PAGINA}&offset=${offset}`
+        // La query se arma con URLSearchParams, no concatenándola a una base a la
+        // que a veces le falta el '?'.
+        //
+        // La versión anterior hacía `'/api/actividades' + '&limite=...'`, así que
+        // quien NO ve solo sus registros (jefe de área, admin, supervisor, socio)
+        // pedía `/api/actividades&limite=200&offset=0`. Sin '?' esos parámetros son
+        // parte de la RUTA, la consulta llegaba vacía y Next respondía 404. El
+        // fetch caía en el `!res.ok`, el historial se ponía a [] y la pestaña de
+        // registros se quedaba en blanco: al finalizar una actividad, el refetch
+        // fallaba igual y no aparecía nada.
+        const params = new URLSearchParams({
+          limite: String(LIMITE_PAGINA),
+          offset: String(offset),
+        })
+        if (soloPropias) params.set('usuario_id', String(usuarioId))
+        const url = `/api/actividades?${params.toString()}`
         const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
         const res = await fetch(url, {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -225,14 +240,14 @@ const streamRef = useRef<ControlStream | null>(null)
   /** Trae la siguiente pagina. Lo usa el botón "Cargar más registros". */
   const cargarMasHistorial = useCallback(async () => {
     if (!usuario || !empresaId || !hayMasHistorial) return
-    const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor' || esJefeDeArea(usuario)
+    const esAdminOSupervisor = veActividadDeTodaLaEmpresa(usuario)
     await cargarHistorial(usuario.id, !esAdminOSupervisor, { append: true })
   }, [usuario, empresaId, hayMasHistorial, cargarHistorial])
 
   useEffect(() => {
     if (usuario && empresaId) {
       cargaInicialRef.current = false
-      const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor' || esJefeDeArea(usuario)
+      const esAdminOSupervisor = veActividadDeTodaLaEmpresa(usuario)
       Promise.all([
         cargarActividadActual(usuario.id),
         cargarHistorial(usuario.id, !esAdminOSupervisor),
@@ -246,7 +261,7 @@ const streamRef = useRef<ControlStream | null>(null)
 
   useEffect(() => {
     if (!usuario || !empresaId) return
-    const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor' || esJefeDeArea(usuario)
+    const esAdminOSupervisor = veActividadDeTodaLaEmpresa(usuario)
 
     const alCambiar = () => {
       void cargarActividadActual(usuario.id)
@@ -378,7 +393,7 @@ const streamRef = useRef<ControlStream | null>(null)
       setTiempoPausaMs(null)
       setActividadActual(null)
       setAlertaVisible(false)
-       const esAdminOSupervisor = usuario.rol === 'admin' || usuario.rol === 'supervisor' || esJefeDeArea(usuario)
+       const esAdminOSupervisor = veActividadDeTodaLaEmpresa(usuario)
        await cargarHistorial(usuario.id, !esAdminOSupervisor)
     } catch {
       console.warn('[actividad] Sin conexión al finalizar')

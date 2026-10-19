@@ -236,6 +236,43 @@ EXECUTE stmt_fk;
 DEALLOCATE PREPARE stmt_fk;
 
 -- ---------------------------------------------------------------------------
+-- planificación: vínculo con la bolsa.
+-- ---------------------------------------------------------------------------
+-- El Excel de Hoja2 trae las sub-etapas por nombre de tarea, no por servicio. Sin
+-- esta columna habría que adivinar la relación comparando textos, y una
+-- coincidencia inventada movería horas de un servicio a otro. NULL = sub-etapa
+-- aún no vinculada; el Gantt la muestra como tal hasta que se relacione.
+SET @col_plan_servicio := (SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='presupuesto_planificacion'
+    AND COLUMN_NAME='presupuesto_servicio_id');
+SET @alter_plan_servicio := IF(@col_plan_servicio = 0,
+  'ALTER TABLE presupuesto_planificacion ADD COLUMN presupuesto_servicio_id INT UNSIGNED NULL DEFAULT NULL AFTER presupuesto_id',
+  'SELECT ''presupuesto_planificacion ya tiene presupuesto_servicio_id''');
+PREPARE stmt_plan_servicio FROM @alter_plan_servicio;
+EXECUTE stmt_plan_servicio;
+DEALLOCATE PREPARE stmt_plan_servicio;
+
+SET @fk_plan_servicio := (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='presupuesto_planificacion'
+    AND CONSTRAINT_NAME='fk_pp_plan_servicio');
+SET @alter_fk_plan := IF(@fk_plan_servicio = 0,
+  'ALTER TABLE presupuesto_planificacion ADD CONSTRAINT fk_pp_plan_servicio FOREIGN KEY (presupuesto_servicio_id) REFERENCES presupuesto_servicios (id) ON DELETE SET NULL',
+  'SELECT ''La FK de planificación ya existe.''');
+PREPARE stmt_fk_plan FROM @alter_fk_plan;
+EXECUTE stmt_fk_plan;
+DEALLOCATE PREPARE stmt_fk_plan;
+
+SET @idx_plan_servicio := (SELECT COUNT(*) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='presupuesto_planificacion'
+    AND INDEX_NAME='idx_pp_plan_servicio');
+SET @crear_idx_plan := IF(@idx_plan_servicio = 0,
+  'ALTER TABLE presupuesto_planificacion ADD INDEX idx_pp_plan_servicio (presupuesto_servicio_id)',
+  'SELECT ''El índice de planificación ya existe.''');
+PREPARE stmt_idx_plan FROM @crear_idx_plan;
+EXECUTE stmt_idx_plan;
+DEALLOCATE PREPARE stmt_idx_plan;
+
+-- ---------------------------------------------------------------------------
 -- Verificación
 -- ---------------------------------------------------------------------------
 SELECT TABLE_NAME
@@ -243,7 +280,9 @@ FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'presupuesto%'
 ORDER BY TABLE_NAME;
 
-SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
+SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE
 FROM information_schema.COLUMNS
-WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'actividades'
-  AND COLUMN_NAME = 'presupuesto_servicio_id';
+WHERE TABLE_SCHEMA = DATABASE()
+  AND (   (TABLE_NAME = 'actividades' AND COLUMN_NAME = 'presupuesto_servicio_id')
+       OR (TABLE_NAME = 'presupuesto_planificacion' AND COLUMN_NAME = 'presupuesto_servicio_id') )
+ORDER BY TABLE_NAME;

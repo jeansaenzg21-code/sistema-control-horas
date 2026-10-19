@@ -66,12 +66,17 @@ function agruparObservaciones(valor: unknown): Record<number, CumplimientoObserv
 }
 
 export default function CumplimientoResumen() {
-  const { usuarios } = useAuth()
+  const { usuarios, usuario } = useAuth()
   const { areas } = useAreas()
 
   const [anio, setAnio] = useState(new Date().getFullYear())
   const [mes, setMes] = useState(new Date().getMonth() + 1)
   const [areaId, setAreaId] = useState('')
+  useEffect(() => {
+    if (usuario?.rol === 'jefe_area' && usuario?.area_id != null) {
+      setAreaId(String(usuario.area_id))
+    }
+  }, [usuario])
   const [usuarioId, setUsuarioId] = useState('')
 
   const [datos, setDatos] = useState<CumplimientoReporte | null>(null)
@@ -80,6 +85,7 @@ export default function CumplimientoResumen() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const divisionFija = usuario?.rol === 'jefe_area' && usuario?.area_id != null
   const colaboradores = usuarios.filter(
     (u) => u.rol === 'personal' && u.activo && (!areaId || String(u.area_id) === areaId),
   )
@@ -179,12 +185,18 @@ export default function CumplimientoResumen() {
         </button>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <select value={areaId} onChange={(e) => { setAreaId(e.target.value); setUsuarioId('') }} className={estiloControl}>
-            <option value="">Todas las divisiones</option>
-            {areas.filter((a) => a.activo).map((a) => (
-              <option key={a.id} value={String(a.id)}>{a.nombre}</option>
-            ))}
-          </select>
+          {divisionFija ? (
+            <span className="h-8 rounded-lg border border-border bg-muted/40 px-2 text-xs leading-8 text-foreground">
+              {areas.find((a) => a.id === usuario.area_id)?.nombre ?? 'Tu división'}
+            </span>
+          ) : (
+            <select value={areaId} onChange={(e) => { setAreaId(e.target.value); setUsuarioId('') }} className={estiloControl}>
+              <option value="">Todas las divisiones</option>
+              {areas.filter((a) => a.activo).map((a) => (
+                <option key={a.id} value={String(a.id)}>{a.nombre}</option>
+              ))}
+            </select>
+          )}
           <select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)} className={estiloControl}>
             <option value="">Todos los colaboradores</option>
             {colaboradores.map((c) => (

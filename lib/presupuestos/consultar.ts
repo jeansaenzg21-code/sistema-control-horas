@@ -37,7 +37,10 @@ export type ResumenPresupuesto = {
   archivoNombre: string
   archivoHash: string
   creadoEn: string
+  creadoPorId: number | null
+  creadoPor: string | null
   revisadoPor: string | null
+  revisadoEn: string | null
   totales: {
     horasDetallado: number
     horasConsolidado: number
@@ -150,14 +153,19 @@ export async function obtenerPresupuestosDeCliente(
       archivo_hash: string
       analisis: string | null
       creado_en: string
+      creado_por: number | null
+      creador_nombre: string | null
       revisado_por: number | null
       revisado_nombre: string | null
+      revisado_en: string | null
     })[]
   >(
     `SELECT p.id, p.version, p.estado, p.archivo_nombre, p.archivo_hash,
-            p.analisis, p.creado_en, p.revisado_por, u.nombre AS revisado_nombre
+            p.analisis, p.creado_en, p.creado_por, uc.nombre AS creador_nombre,
+            p.revisado_por, u.nombre AS revisado_nombre, p.revisado_en
        FROM presupuestos p
        LEFT JOIN usuarios u ON u.id = p.revisado_por
+       LEFT JOIN usuarios uc ON uc.id = p.creado_por
       WHERE p.cliente_id = ? AND p.empresa_id = ?
       ORDER BY p.version DESC`,
     [clienteId, empresaId]
@@ -264,7 +272,10 @@ export async function obtenerPresupuestosDeCliente(
       archivoNombre: p.archivo_nombre,
       archivoHash: p.archivo_hash,
       creadoEn: String(p.creado_en),
+      creadoPorId: p.creado_por,
+      creadoPor: p.creador_nombre,
       revisadoPor: p.revisado_nombre,
+      revisadoEn: p.revisado_en === null ? null : String(p.revisado_en),
       totales: {
         horasDetallado: Number(totales.horasDetallado ?? 0),
         horasConsolidado: Number(totales.horasConsolidado ?? 0),

@@ -11,7 +11,7 @@
 // Importar NO exige presupuesto. Sigue estando el alta manual para quien solo
 // quiere registrar un cliente.
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload, X } from 'lucide-react'
 
 export type PrevisualizacionPresupuesto = {
@@ -59,6 +59,22 @@ export function ImportadorPresupuesto({
   const [analizando, setAnalizando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [arrastrando, setArrastrando] = useState(false)
+
+  // Comportamiento de modal: Escape cierra y, mientras está abierto, el scroll
+  // del fondo se bloquea. Sin esto la página de detrás se mueve sola mientras
+  // se arrastra el archivo.
+  useEffect(() => {
+    const alPresionar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancelar()
+    }
+    document.addEventListener('keydown', alPresionar)
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', alPresionar)
+      document.body.style.overflow = overflow
+    }
+  }, [onCancelar])
   const inputArchivo = useRef<HTMLInputElement>(null)
 
   const analizar = useCallback(async (archivo: File) => {
@@ -90,22 +106,37 @@ export function ImportadorPresupuesto({
   const listo = previa !== null && nombre.trim() !== '' && areaId !== ''
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <FileSpreadsheet size={15} className="text-[#a78bfa]" />
+    // Modal centrado. Antes esto se pintaba como una tarjeta más al final de la
+    // página, debajo de la tabla de clientes, y parecía un aviso en vez de una
+    // pantalla de alta. Ahora es un diálogo de verdad: con fondo, centrado, se
+    // cierra con Escape o tocando fuera, y el scroll del fondo se bloquea.
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onCancelar}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Nuevo cliente desde presupuesto"
+    >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_70px_rgba(0,0,0,0.6)]"
+    >
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3.5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-[#f1f0fa]">
+          <FileSpreadsheet size={16} className="text-[#ab83fb]" />
           Nuevo cliente desde presupuesto
         </h2>
         <button
           type="button"
           onClick={onCancelar}
-          className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Cerrar importador"
+          className="rounded-md p-1.5 text-[#9aa2b8] transition hover:bg-muted hover:text-white"
+          aria-label="Cerrar"
         >
-          <X size={15} />
+          <X size={16} />
         </button>
       </div>
 
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
       {previa === null ? (
         <div
           onDragOver={(e) => {
@@ -120,7 +151,7 @@ export function ImportadorPresupuesto({
             if (archivo) void analizar(archivo)
           }}
           className={`rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors ${
-            arrastrando ? 'border-[#7c3aed] bg-[#7c3aed]/5' : 'border-border'
+            arrastrando ? 'border-primary bg-primary/5' : 'border-border'
           }`}
         >
           <input
@@ -151,7 +182,7 @@ export function ImportadorPresupuesto({
               <button
                 type="button"
                 onClick={() => inputArchivo.current?.click()}
-                className="mt-3 rounded-lg bg-[#7c3aed] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#6d28d9]"
+                className="mt-3 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
               >
                 Seleccionar archivo
               </button>
@@ -253,7 +284,7 @@ export function ImportadorPresupuesto({
                   horas: previa.resumen.horasDetallado + previa.resumen.horasComplementario,
                 })
               }
-              className="rounded-lg bg-[#7c3aed] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#6d28d9] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Crear cliente e importar presupuesto
             </button>
@@ -279,6 +310,8 @@ export function ImportadorPresupuesto({
           {error}
         </p>
       )}
+      </div>
+    </div>
     </div>
   )
 }

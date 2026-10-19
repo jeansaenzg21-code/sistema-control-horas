@@ -12,6 +12,8 @@ export interface Actividad {
   cliente_id: number | null
   proyecto_id?: number | null
   proyecto_nombre?: string | null
+  presupuesto_servicio_id?: number | null
+  presupuesto_servicio_nombre?: string | null
   tipo_actividad_id: number
   descripcion: string | null
   facturable: boolean | null

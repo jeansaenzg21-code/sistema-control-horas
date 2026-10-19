@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Building2, CalendarDays, ChevronLeft, ChevronRight, Clock, TrendingUp, Wallet } from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
 import { StatusBadge } from './status-badge'
 import { FacturableBadge } from './facturable-badge'
 import { useHistorialRango } from '@/lib/use-historial-rango'
 import { useAreas } from '@/lib/areas-context'
 import type { Actividad } from '@/lib/types'
-import { cn, esFacturable, esNoFacturable, fechaLocalISO, formatoHoras } from '@/lib/utils'
+import { cn, esFacturable, esNoFacturable, fechaLocalISO, formatoHoras, nombreCorto } from '@/lib/utils'
 
 type FiltroFactura = 'todas' | 'facturadas' | 'no_facturadas'
 
@@ -34,9 +35,18 @@ function esNoFacturada(r: Actividad): boolean {
   return r.estado === 'RECHAZADA' || (r.estado === 'APROBADA' && esNoFacturable(r.facturable))
 }
 
+/** Pasa de MAYÚSCULAS a "Julia Alayo", respetando tildes. */
+function Titulo(valor: string): string {
+  const minusculas = valor.toLocaleLowerCase('es-PE')
+  return minusculas.charAt(0).toLocaleUpperCase('es-PE') + minusculas.slice(1)
+}
+
 export function ConsolidationTable() {
   const { areas } = useAreas()
-  const [areaId, setAreaId] = useState('')
+  const { usuario, usuarios } = useAuth()
+  const jefeDeArea = usuario?.rol === 'jefe_area'
+  const areaInicial = jefeDeArea && usuario?.area_id != null ? String(usuario.area_id) : ''
+  const [areaId, setAreaId] = useState(areaInicial)
   const [desde, setDesde] = useState(() => `${new Date().getFullYear()}-01-01`)
   const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10))
 
@@ -111,6 +121,26 @@ export function ConsolidationTable() {
     { etiqueta: 'Por definir', valor: formatoHoras(resumen.porDefinir), icono: CalendarDays, color: 'text-[#c4b5fd]' },
   ]
 
+  /**
+   * El boton de cada colaborador muestra "Julia Alayo", no
+   * "ALAYO BERECHE JULIA MERCEDES".
+   *
+   * El orden de las palabras en `usuario_nombre` NO es uniforme en la base de
+   * datos: hay "ALAYO BERECHE JULIA MERCEDES" (apellidos primero) y
+   * "BONIFACIO CAMPOS ALEJANDRO" (apellidos en medio). Cualquier regla que mire
+   * solo la posicion de las palabras acierta en un caso y falla en el otro.
+   *
+   * Por eso el nombre de pila se saca del CORREO, que si sigue el patron
+   * `nombre.apellido@paredescano.com` en todos los casos utilizables. Si el
+   * correo no sirve (genericos como `sistemas@`, o alias como `trainee.soporte@`)
+   * se recurre a la regla por posicion, que es una aproximacion, y se conserva
+   * el nombre completo en el `title` del boton para no perder nada.
+   */
+  const nombreLegible = (nombreCompleto: string): string => {
+    const persona = usuarios.find((u) => u.nombre === nombreCompleto)
+    return Titulo(nombreCorto(nombreCompleto, persona?.correo))
+  }
+
   const opciones: { valor: FiltroFactura; etiqueta: string }[] = [
     { valor: 'todas', etiqueta: 'Todas' },
     { valor: 'facturadas', etiqueta: 'Facturadas' },
@@ -140,11 +170,33 @@ export function ConsolidationTable() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Building2 size={11} />
+            <span>{jefeDeArea ? 'División asignada' : 'División (primero)'}</span>
+          </label>
+          {jefeDeArea ? (
+            <span className="h-8 rounded-lg border border-border bg-muted/40 px-3 text-[11px] leading-8 text-foreground">
+              {areas.find((a) => String(a.id) === areaId)?.nombre ?? 'Tu división'}
+            </span>
+          ) : (
+            <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="h-8 rounded-lg border border-border bg-background px-2 text-[11px] text-foreground focus:border-[#7c3aed]/50 focus:outline-none">
+              <option value="">Elegir división</option>
+              {areas.map((area) => <option key={area.id} value={String(area.id)}>{area.nombre}</option>)}
+            </select>
+          )}
+        </div>
+      {areaId === '' ? (
+        <p className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+          Selecciona una división para ver la consolidación por persona.
+        </p>
+       ) : (<>
+       <div className="flex flex-wrap items-center gap-2">
         {gruposPorUsuario.map((grupo) => (
           <button
             key={grupo.key}
             onClick={() => setUsuarioSeleccionado(grupo.key)}
+            title={grupo.nombre}
             className={cn(
               'flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors',
               grupo.key === grupoActual?.key
@@ -152,7 +204,7 @@ export function ConsolidationTable() {
                 : 'border-border bg-card text-muted-foreground hover:border-border/60 hover:text-foreground',
             )}
           >
-            <span>{grupo.nombre}</span>
+            <span>{nombreLegible(grupo.nombre)}</span>
             <span className="text-xs text-muted-foreground">{formatoHoras(grupo.totalHoras)}</span>
           </button>
         ))}
@@ -176,14 +228,6 @@ export function ConsolidationTable() {
           ))}
         </div>
         <div className="ml-auto flex items-end gap-1.5">
-          <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <Building2 size={11} />
-            <span>División</span>
-            <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="h-8 rounded-lg border border-border bg-background px-2 text-[11px] text-foreground focus:border-[#7c3aed]/50 focus:outline-none">
-              <option value="">Todas</option>
-              {areas.map((area) => <option key={area.id} value={String(area.id)}>{area.nombre}</option>)}
-            </select>
-          </label>
           <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
             <CalendarDays size={11} />
             <span>Desde</span>
@@ -217,7 +261,25 @@ export function ConsolidationTable() {
                 className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/30"
               >
                 <td className="px-3 py-2">
-                  <p className="font-medium text-foreground">{actividad.descripcion}</p>
+                  {/* La columna se llama "Actividad" y mostraba `descripcion`,
+                      que es el texto libre que escribe cada persona ("revisar el
+                      Excel", "llamada con el cliente"). Al consolidar, lo que
+                      interesa es QUÉ tipo de actividad se contabilizó, porque es
+                      lo comparable entre personas y meses. La descripción sigue
+                      visible debajo, en pequeño, para no perder el detalle. */}
+                  <p className="font-medium text-foreground">
+                    {actividad.tipo_actividad_nombre ?? 'Sin tipo'}
+                  </p>
+                  {actividad.descripcion && (
+                    // `max-w` es necesario: en una tabla `w-full` sin anchos fijos
+                    // el truncate no hace nada y el texto parte la fila.
+                    <p
+                      className="max-w-[220px] truncate text-[11px] text-muted-foreground"
+                      title={actividad.descripcion}
+                    >
+                      {actividad.descripcion}
+                    </p>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">{actividad.usuario_nombre ?? '—'}</td>
                 <td className="px-3 py-2 font-medium text-foreground">{formatDuracion(actividad)}</td>
@@ -256,6 +318,7 @@ export function ConsolidationTable() {
           </div>
         )}
       </div>
+      </>)}
     </div>
   )
 }

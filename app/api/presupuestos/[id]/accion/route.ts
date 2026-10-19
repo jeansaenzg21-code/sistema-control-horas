@@ -4,7 +4,7 @@ import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import {
   activarBolsas,
   aprobarPresupuesto,
-  confirmarAsignacion,
+  confirmarAsignaciones,
   vincularProyecto,
 } from '@/lib/presupuestos/activar'
 
@@ -74,14 +74,23 @@ export async function POST(request: Request, ctx: Contexto) {
     }
 
     case 'CONFIRMAR_ASIGNACION': {
-      const asignacionId = Number(cuerpo.asignacion_id)
       const usuarioId = Number(cuerpo.usuario_id)
-      if (!Number.isInteger(asignacionId) || asignacionId <= 0) {
+      // Acepta una sola asignación o varias. Varias es lo normal: la misma
+      // persona puede salir en más de un bloque del Excel y repartirlas juntas es
+      // lo que hace que las horas cuadren con el equipo.
+      const crudos = Array.isArray(cuerpo.asignacion_ids)
+        ? cuerpo.asignacion_ids
+        : cuerpo.asignacion_id !== undefined
+          ? [cuerpo.asignacion_id]
+          : []
+      const asignacionIds = crudos.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      if (asignacionIds.length === 0) {
         return NextResponse.json({ error: 'La asignacion no es valida.' }, { status: 400 })
       }
-      const r = await confirmarAsignacion({
-        asignacionId,
+      const r = await confirmarAsignaciones({
+        asignacionIds,
         usuarioId,
+        actor: usuario,
         motivo: justificacion,
       })
       return NextResponse.json(r, { status: r.ok ? 200 : 400 })

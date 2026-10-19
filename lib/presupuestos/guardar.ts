@@ -11,12 +11,18 @@
 //    `usuario_id = NULL` y estado PENDIENTE_REVISION. Nunca se reparten por
 //    parecido ni se adivina.
 // 4. Todo va en una transacción: o queda el presupuesto entero, o no queda nada.
+// 5. El presupuesto entra APROBADO y con sus bolsas DETALLADAS y COMPLEMENTARIAS
+//    ya activas. Subir el presupuesto es trabajo del jefe de área y es una
+//    decisión ya tomada: pedirle un paso aparte de aprobación dejaba el
+//    documento cargado pero sin poder imputar ni una hora. Los CONSOLIDADAS
+//    siguen inactivos siempre, por el punto 2.
 
 import { createHash } from 'node:crypto'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2'
 
 import pool from '@/lib/db'
 import { buscarPersona, explicarCoincidencia } from '@/lib/presupuestos/nombres'
+import { recalcularHorasContratadas } from '@/lib/presupuestos/activar'
 import type { AnalisisPresupuesto } from './importar-excel'
 
 export type ResultadoGuardado = {
@@ -29,6 +35,8 @@ export type ResultadoGuardado = {
   asignacionesConfirmadas: number
   asignacionesPendientes: number
   observacionesBloqueantes: number
+  /** Horas contratadas del cliente tras recalcular con las bolsas ya activas. */
+  horasContratadas: number
 }
 
 function sha256(datos: Buffer): string {
@@ -139,7 +147,7 @@ export async function guardarAnalisis(params: {
       await conexion.query(
         `UPDATE presupuestos
             SET analisis = ?, archivo_bytes = ?, archivo_nombre = ?,
-                estado = 'BORRADOR', creado_por = ?
+                estado = 'APROBADO', creado_por = ?
           WHERE id = ?`,
         [JSON.stringify(analisis), archivo, nombreArchivo, usuarioId, presupuestoId]
       )
@@ -159,7 +167,7 @@ export async function guardarAnalisis(params: {
         `INSERT INTO presupuestos
            (empresa_id, cliente_id, version, estado, archivo_nombre, archivo_hash,
             archivo_bytes, analisis, creado_por)
-         VALUES (?, ?, ?, 'BORRADOR', ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, 'APROBADO', ?, ?, ?, ?, ?)`,
         [
           empresaId,
           clienteId,
@@ -180,16 +188,25 @@ export async function guardarAnalisis(params: {
     let detallados = 0
     let consolidados = 0
 
-    // Nada nace activo. `activo` solo se pone a 1 cuando el Líder activa las
-    // bolsas, y de todos modos solo para los servicios DETALLADOS: los
-    // consolidados son referencia y si arrancaran activos sumarían sus 272 h
-    // encima de las 270 reales, duplicando el alcance del presupuesto.
+    // Las bolsas nacen ACTIVAS al importar, menos las CONSOLIDADAS.
+//
+// Razón de negocio: cargar el presupuesto del cliente es parte del trabajo del
+// jefe de área y es una decisión ya tomada, así que el presupuesto entra
+// aprobado y sus bolsas se pueden imputar desde el minuto uno. Antes había un
+// paso aparte de "activar bolsas" que solo el Líder del proyecto podía hacer, y
+// eso dejaba al jefe con el presupuesto subido pero invisible para registrar
+// horas.
+//
+// Los CONSOLIDADAS siguen naceiendo inactivos y no hay que activarlos nunca: son
+// un resumen de los anteriores. Si arrancaran activos, las 272 h consolidadas
+// se sumarian encima de las 270 reales y duplicarian el alcance.
 
-    for (const servicio of analisis.servicios) {
+for (const servicio of analisis.servicios) {
+      const activo = servicio.origen === 'CONSOLIDADO' ? 0 : 1
       const [res] = await conexion.query<ResultSetHeader>(
         `INSERT INTO presupuesto_servicios
            (presupuesto_id, origen, nombre, horas, moneda, importe, fee, fila_origen, nota, activo)
-         VALUES (?, ?, ?, ?, 'USD', ?, ?, ?, ?, 0)`,
+         VALUES (?, ?, ?, ?, 'USD', ?, ?, ?, ?, ?)`,
         [
           presupuestoId,
           servicio.origen,
@@ -199,6 +216,7 @@ export async function guardarAnalisis(params: {
           servicio.fee,
           servicio.filaInicio,
           servicio.nota,
+          activo,
         ]
       )
       if (servicio.origen === 'CONSOLIDADO') consolidados += 1
@@ -271,6 +289,11 @@ export async function guardarAnalisis(params: {
 
     await conexion.commit()
 
+    // El saldo del cliente se deriva de las bolsas ACTIVAS de todos sus
+    // presupuestos, no se escribe a mano. Como acabamos de encender las de este,
+    // hay que recalcularlo o el cliente se queda con el saldo anterior.
+    const horasContratadas = await recalcularHorasContratadas(pool, clienteId)
+
     return {
       presupuestoId,
       version,
@@ -280,6 +303,7 @@ export async function guardarAnalisis(params: {
       asignacionesConfirmadas: confirmadas,
       asignacionesPendientes: pendientes,
       observacionesBloqueantes: bloqueantes.length,
+      horasContratadas,
     }
   } catch (error) {
     await conexion.rollback()

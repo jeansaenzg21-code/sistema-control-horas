@@ -7,7 +7,6 @@ import {
   BarChart3,
   CalendarCheck,
   FileText,
-  FolderKanban,
   Users,
   X,
 } from 'lucide-react'
@@ -29,15 +28,24 @@ interface SidebarProps {
   onCerrar: () => void
 }
 
+// Quién ve los módulos de administración y consulta: el admin de la empresa, el
+// jefe de área (los que le tocan) y el socio. El socio entra por aquí porque ve
+// todo igual que el admin, pero NO hereda su escritura: el bloqueo se decide en
+// lib/auth.ts, no en el menú.
+// El jefe tiene Aprobaciones porque revisa los registros de su propia área; la
+// comprobación de a quién puede tocar es del servidor, no de este filtro.
+const ROLES_CONSULTA: Rol[] = ['admin', 'jefe_area', 'socio']
+
 const navItems: NavItem[] = [
-  { label: 'Panel Principal', href: '/', icon: <LayoutDashboard size={19} />, roles: ['admin', 'jefe_area'] },
-  { label: 'Clientes', href: '/clientes', icon: <Users size={19} />, roles: ['admin', 'jefe_area'] },
-  { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['personal', 'jefe_area'] },
-  { label: 'Proyectos', href: '/proyectos', icon: <FolderKanban size={19} />, roles: ['admin', 'supervisor', 'personal', 'jefe_area'] },
-  { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'supervisor', 'personal'] },
-  { label: 'Consolidación', href: '/consolidacion', icon: <BarChart3 size={19} />, roles: ['admin', 'jefe_area'] },
-  { label: 'Cumplimiento', href: '/cumplimiento', icon: <CalendarCheck size={19} />, roles: ['admin', 'jefe_area'] },
-  { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ['admin', 'jefe_area'] },
+  { label: 'Panel Principal', href: '/', icon: <LayoutDashboard size={19} />, roles: ROLES_CONSULTA },
+  { label: 'Clientes', href: '/clientes', icon: <Users size={19} />, roles: ROLES_CONSULTA },
+  // El supervisor siempre estuvo aquí aunque tampoco pueda registrar horas: su
+  // módulo es el de aprobaciones, al que entra desde este enlace.
+  { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['personal', 'supervisor', 'jefe_area'] },
+  { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'supervisor', 'personal', 'jefe_area'] },
+  { label: 'Consolidación', href: '/consolidacion', icon: <BarChart3 size={19} />, roles: ROLES_CONSULTA },
+  { label: 'Cumplimiento', href: '/cumplimiento', icon: <CalendarCheck size={19} />, roles: ROLES_CONSULTA },
+  { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ROLES_CONSULTA },
 ]
 
 export function Sidebar({ abierto, onCerrar }: SidebarProps) {
@@ -58,7 +66,7 @@ export function Sidebar({ abierto, onCerrar }: SidebarProps) {
 
       <aside
         className={cn(
-          'no-print fixed inset-y-0 left-0 z-50 flex h-screen w-72 max-w-[85vw] flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-200 md:w-64 md:max-w-none md:translate-x-0',
+          'no-print fixed inset-y-0 left-0 z-50 flex h-screen w-72 max-w-[85vw] flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-200 md:w-56 md:max-w-none md:translate-x-0',
           abierto ? 'translate-x-0' : '-translate-x-full',
         )}
       >

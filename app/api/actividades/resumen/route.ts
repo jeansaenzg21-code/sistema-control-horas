@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       usuarioId = user.id
     } else if (usuarioId == null) {
       if (user.rol === 'SUPERVISOR') usuarioId = null
-      else if (!esJefeDeArea(user) && user.rol !== 'ADMINISTRACION') {
+      else if (!esJefeDeArea(user) && user.rol !== 'ADMINISTRACION' && user.rol !== 'SOCIO') {
         return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
       }
     }
@@ -135,6 +135,18 @@ export async function GET(request: Request) {
       params
     )
 
+    const [porArea] = await pool.query<RowDataPacket[]>(
+      `SELECT ar.id AS area_id, ar.nombre AS area_nombre,
+              COUNT(*) AS registros,
+              COALESCE(SUM(${HORAS}), 0) AS horas,
+              COALESCE(SUM(CASE WHEN a.estado = 'APROBADA' AND a.facturable = 1 THEN ${HORAS} ELSE 0 END), 0) AS horas_facturadas,
+              COALESCE(SUM(CASE WHEN a.estado = 'RECHAZADA' OR (a.estado = 'APROBADA' AND a.facturable = 0) THEN ${HORAS} ELSE 0 END), 0) AS horas_no_facturadas
+       ${base}
+       GROUP BY ar.id, ar.nombre
+       ORDER BY horas DESC`,
+      params
+    )
+
     const [porUsuario] = await pool.query<RowDataPacket[]>(
       `SELECT u.id AS usuario_id, u.nombre, u.cargo, ar.nombre AS area_nombre,
               COUNT(*) AS registros,
@@ -155,6 +167,20 @@ export async function GET(request: Request) {
       params
     )
 
+    // Desglose por estado. Lo consume el panel del jefe de área: el donut de
+    // estados y los contadores de "pendientes de aprobación" y "observados".
+    // Se agrupa en SQL porque el navegador solo tiene `totales`, y para saber
+    // cuántos hay en PENDIENTE_APROBACION habría que bajar todas las filas.
+    const [porEstado] = await pool.query<RowDataPacket[]>(
+      `SELECT a.estado,
+              COUNT(*) AS registros,
+              COALESCE(SUM(${HORAS}), 0) AS horas
+       ${base}
+       GROUP BY a.estado
+       ORDER BY horas DESC`,
+      params
+    )
+
     const proyecto = await columnaExiste('actividades', 'proyecto_id')
 
     return NextResponse.json({
@@ -172,6 +198,13 @@ export async function GET(request: Request) {
       por_cargo_facturable: porCargo
         .filter((r) => Number(r.horas_facturable) > 0)
         .map((r) => ({ cargo: String(r.cargo), horas: Number(r.horas_facturable) })),
+      por_area: porArea.map((r) => ({
+        area_id: Number(r.area_id ?? 0) || null,
+        area_nombre: String(r.area_nombre),
+        horas: Number(r.horas),
+        horas_facturadas: Number(r.horas_facturadas),
+        horas_no_facturadas: Number(r.horas_no_facturadas),
+      })),
       por_usuario: porUsuario.map((r) => ({
         usuario_id: Number(r.usuario_id),
         nombre: String(r.nombre),
@@ -182,6 +215,16 @@ export async function GET(request: Request) {
       })),
       por_dia: porDia.map((r) => ({
         dia: r.dia instanceof Date ? r.dia.toISOString().slice(0, 10) : String(r.dia),
+        registros: Number(r.registros),
+        horas: Number(r.horas),
+      })),
+      // Los estados respetan el mismo `where` que el resto, así que para un jefe
+      // de área ya vienen acotados a su área: no hay que filtrar otra vez en el
+      // cliente. El reparto por cliente NO se calcula aquí: la fuente correcta
+      // para bolsa y consumo es /api/clientes/cartera, que ya lo da por cliente
+      // y con la misma aritmética que usa la pantalla /clientes.
+      por_estado: porEstado.map((r) => ({
+        estado: String(r.estado),
         registros: Number(r.registros),
         horas: Number(r.horas),
       })),

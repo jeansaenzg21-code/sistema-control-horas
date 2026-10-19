@@ -41,7 +41,16 @@ export default function HubEmpresas() {
     setEntrando(empresaId)
     const resultado = await entrarEnEmpresa(empresaId)
     if (resultado.ok) {
-      router.replace(usuario?.rol === 'admin' || usuario?.rol === 'jefe_area' ? '/' : '/actividades')
+      // El socio no registra horas, así que va directo a donde consulta: el
+      // listado de registros de toda la empresa. Si fuera a `/actividades`
+      // perdería un redirect allí para acabar en el mismo sitio.
+      router.replace(
+        usuario?.rol === 'admin' || usuario?.rol === 'jefe_area'
+          ? '/'
+          : usuario?.rol === 'socio'
+            ? '/aprobaciones'
+            : '/actividades',
+      )
     } else {
       setError(resultado.error || 'No se pudo ingresar a la empresa.')
       setEntrando(null)
@@ -102,7 +111,7 @@ export default function HubEmpresas() {
               </div>
               <div className="leading-tight">
                 <p className="max-w-32 truncate text-xs font-medium text-zinc-200">{usuario.nombre}</p>
-                <p className="text-[10px] text-zinc-500">{usuario.rol === 'admin' ? 'Administrador' : usuario.rol === 'jefe_area' ? 'Jefe de área' : 'Colaborador'}</p>
+                <p className="text-[10px] text-zinc-500">{usuario.rol === 'admin' ? 'Administrador' : usuario.rol === 'jefe_area' ? 'Jefe de área' : usuario.rol === 'socio' ? 'Socio · solo lectura' : 'Colaborador'}</p>
               </div>
             </div>
             <button

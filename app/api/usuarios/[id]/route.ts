@@ -20,6 +20,7 @@ const ROLES = {
   supervisor: 'SUPERVISOR',
   jefe_area: 'JEFE_AREA',
   admin: 'ADMINISTRACION',
+  socio: 'SOCIO',
 } as const
 
 function rolDesdeCliente(valor: unknown): string | null {
@@ -69,6 +70,29 @@ async function soportaRolJefeArea(): Promise<boolean> {
   const fila = (rows as Array<Record<string, unknown>>)[0]
   const tipo = String(fila?.COLUMN_TYPE ?? fila?.column_type ?? Object.values(fila ?? {})[0] ?? '')
   return !tipo || !tipo.toUpperCase().startsWith('ENUM(') || tipo.toUpperCase().includes('JEFE_AREA')
+}
+
+/**
+ * Si el ENUM de `usuarios.rol` admite ya el valor dado.
+ *
+ * Sin esto, un UPDATE a un rol que el ENUM todavía no conoce no falla: MySQL
+ * entra en modo estricto, guarda cadena vacía y el usuario se queda sin rol.
+ * El síntoma aparecería después, en el login, con un permiso que no es el que se
+ * pidió. Es preferible devolver 503 diciendo qué migración falta.
+ */
+async function soportaRol(rol: string): Promise<boolean> {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_TYPE
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'usuarios'
+       AND COLUMN_NAME = 'rol'
+     LIMIT 1`
+  )
+  const fila = (rows as Array<Record<string, unknown>>)[0]
+  const tipo = String(fila?.COLUMN_TYPE ?? fila?.column_type ?? Object.values(fila ?? {})[0] ?? '')
+  if (!tipo || !tipo.toUpperCase().startsWith('ENUM(')) return true
+  return tipo.toUpperCase().includes(rol)
 }
 
 async function getUsuarioDeEmpresa(id: number, empresaId: number) {
@@ -127,6 +151,12 @@ export async function PUT(
       rolNuevo = rolDesdeCliente(rol)
       if (!rolNuevo) {
         return NextResponse.json({ error: 'El rol solicitado no es válido.' }, { status: 400 })
+      }
+      if (rolNuevo === 'SOCIO' && !(await soportaRol('SOCIO'))) {
+        return NextResponse.json(
+          { error: 'Falta habilitar el rol SOCIO en la base de datos. Ejecuta sql/socio_solo_lectura.sql.' },
+          { status: 503 }
+        )
       }
       if (rolNuevo === 'JEFE_AREA') {
         const [subordinados] = await pool.query(

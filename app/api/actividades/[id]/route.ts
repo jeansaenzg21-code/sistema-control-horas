@@ -88,10 +88,16 @@ export async function PUT(
     if ('error' in context) {
       return NextResponse.json({ error: context.error }, { status: context.status })
     }
-    if (context.user.rol === 'JEFE_AREA') {
-      return NextResponse.json({ error: 'Los jefes de área no pueden aprobar registros.' }, { status: 403 })
-    }
-    if (context.user.rol !== 'ADMINISTRACION' && context.user.rol !== 'SUPERVISOR') {
+    // El jefe de área entra: puede revisar los registros de los miembros de SU
+    // área. El recorte por área no se decide aquí sino en
+    // `puedeRevisarActividad`, que compara el `area_id` de la actividad con el
+    // suyo. Quitar este filtro sin añadir aquel abriría la revisión a toda la
+    // empresa.
+    if (
+      context.user.rol !== 'ADMINISTRACION'
+      && context.user.rol !== 'SUPERVISOR'
+      && context.user.rol !== 'JEFE_AREA'
+    ) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 

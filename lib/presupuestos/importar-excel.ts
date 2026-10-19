@@ -57,6 +57,8 @@ export type TipoObservacion =
   | 'SIN_PERSONA'
   | 'HORAS_DIFERENTES'
   | 'FORMULA_SIN_VALOR'
+  /** El cronograma viene en un formato que no se puede convertir sin suponer. */
+  | 'PLANIFICACION_NO_LEIBLE'
 
 export type Observacion = {
   tipo: TipoObservacion
@@ -194,6 +196,14 @@ const COL = { D: 4, F: 6, H: 8, J: 10, L: 12, N: 14, P: 16 }
 const MARCA = 'formato de presupuesto de tiempo'
 const HOJA_MATRIZ = 'horas por servicio'
 
+/**
+ * Encabezado de la tabla de actividades que algunos archivos traen dentro de la
+ * propia hoja de cotización. A partir de ahí ya no hay horas por persona, sino
+ * tareas con días, y más abajo un total de días por categoría. Sin esta
+ * frenada, esas filas se leerían como asignaciones.
+ */
+const MARCA_ACTIVIDADES = 'actividades'
+
 type FilaCruda = {
   fila: number
   marca: string | null
@@ -225,11 +235,16 @@ function leerFilas(hoja: Hoja): FilaCruda[] {
   return salida
 }
 
-function extraerBloques(filas: FilaCruda[]): ServicioExtraido[] {
+function extraerBloques(filas: FilaCruda[]): { servicios: ServicioExtraido[]; tareasCronograma: number } {
   const bloques: ServicioExtraido[] = []
+  let tablaActividades = false
+  // Cuenta las filas de la tabla de actividades para poder avisar después de que
+  // hay un cronograma que no se pudo traer, en lugar de callarlo.
+  let tareasCronograma = 0
 
   for (let i = 0; i < filas.length; i += 1) {
     if (filas[i].marca === null) continue
+    tablaActividades = false
 
     // Cabecera: CLIENTE, AREA y SERVICIO están en las filas siguientes.
     let cliente: string | null = null
@@ -263,6 +278,21 @@ function extraerBloques(filas: FilaCruda[]): ServicioExtraido[] {
       if (f.marca !== null) {
         finBloque = k
         break
+      }
+
+      // A partir del encabezado de la tabla de actividades se acaba la tabla de
+      // horas por persona. Lo que viene son tareas con DÍAS y sus totales, que no
+      // son asignaciones: si se leyeran, una fila de 153 h aparecería como si
+      // fueran horas de alguien.
+      if (f.etiquetaD !== null && normalizar(f.etiquetaD).startsWith(MARCA_ACTIVIDADES)) {
+        tablaActividades = true
+      }
+      if (tablaActividades) {
+        // Una tarea es una fila con descripción y días, no la fila de total.
+        if (f.horas !== null && f.horas > 0 && f.valorF !== null && !/^\s*\d+\s*$/.test(f.valorF)) {
+          tareasCronograma += 1
+        }
+        continue
       }
 
       const etiqueta = normalizar(f.categoria ?? '')
@@ -322,7 +352,7 @@ function extraerBloques(filas: FilaCruda[]): ServicioExtraido[] {
     })
   }
 
-  return bloques
+  return { servicios: bloques, tareasCronograma }
 }
 
 // --- matriz por persona -----------------------------------------------------
@@ -508,7 +538,8 @@ function construirObservaciones(
   detallados: ServicioExtraido[],
   extras: CeldaMatriz[],
   planificacion: SubetapaExtraida[],
-  reparto: { nombre: string; horas: number }[]
+  reparto: { nombre: string; horas: number }[],
+  detallesPlanificacionNoLegible: number
 ): Observacion[] {
   const obs: Observacion[] = []
 
@@ -594,6 +625,21 @@ function construirObservaciones(
     }
   }
 
+  // Cuando la planificación no se pudo leer, hay que decirlo en voz alta. Las
+  // cotizaciones que traen el cronograma dentro de la propia hoja lo expresan
+  // en DÍAS por tarea y solo declaran las horas como total. Convertir días a
+  // horas exigiría suponer cuántas horas tiene un día, y esa suposición
+  // aparecería luego como cronograma en la pantalla. Se registra y se deja
+  // vacío.
+  if (planificacion.length === 0 && detallesPlanificacionNoLegible > 0) {
+    obs.push({
+      tipo: 'PLANIFICACION_NO_LEIBLE',
+      severidad: 'REVISAR',
+      mensaje: `El archivo trae un cronograma con ${detallesPlanificacionNoLegible} tareas, pero está expresado en días por tarea y no en horas. No se importa al cronograma porque convertir días a horas exigiría suponer la jornada, que no está en el archivo.`,
+      detalle: { tareas: detallesPlanificacionNoLegible },
+    })
+  }
+
   return obs
 }
 
@@ -604,12 +650,26 @@ export async function analizarPresupuesto(archivo: Buffer): Promise<AnalisisPres
   await libro.xlsx.load(archivo as unknown as ArrayBuffer)
 
   const hojas = libro.worksheets.map((h) => h.name)
-  const hojaCotizacion = libro.worksheets.find((h) => normalizar(h.name).includes('cotizaci'))
-  if (!hojaCotizacion) {
-    throw new Error('El archivo no tiene una hoja de cotización reconocible.')
+
+  // La hoja de cotización se reconoce por su CONTENIDO, no por su nombre.
+  // Buscaba una hoja llamada "cotización", pero las cotizaciones reales se
+  // nombran como el cliente: "Cotización sgsst", "PC FACTORY", "PC FACTORY (2)".
+  // Con el nombre no se reconocía ninguna y el archivo se rechazaba entero.
+  const hojasCotizacion = libro.worksheets.filter((h) =>
+    leerFilas(h).some((f) => f.marca !== null)
+  )
+  if (hojasCotizacion.length === 0) {
+    throw new Error(
+      'El archivo no tiene ninguna hoja de presupuesto: no se encontró el formato "FORMATO DE PRESUPUESTO DE TIEMPO".'
+    )
   }
 
-  const bloques = extraerBloques(leerFilas(hojaCotizacion))
+  // Un archivo puede traer VARIAS cotizaciones en el mismo libro (variantes por
+  // tamaño, por ejemplo). Se leen todas: quedarse con la primera perdería horas
+  // sin avisar.
+  const extraccion = hojasCotizacion.map((h) => extraerBloques(leerFilas(h)))
+  const bloques = extraccion.flatMap((e) => e.servicios)
+  const tareasCronograma = extraccion.reduce((t, e) => t + e.tareasCronograma, 0)
   if (bloques.length === 0) {
     throw new Error('No se encontró ningún bloque de presupuesto en la hoja de cotización.')
   }
@@ -661,7 +721,14 @@ export async function analizarPresupuesto(archivo: Buffer): Promise<AnalisisPres
 
   const complementarios = detallados.filter((s) => s.origen === 'COMPLEMENTARIO')
   const reparto = hojaPlanificacion ? extraerRepartoPlanificacion(hojaPlanificacion) : []
-  const observaciones = construirObservaciones(consolidados, detallados, extras, planificacion, reparto)
+  const observaciones = construirObservaciones(
+    consolidados,
+    detallados,
+    extras,
+    planificacion,
+    reparto,
+    tareasCronograma
+  )
 
   return {
     hojas,

@@ -2,14 +2,18 @@
 //
 // Reglas (decididas por el negocio):
 //
-// - Aprobar la importación, activar las bolsas y repartir horas corresponde al
-//   LIDER de ese proyecto en `proyecto_participantes`.
-// - Ser Jefe de Área NO da permiso por sí solo. Un jefe de área que no participa
-//   en el proyecto no aprueba sus presupuestos. Si además es LIDER, sí.
-// - Un ADMIN puede gestionarlo, pero si no es el LIDER es una EXCEPCIÓN y queda
-//   registrada con responsable, fecha y justificación obligatoria.
-// - Sin proyecto vinculado solo el ADMIN puede actuar, y esa es la vía normal
-//   para crear el vínculo y designar al Líder antes de activar nada.
+// - El presupuesto cuelga del CLIENTE, no del proyecto (ver cabecera de
+//   sql/presupuestos.sql). El vínculo con proyecto es opcional: sirve para
+//   organizar y para medir desviaciones, no para dar de alta el alcance.
+// - El JEFE DEL ÁREA del cliente puede hacer todo lo que afecte a su cliente:
+//   importar, aprobar, activar bolsas y repartir horas. Es quien responde por el
+//   alcance contratado, y cargar el Excel ya ES la decisión de aprobarse: por eso
+//   el presupuesto entra APROBADO y con sus bolsas activas al importar.
+// - El LIDER de un proyecto vinculado también puede, para el presupuesto que
+//   cuelgue de él.
+// - Un ADMIN puede gestionarlo; si no es el jefe del área ni el líder del
+//   proyecto, es una EXCEPCIÓN y queda registrada con responsable, fecha y
+//   justificación obligatoria.
 //
 // Esto es una validación OPERATIVA: que lo registrado en el sistema coincida con
 // lo contratado y con las horas correctamente imputadas. NO es la aceptación
@@ -35,6 +39,8 @@ export type DecisionPermiso = {
 export type AccionPresupuesto =
   | 'IMPORTAR'
   | 'VINCULAR'
+  /** Confirmar o repartir las horas de una bolsa entre personas. */
+  | 'DISTRIBUIR'
   | 'APROBAR'
   | 'ACTIVAR_BOLSAS'
   | 'REPARTIR'
@@ -45,14 +51,13 @@ const SIN_PROYECTO_MOTIVO =
 /**
  * Decide sin tocar la base. `esLiderDelProyecto` ya viene resuelto.
  *
- * IMPORTAR es distinto del resto a propósito: cargar el presupuesto del cliente
- * es parte del trabajo del JEFE DE ÁREA, y lo hace incluso antes de que exista un
- * proyecto. La regla del Líder aplica a APROBAR, ACTIVAR_BOLSAS y REPARTIR, que
- * son las que mueven horas contratadas.
+ * El presupuesto pertenece al cliente, así que la figura que manda es el JEFE
+ * DEL ÁREA de ese cliente: puede actuar aunque el presupuesto todavía no tenga
+ * proyecto asociado. El LIDER del proyecto sigue teniendo permiso sobre el
+ * presupuesto que cuelgue de él, y el ADMIN sobre todos.
  *
- * `accion = 'VINCULAR'` es el único caso válido sin proyecto: ahí lo que hace el
- * ADMIN es crear el vínculo y designar al Líder, que es el paso normal y no una
- * excepción.
+ * `accion = 'VINCULAR'` es el único caso restringido al ADMIN cuando no hay
+ * proyecto: ahí lo que se hace es crear el vínculo y designar al Líder.
  */
 export function decidirGestion(params: {
   accion: AccionPresupuesto
@@ -64,61 +69,44 @@ export function decidirGestion(params: {
 }): DecisionPermiso {
   const { accion, esAdmin, esLiderDelProyecto, proyectoId, esJefeDelAreaDelCliente = false } = params
 
-  // Cargar el presupuesto: el jefe del área del cliente puede, y el admin.
-  if (accion === 'IMPORTAR') {
-    if (esJefeDelAreaDelCliente) {
-      return {
-        permitido: true,
-        motivo: 'Eres el jefe del área de este cliente.',
-        esExcepcion: false,
-      }
-    }
-    if (esAdmin) {
-      return { permitido: true, motivo: 'Actúas como administrador.', esExcepcion: false }
-    }
-    return {
-      permitido: false,
-      motivo: 'Solo el jefe del área del cliente o el administrador pueden importar su presupuesto.',
-      esExcepcion: false,
-    }
-  }
-
-  if (proyectoId === null) {
-    if (accion !== 'VINCULAR') {
-      return { permitido: false, motivo: SIN_PROYECTO_MOTIVO, esExcepcion: false }
-    }
-    if (!esAdmin) {
-      return {
-        permitido: false,
-        motivo:
-          'Solo el administrador puede crear el vínculo del presupuesto y designar al Líder del proyecto.',
-        esExcepcion: false,
-      }
-    }
+  // El jefe del área del cliente manda sobre su presupuesto, con o sin proyecto.
+  if (esJefeDelAreaDelCliente) {
     return {
       permitido: true,
-      motivo: 'Creando el vínculo y designando al Líder.',
+      motivo: 'Eres el jefe del área de este cliente.',
       esExcepcion: false,
     }
-  }
-
-  if (esLiderDelProyecto) {
-    return { permitido: true, motivo: 'Eres el Líder del proyecto.', esExcepcion: false }
   }
 
   if (esAdmin) {
     return {
       permitido: true,
+      motivo: esLiderDelProyecto
+        ? 'Eres el Líder del proyecto y actúas como administrador.'
+        : 'Actúas como administrador.',
+      esExcepcion: false,
+    }
+  }
+
+  if (proyectoId !== null && esLiderDelProyecto) {
+    return { permitido: true, motivo: 'Eres el Líder del proyecto.', esExcepcion: false }
+  }
+
+  if (proyectoId === null) {
+    return {
+      permitido: false,
       motivo:
-        'Actúas como administrador y no eres el Líder del proyecto. Quedará registrado como excepción.',
-      esExcepcion: true,
+        accion === 'VINCULAR'
+          ? 'Solo el administrador o el jefe del área del cliente pueden crear el vínculo con el proyecto.'
+          : SIN_PROYECTO_MOTIVO,
+      esExcepcion: false,
     }
   }
 
   return {
     permitido: false,
     motivo:
-      'Solo el Líder del proyecto puede aprobar el presupuesto, activar las bolsas o repartir horas.',
+      'Solo el jefe del área de este cliente o el Líder del proyecto pueden aprobar el presupuesto, activar las bolsas o repartir horas.',
     esExcepcion: false,
   }
 }

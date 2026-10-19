@@ -38,6 +38,14 @@ async function tieneColumnaProyecto(): Promise<boolean> {
   return columnaExiste('actividades', 'proyecto_id')
 }
 
+// La imputacion de una actividad a una bolsa de horas (`presupuesto_servicio_id`)
+// se added en la migracion de presupuestos como columna nullable. Se comprueba
+// igual que la del proyecto: si la base no la tiene todavia, la ruta sigue
+// funcionando sin imputacion en lugar de romperse.
+async function tieneColumnaServicio(): Promise<boolean> {
+  return columnaExiste('actividades', 'presupuesto_servicio_id')
+}
+
 export async function GET(request: Request) {
   try {
     const user = await getUserFromRequest(request)
@@ -107,7 +115,11 @@ export async function GET(request: Request) {
           return NextResponse.json({ error: 'El colaborador no pertenece a tu área.' }, { status: 403 })
         }
       }
-    } else if (user.rol !== 'ADMINISTRACION') {
+    } else if (user.rol === 'ADMINISTRACION' || user.rol === 'SOCIO') {
+      // Lectura completa de la empresa, sin narrowing por usuario ni por área.
+      // El SOCIO entra por aquí: puede revisar todos los registros pero no
+      // tocar ninguno, y la escritura ya está cerrada en lib/auth.ts.
+    } else {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
@@ -117,8 +129,11 @@ export async function GET(request: Request) {
     // subarbol por registro. Con el LEFT JOIN se calcula una sola vez.
     const proyectoCampos = tieneProyecto ? 'a.proyecto_id, pr.nombre AS proyecto_nombre,' : ''
     const proyectoJoin = tieneProyecto ? 'LEFT JOIN proyectos pr ON pr.id = a.proyecto_id AND pr.empresa_id = ar.empresa_id' : ''
+    const tieneServicio = await tieneColumnaServicio()
+    const servicioCampos = tieneServicio ? 'a.presupuesto_servicio_id, ps.nombre AS presupuesto_servicio_nombre,' : ''
+    const servicioJoin = tieneServicio ? 'LEFT JOIN presupuesto_servicios ps ON ps.id = a.presupuesto_servicio_id' : ''
     let query = `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
-      ${proyectoCampos} a.inicio, a.fin, a.estado, a.revisado_por, a.revisado_en, a.observacion_revision, a.created_at,
+      ${proyectoCampos} ${servicioCampos} a.inicio, a.fin, a.estado, a.revisado_por, a.revisado_en, a.observacion_revision, a.created_at,
       u.nombre AS usuario_nombre, u.cargo, u.especialidad, u.area_id,
       ta.nombre AS tipo_actividad_nombre,
       ar.nombre AS area_nombre,
@@ -133,6 +148,7 @@ export async function GET(request: Request) {
       INNER JOIN tipos_actividad ta ON ta.id = a.tipo_actividad_id
       INNER JOIN areas ar ON ar.id = u.area_id
       ${proyectoJoin}
+      ${servicioJoin}
       LEFT JOIN clientes c ON c.id = a.cliente_id
       LEFT JOIN (
         SELECT p.actividad_id,
@@ -143,6 +159,21 @@ export async function GET(request: Request) {
       WHERE ar.empresa_id = ?`
     const params: (string | number)[] = [context.activa.id]
 
+    // Filtro por division. Es lo que necesita /reportes para no traer la tabla
+    // entera y recortarla en el navegador. Solo lo aplica quien puede ver varias
+    // areas (admin, socio y supervisor): para un jefe o un trabajador el recorte
+    // por area ya lo hace su propio caso de abajo, y obligar a mandar el
+    // parametro permitiria saltarselo pidiendo `area_id` de otra division.
+    const areaParam = searchParams.get('area_id')
+    let areaPedida: number | null = null
+    if (areaParam != null && areaParam !== '') {
+      const n = Number(areaParam)
+      if (!Number.isInteger(n) || n <= 0) {
+        return NextResponse.json({ error: 'La división indicada no es válida.' }, { status: 400 })
+      }
+      areaPedida = n
+    }
+
     if (usuarioId != null) {
       query += ' AND a.usuario_id = ?'
       params.push(usuarioId)
@@ -152,6 +183,17 @@ export async function GET(request: Request) {
     } else if (esJefeDeArea(user)) {
       query += ' AND u.area_id = ?'
       params.push(user.area_id!)
+    }
+    if (areaPedida != null && usuarioId == null && !esJefeDeArea(user)) {
+      const [areaValida] = await pool.query<RowDataPacket[]>(
+        'SELECT id FROM areas WHERE id = ? AND empresa_id = ?',
+        [areaPedida, context.activa.id]
+      )
+      if (areaValida.length === 0) {
+        return NextResponse.json({ error: 'La división no pertenece a la empresa activa.' }, { status: 400 })
+      }
+      query += ' AND u.area_id = ?'
+      params.push(areaPedida)
     }
     if (estado) {
       query += ' AND a.estado = ?'
@@ -277,13 +319,15 @@ export async function POST(request: Request) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return NextResponse.json({ error: 'El cuerpo de la solicitud no es válido.' }, { status: 400 })
     }
-    const { usuario_id, tipo_actividad_id, cliente_id, descripcion, facturable, proyecto_id, inicio, id_operacion } = body
+    const { usuario_id, tipo_actividad_id, cliente_id, descripcion, facturable, proyecto_id, presupuesto_servicio_id, inicio, id_operacion } = body
     const usuarioObjetivoId = Number(usuario_id)
     const tipoActividadId = Number(tipo_actividad_id)
     const clienteId = cliente_id == null || cliente_id === '' ? null : Number(cliente_id)
     const descripcionTexto = descripcion == null ? null : typeof descripcion === 'string' ? descripcion.trim() || null : undefined
     const tieneProyecto = await tieneColumnaProyecto() && await estructuraProyectosDisponible()
     const proyectoId = proyecto_id == null || proyecto_id === '' ? null : Number(proyecto_id)
+    const tieneServicio = await tieneColumnaServicio()
+    const servicioId = presupuesto_servicio_id == null || presupuesto_servicio_id === '' ? null : Number(presupuesto_servicio_id)
     const idOperacion = normalizarIdOperacion(id_operacion)
     const marcaInicio = validarMarcaTiempoCliente(inicio, 'hora de inicio')
 
@@ -306,6 +350,19 @@ export async function POST(request: Request) {
     }
     if (proyectoId != null && !tieneProyecto) {
       return NextResponse.json({ error: 'La asociación de actividades con proyectos aún no está disponible.' }, { status: 503 })
+    }
+
+    if (servicioId != null && (!Number.isInteger(servicioId) || servicioId <= 0)) {
+      return NextResponse.json({ error: 'El servicio seleccionado no es válido.' }, { status: 400 })
+    }
+    if (servicioId != null && !tieneServicio) {
+      return NextResponse.json({ error: 'La imputación de actividades a servicios aún no está disponible.' }, { status: 503 })
+    }
+    // El servicio cuelga del cliente a dos saltos (cliente -> presupuesto ->
+    // servicio), asi que sin cliente no se puede comprobar de que bolsa se
+    // trata. No se deduce el cliente en silencio: se pide explicitamente.
+    if (servicioId != null && clienteId == null) {
+      return NextResponse.json({ error: 'Elige el cliente del servicio para imputar las horas.' }, { status: 400 })
     }
 
     if (!Number.isInteger(usuarioObjetivoId) || usuarioObjetivoId <= 0 || !Number.isInteger(tipoActividadId) || tipoActividadId <= 0) {
@@ -350,16 +407,54 @@ export async function POST(request: Request) {
       }
     }
 
-    const [tipoValido] = await pool.query<RowDataPacket[]>(
-      `SELECT ta.id FROM tipos_actividad ta
-       LEFT JOIN areas ar ON ar.id = ta.area_id
-       WHERE ta.id = ? AND ta.activo = TRUE
-         AND (ta.es_general = TRUE OR ar.empresa_id = ?)${esJefeDeArea(user) ? ' AND (ta.es_general = TRUE OR ta.area_id = ?)' : ''}`,
-        esJefeDeArea(user) ? [tipoActividadId, context.activa.id, user.area_id] : [tipoActividadId, context.activa.id]
-    )
-    if (tipoValido.length === 0) {
-      return NextResponse.json({ error: 'El tipo de actividad no pertenece a la empresa activa.' }, { status: 400 })
+    if (servicioId != null) {
+      // Se comprueba la pertenencia real, no solo que el id exista: el servicio
+      // tiene que ser del cliente indicado, de la empresa activa y ser una bolsa
+      // viva. Sin esto, un id valido de otro cliente pasaria el alta y las horas
+      // se imputarian donde no toca.
+      const [servicioValido] = await pool.query<RowDataPacket[]>(
+        `SELECT s.id
+         FROM presupuesto_servicios s
+         INNER JOIN presupuestos p ON p.id = s.presupuesto_id
+         INNER JOIN clientes c ON c.id = p.cliente_id
+         INNER JOIN areas ar ON ar.id = c.area_id
+         WHERE s.id = ?
+           AND p.cliente_id = ?
+           AND ar.empresa_id = ?
+           AND c.activo = TRUE
+           AND s.activo = TRUE
+           AND s.origen IN ('DETALLADO', 'COMPLEMENTARIO')
+         LIMIT 1`,
+        [servicioId, clienteId, context.activa.id]
+      )
+      if (servicioValido.length === 0) {
+        return NextResponse.json({ error: 'El servicio seleccionado no es una bolsa activa de ese cliente.' }, { status: 400 })
+      }
     }
+
+// Misma regla que el desplegable de app/api/tipos-actividad: el usuario ve su
+// catálogo propio y, solo si no tiene ninguno, las cinco generales. Se ancla al
+// área del usuario OBJETIVO, no a la de quien hace la petición, porque el
+// administrador puede registrarle horas a alguien y son las suyas las que
+// cuentan.
+const [tipoValido] = await pool.query<RowDataPacket[]>(
+  `SELECT ta.id
+     FROM usuarios u
+     JOIN areas areaUsuario ON areaUsuario.id = u.area_id
+     JOIN tipos_actividad ta ON ta.id = ?
+    WHERE u.id = ?
+      AND areaUsuario.empresa_id = ?
+      AND ta.activo = TRUE
+      AND ( ta.area_id = u.area_id
+            OR ( ta.es_general = TRUE AND NOT EXISTS (
+                  SELECT 1 FROM tipos_actividad propio
+                   WHERE propio.area_id = u.area_id
+                     AND propio.activo = TRUE AND propio.es_general = FALSE)) )`,
+  [tipoActividadId, usuarioObjetivoId, context.activa.id]
+)
+if (tipoValido.length === 0) {
+  return NextResponse.json({ error: 'El tipo de actividad no está disponible para esa división.' }, { status: 400 })
+}
 
     if (clienteId != null) {
       if (esJefeDeArea(user) && proyectoId != null) {
@@ -443,6 +538,10 @@ export async function POST(request: Request) {
       columnas.push('proyecto_id')
       valores.push(proyectoId)
     }
+    if (tieneServicio) {
+      columnas.push('presupuesto_servicio_id')
+      valores.push(servicioId)
+    }
     if (registraOperacion) {
       columnas.push('id_operacion')
       valores.push(idOperacion)
@@ -461,6 +560,8 @@ export async function POST(request: Request) {
     // El proyecto/join solo hace falta para dar forma a la respuesta.
     const proyectoCampos = tieneProyecto ? 'a.proyecto_id, pr.nombre AS proyecto_nombre,' : ''
     const proyectoJoin = tieneProyecto ? 'LEFT JOIN proyectos pr ON pr.id = a.proyecto_id AND pr.empresa_id = ar.empresa_id' : ''
+    const servicioCampos = tieneServicio ? 'a.presupuesto_servicio_id, ps.nombre AS presupuesto_servicio_nombre,' : ''
+    const servicioJoin = tieneServicio ? 'LEFT JOIN presupuesto_servicios ps ON ps.id = a.presupuesto_servicio_id' : ''
 
     // Se serializa todo el alta por usuario. El bloqueo va sobre `usuarios`
     // porque esa fila SIEMPRE existe: un `SELECT ... FOR UPDATE` sobre
@@ -530,7 +631,7 @@ export async function POST(request: Request) {
 
         const [nueva] = await conexion.query<RowDataPacket[]>(
           `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
-            ${proyectoCampos} a.inicio, a.fin, a.estado, a.created_at,
+            ${proyectoCampos} ${servicioCampos} a.inicio, a.fin, a.estado, a.created_at,
             u.nombre AS usuario_nombre, u.cargo, u.especialidad, u.area_id,
             ta.nombre AS tipo_actividad_nombre,
             ar.nombre AS area_nombre,
@@ -540,6 +641,7 @@ export async function POST(request: Request) {
            INNER JOIN tipos_actividad ta ON ta.id = a.tipo_actividad_id
            INNER JOIN areas ar ON ar.id = u.area_id
            ${proyectoJoin}
+           ${servicioJoin}
            LEFT JOIN clientes c ON c.id = a.cliente_id
            WHERE a.id = ?`,
           [insertId]

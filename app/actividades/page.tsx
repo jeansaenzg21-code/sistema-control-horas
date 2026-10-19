@@ -11,9 +11,31 @@ import { MisObservaciones } from '@/components/mis-observaciones'
 import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { useRegistros } from '@/lib/use-registros'
-import { cn } from '@/lib/utils'
+import { cn, nombreCorto } from '@/lib/utils'
 
 type Pestana = 'registrar' | 'registros' | 'observaciones'
+
+/**
+ * Nombre para el saludo: "Yonny Flores", no "Flores".
+ *
+ * El campo `nombre` guarda los apellidos delante, así que tomar la primera
+ * palabra muestra el apellido. El correo corporativo sigue el patrón
+ * `nombre.apellido@paredescano.com`, y es la única fuente fiable del nombre de
+ * pila; si no existe un correo utilizable se cae en `nombreCorto`.
+ */
+function nombreParaSaludo(nombre: string, correo?: string | null): string {
+  const limpio = String(nombre ?? '').trim().replace(/\s+/g, ' ')
+  const local = String(correo ?? '').split('@')[0] ?? ''
+  const trozos = local.split('.')
+  if (trozos.length === 2) {
+    const [pila, apellido] = trozos
+    if (pila && apellido && limpio.toLocaleLowerCase('es-PE').includes(pila.toLocaleLowerCase('es-PE'))) {
+      const capitalizar = (valor: string) => valor.charAt(0).toLocaleUpperCase('es-PE') + valor.slice(1).toLocaleLowerCase('es-PE')
+      return `${capitalizar(pila)} ${capitalizar(apellido)}`
+    }
+  }
+  return nombreCorto(limpio, correo)
+}
 
 export default function Actividades() {
   const { actividadActual, cargandoActividad } = useActividad()
@@ -27,7 +49,7 @@ export default function Actividades() {
     if (cargando) return
     if (!usuario) {
       router.replace('/login')
-    } else if (usuario.rol === 'admin') {
+    } else if (usuario.rol === 'admin' || usuario.rol === 'socio') {
       router.replace('/')
     }
   }, [cargando, usuario, router])
@@ -55,14 +77,16 @@ export default function Actividades() {
     }
   }, [registros])
 
-  if (cargando || !usuario || usuario.rol === 'admin') return null
+  // El admin y el socio no registran horas: la redirección ya está lanzada en el
+  // efecto de arriba, así que aquí no se monta nada para ninguno de los dos.
+  if (cargando || !usuario || usuario.rol === 'admin' || usuario.rol === 'socio') return null
 
   const fechaHoy = new Date().toLocaleDateString('es-PE', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
   })
-  const primerNombre = usuario.nombre.trim().split(' ')[0]
+  const primerNombre = nombreParaSaludo(usuario.nombre, usuario.correo)
 
   const pestañas: { id: Pestana; etiqueta: string; icono: React.ReactNode }[] = [
     { id: 'registrar', etiqueta: 'Registrar', icono: <Play size={16} /> },

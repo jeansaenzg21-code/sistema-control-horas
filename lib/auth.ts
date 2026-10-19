@@ -45,6 +45,50 @@ function mapEmpresa(row: Record<string, unknown>): EmpresaSesion {
   }
 }
 
+/**
+ * Rutas que un SOCIO sí puede usar aunque el método sea de escritura.
+ *
+ * No son datos del negocio: son las que hacen que la sesión funcione. Sin esto el
+ * socio se echaría de la aplicación a las 12 horas por no poder renovar su token,
+ * y no podría moverse entre empresas.
+ *
+ * OJO con `/api/notificaciones`: solo el PUT (marcar leídas) se deja pasar. Su
+ * POST CREA notificaciones, y eso es escribir en el sistema. Por eso la
+ * excepción nombra el método, no la ruta entera.
+ *
+ * Todo lo demás que modifique algo queda cerrado. La lista es explícita a
+ * propósito: lo que no está aquí, está bloqueado.
+ */
+const ESCRITURA_PERMITIDA_A_SOLO_LECTURA: { metodo: string; ruta: RegExp }[] = [
+  { metodo: 'POST', ruta: /^\/api\/auth\// },
+  { metodo: 'DELETE', ruta: /^\/api\/widget\/sync$/ },
+  { metodo: 'PUT', ruta: /^\/api\/notificaciones$/ },
+]
+
+function rutaPermiteEscrituraAModoLectura(metodo: string, url: string): boolean {
+  if (metodo === 'GET' || metodo === 'HEAD' || metodo === 'OPTIONS') return true
+  const ruta = url.split('?')[0]
+  return ESCRITURA_PERMITIDA_A_SOLO_LECTURA.some(
+    (e) => e.metodo === metodo && e.ruta.test(ruta),
+  )
+}
+
+/**
+ * Comprueba, tras autenticar, si este usuario puede modificar algo.
+ *
+ * Devuelve `null` cuando puede, y el motivo cuando no. No devuelve un
+ * `NextResponse` a propósito: `lib/auth.ts` no depende de `next/server`, y así el
+ * mismo dato sirve tanto para responder a la API como paralo que necesite el
+ * cliente.
+ */
+export function motivoEscrituraBloqueada(user: SessionUser | null): string | null {
+  if (!user) return null
+  if (user.rol === 'SOCIO') {
+    return 'Tu perfil es de solo lectura: puedes revisar los datos, pero no modificarlos.'
+  }
+  return null
+}
+
 export async function getUserFromRequest(request: Request): Promise<SessionUser | null> {
   // Dos vias de autenticacion, en este orden:
   //   1. Cabecera Authorization: Bearer. La usa la app movil y cualquier
@@ -77,7 +121,7 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
   const s = sesiones[0]
   if (!s.activo) return null
 
-  return {
+  const usuario: SessionUser = {
     id: Number(s.usuario_id),
     nombre: String(s.nombre),
     usuario: String(s.usuario),
@@ -88,6 +132,15 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
     activo: Boolean(s.activo),
     empresa_id: s.empresa_id == null ? null : Number(s.empresa_id),
   }
+
+  // El bloqueo va AQUÍ y no en cada ruta: es el único punto por el que pasan las
+  // 47 rutas de la API, así que una ruta nueva nace bloqueada. Si se hiciera ruta
+  // por ruta, bastaría olvidar una para que el "fantasma" pudiera escribir.
+  if (!rutaPermiteEscrituraAModoLectura(request.method, request.url)) {
+    if (motivoEscrituraBloqueada(usuario)) return null
+  }
+
+  return usuario
 }
 
 export async function getEmpresasDisponibles(user: SessionUser): Promise<EmpresaSesion[]> {
