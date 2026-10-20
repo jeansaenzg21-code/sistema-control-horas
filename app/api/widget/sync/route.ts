@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { notifyAuthChange } from '@/lib/events'
+import { tokenDeRequest } from '@/lib/auth'
 
 const SYNC_FILE = join(tmpdir(), '.paredes-cano-widget-sync.json')
 
@@ -65,7 +66,15 @@ export async function POST(request: Request) {
   try {
     if (!widgetSyncHabilitado()) return widgetSyncDeshabilitado()
     const body = await request.json()
-    if (!body.token) {
+    // El token puede venir en el cuerpo (como hasta ahora) o, si la web ya no lo
+    // guarda en localStorage, leerse de la cookie HttpOnly o de la cabecera
+    // Bearer. Asi el widget de escritorio sigue recibiendo la credencial aunque
+    // el navegador no la tenga en JavaScript.
+    const token =
+      typeof body.token === 'string' && body.token.length >= 10
+        ? body.token
+        : tokenDeRequest(request)
+    if (!token) {
       return NextResponse.json({ error: 'token requerido' }, { status: 400 })
     }
     if (esSinWidget(body.rol)) {

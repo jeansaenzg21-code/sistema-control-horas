@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Actividad } from './types'
+import { opcionesApi } from '@/lib/api-cliente'
 
 /**
  * Historial COMPLETO de un rango de fechas, paginado en el servidor.
@@ -71,9 +72,6 @@ export function useHistorialRango(
       return
     }
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (!token) return
-
     const pedido = pedidoRef.current + 1
     pedidoRef.current = pedido
     setCargando(true)
@@ -112,7 +110,7 @@ export function useHistorialRango(
         }
         if (!todaEmpresa && usuarioId != null) params.set('usuario_id', String(usuarioId))
         const url = `/api/actividades?${params.toString()}`
-        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+        const res = await fetch(url, opcionesApi())
         if (!res.ok) break
         const lote = (await res.json()) as Actividad[]
         if (lote.length === 0) break

@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth-context'
 import type { Actividad } from '@/lib/actividad-context'
 import { exportarExcel } from '@/lib/exporter'
 import { esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
+import { opcionesApi } from '@/lib/api-cliente'
 
 function iso(fecha: Date): string {
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`
@@ -73,10 +74,7 @@ export default function Reportes() {
       // `todo=1` pide el rango completo sin paginar: un reporte parcial daria
       // numeros que no cuadran con la realidad.
       params.set('todo', '1')
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      const res = await fetch(`/api/actividades?${params.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
+      const res = await fetch(`/api/actividades?${params.toString()}`, opcionesApi())
       const data = await res.json().catch(() => [])
       if (!res.ok) {
         throw new Error(Array.isArray(data) ? 'No se pudieron cargar los registros.' : data?.error || 'No se pudieron cargar los registros.')

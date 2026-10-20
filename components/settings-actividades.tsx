@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { readSheet } from 'read-excel-file/browser'
+import { opcionesApi } from '@/lib/api-cliente'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -49,10 +50,6 @@ interface ResultadoImportacion {
   errores: Array<{ area: string; detalle: string }>
 }
 
-function token(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-}
-
 function ordinal(total: number): string {
   return `${total} ${total === 1 ? 'actividad' : 'actividades'}`
 }
@@ -73,9 +70,7 @@ export function SettingsActividades() {
     setCargando(true)
     setErrorCatalogo(null)
     try {
-      const res = await fetch('/api/tipos-actividad/catalogo', {
-        headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
-      })
+      const res = await fetch('/api/tipos-actividad/catalogo', opcionesApi())
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setErrorCatalogo(data.error || 'No se pudo cargar el catálogo.')
@@ -148,14 +143,10 @@ export function SettingsActividades() {
             nombre: actividad.nombre,
           })),
         }))
-      const res = await fetch('/api/tipos-actividad/importar', {
+      const res = await fetch('/api/tipos-actividad/importar', opcionesApi({
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
-        },
-        body: JSON.stringify({ secciones }),
-      })
+        body: { secciones },
+      }))
       const data = (await res.json().catch(() => ({}))) as ResultadoImportacion
       if (!res.ok) {
         setMensaje({ tipo: 'error', texto: data.error || 'No se pudo importar.' })

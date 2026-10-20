@@ -8,9 +8,7 @@ import { useAreas } from '@/lib/areas-context'
 import type { CumplimientoReporte } from '@/lib/cumplimiento'
 import { MatrizCumplimiento } from '@/components/cumplimiento/matriz-cumplimiento'
 
-function token(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-}
+
 
 const NOMBRES_MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -69,7 +67,7 @@ function MatrizContenido() {
       if (areaId) params.set('area_id', areaId)
       if (usuarioId) params.set('usuario_id', usuarioId)
       const res = await fetch(`/api/cumplimiento?${params.toString()}`, {
-        headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
+        credentials: 'same-origin',
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))

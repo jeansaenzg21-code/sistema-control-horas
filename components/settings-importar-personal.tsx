@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { readSheet } from 'read-excel-file/browser'
+import { opcionesApi } from '@/lib/api-cliente'
 import {
   CheckCircle2,
   ChevronDown,
@@ -60,10 +61,6 @@ const ALIAS_XLSX = {
   dni: ['dni', 'documento'],
   area: ['area', 'área', 'división', 'division'],
   cargo: ['puesto actual', 'puesto', 'cargo'],
-}
-
-function token(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
 }
 
 function textoCelda(valor: unknown): string {
@@ -346,14 +343,7 @@ export function SettingsImportarPersonal({ areas, onClose }: Props) {
       const body = tipoArchivo === 'xlsx'
         ? { filas }
         : { area_id: Number(areaId), filas }
-      const res = await fetch('/api/usuarios/importar', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
-        },
-        body: JSON.stringify(body),
-      })
+      const res = await fetch('/api/usuarios/importar', opcionesApi({ method: 'POST', body }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setMensaje({ tipo: 'error', texto: data.error || 'No se pudo importar.' })

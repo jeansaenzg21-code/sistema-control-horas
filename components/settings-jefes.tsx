@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Plus, Trash2, UserRound, UsersRound } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useAreas } from '@/lib/areas-context'
+import { opcionesApi } from '@/lib/api-cliente'
 
 interface FormularioJefe {
   nombre: string
@@ -21,14 +22,6 @@ const formularioVacio: FormularioJefe = {
   password: '',
   cargo: '',
   area_id: '',
-}
-
-function getHeaders() {
-  const token = localStorage.getItem('pc_token')
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
 }
 
 export function SettingsJefes() {
@@ -81,19 +74,18 @@ export function SettingsJefes() {
     setError('')
     setExito('')
     try {
-      const res = await fetch('/api/usuarios', {
+      const res = await fetch('/api/usuarios', opcionesApi({
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
+        body: {
           nombre: formulario.nombre,
           correo: formulario.correo,
           usuario: formulario.usuario,
-           password: formulario.password,
-           cargo: formulario.cargo.trim(),
-           rol: 'jefe_area',
+          password: formulario.password,
+          cargo: formulario.cargo.trim(),
+          rol: 'jefe_area',
           area_id: Number(formulario.area_id),
-        }),
-      })
+        },
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error || 'No se pudo crear el jefe de área.')
@@ -116,11 +108,10 @@ export function SettingsJefes() {
     setError('')
     setExito('')
     try {
-      const res = await fetch(`/api/usuarios/${id}`, {
+      const res = await fetch(`/api/usuarios/${id}`, opcionesApi({
         method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({ rol: 'personal' }),
-      })
+        body: { rol: 'personal' },
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error || 'No se pudo revocar el perfil.')
@@ -142,11 +133,10 @@ export function SettingsJefes() {
     setError('')
     setExito('')
     try {
-      const res = await fetch(`/api/usuarios/${colaborador.id}`, {
+      const res = await fetch(`/api/usuarios/${colaborador.id}`, opcionesApi({
         method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({ rol: 'jefe_area', area_id: colaborador.area_id }),
-      })
+        body: { rol: 'jefe_area', area_id: colaborador.area_id },
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error || 'No se pudo asignar el jefe de área.')

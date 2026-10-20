@@ -6,6 +6,7 @@ import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { useClientes } from '@/lib/clientes-context'
 import { cn } from '@/lib/utils'
+import { opcionesApi } from '@/lib/api-cliente'
 
 /**
  * Un servicio con las horas de QUIEN lo consulta, no las del servicio entero.
@@ -50,10 +51,7 @@ export function ActivityForm() {
     if (!usuario?.area_id) return
     const cargarTipos = async () => {
       try {
-        const token = localStorage.getItem('pc_token')
-        const res = await fetch(`/api/tipos-actividad?area_id=${usuario.area_id}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        })
+        const res = await fetch(`/api/tipos-actividad?area_id=${usuario.area_id}`, opcionesApi())
         if (res.ok) {
           const data = await res.json()
           // El servidor ya los deja en orden de código. Aquí solo se hunde el
@@ -94,11 +92,7 @@ export function ActivityForm() {
     const cargarServicios = async () => {
       setCargandoServicios(true)
       try {
-        const token = localStorage.getItem('pc_token')
-        const res = await fetch(`/api/servicios?cliente_id=${clienteId}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          signal: controller.signal,
-        })
+        const res = await fetch(`/api/servicios?cliente_id=${clienteId}`, opcionesApi({ signal: controller.signal }))
         if (res.ok) {
           const data = await res.json()
           const lista = Array.isArray(data?.servicios) ? data.servicios : []

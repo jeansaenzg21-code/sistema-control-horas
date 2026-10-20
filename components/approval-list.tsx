@@ -71,14 +71,6 @@ const etiquetasEstado: Record<string, string> = {
   RESUELTA: 'Resuelta',
 }
 
-function getHeaders(): HeadersInit {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
-}
-
 function normalizarTimeline(valor: unknown): ObservacionTimeline[] {
   const lista = Array.isArray(valor)
     ? valor
@@ -219,7 +211,7 @@ export function ApprovalList() {
       const params = new URLSearchParams()
       if (esPersonal) params.set('usuario_id', String(usuario.id))
       if (params.toString()) url += `?${params.toString()}`
-      const res = await fetch(url, { headers: getHeaders() })
+      const res = await fetch(url, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(errorDeRespuesta(data, 'No se pudieron cargar las aprobaciones.'))
       if (!Array.isArray(data)) throw new Error('La respuesta de aprobaciones no es válida.')
@@ -270,7 +262,7 @@ export function ApprovalList() {
     setTimelineCargando(true)
     setTimelineError(null)
     try {
-      const res = await fetch(`/api/actividades/${actividadId}/observaciones`, { headers: getHeaders() })
+      const res = await fetch(`/api/actividades/${actividadId}/observaciones`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(errorDeRespuesta(data, 'No se pudo cargar el historial de observaciones.'))
       if (secuencia !== secuenciaTimeline.current) return
@@ -308,7 +300,7 @@ export function ApprovalList() {
       return
     }
     try {
-      const res = await fetch(`/api/actividades/${actividadId}`, { headers: getHeaders() })
+      const res = await fetch(`/api/actividades/${actividadId}`, { credentials: 'same-origin' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(errorDeRespuesta(data, 'No se pudo abrir la actividad.'))
       setDetalle(data as Actividad)
@@ -438,7 +430,8 @@ export function ApprovalList() {
     try {
       const res = await fetch(`/api/actividades/${actividad.id}`, {
         method: 'PUT',
-        headers: getHeaders(),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
           estado: 'APROBADA',
           revisado_por: usuario.id,
@@ -465,7 +458,8 @@ export function ApprovalList() {
     try {
       const res = await fetch(`/api/actividades/${actividad.id}`, {
         method: 'PUT',
-        headers: getHeaders(),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({
           estado: 'RECHAZADA',
           revisado_por: usuario.id,
@@ -492,7 +486,8 @@ export function ApprovalList() {
     try {
       const res = await fetch(`/api/actividades/${actividad.id}/solicitar-correccion`, {
         method: 'POST',
-        headers: getHeaders(),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ contenido: motivo.trim() }),
       })
       const data = await res.json().catch(() => ({}))
@@ -520,7 +515,8 @@ export function ApprovalList() {
     if (!contenido.trim()) return null
     const res = await fetch(`/api/actividades/${actividad.id}/observaciones`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({
         tipo,
         contenido: contenido.trim(),
@@ -542,7 +538,8 @@ export function ApprovalList() {
     if (!contenido.trim()) return null
     const res = await fetch(`/api/actividades/${actividad.id}/observaciones`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify({ tipo: 'RESPUESTA', contenido: contenido.trim(), parent_id: parentId }),
     })
     const data = await res.json().catch(() => ({}))
@@ -566,7 +563,8 @@ export function ApprovalList() {
       if (datos.respuesta.trim()) cuerpo.respuesta = datos.respuesta.trim()
       const res = await fetch(`/api/actividades/${actividad.id}/corregir`, {
         method: 'POST',
-        headers: getHeaders(),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify(cuerpo),
       })
       const data = await res.json().catch(() => ({}))
@@ -593,7 +591,8 @@ export function ApprovalList() {
     try {
       const res = await fetch(`/api/actividades/${actividad.id}/reenviar`, {
         method: 'POST',
-        headers: getHeaders(),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ comentario: comentario.trim() || 'Corrección guardada y reenviada.' }),
       })
       const data = await res.json().catch(() => ({}))
@@ -623,7 +622,8 @@ export function ApprovalList() {
       try {
         const res = await fetch(`/api/actividades/${id}`, {
           method: 'PUT',
-          headers: getHeaders(),
+          headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
           body: JSON.stringify({ estado: 'APROBADA', revisado_por: usuario.id, facturable: decisionPara(actividad) }),
         })
         if (!res.ok) {
