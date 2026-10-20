@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, motivo: 'rol sin widget' })
     }
     writeSync({
-      token: body.token,
+      token,
       usuarioId: body.usuarioId,
       usuario: body.usuario,
       nombre: body.nombre,
