@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { formatoHoras } from '@/lib/utils'
 import { useAuth } from '@/lib/auth-context'
 import { opcionesApi } from '@/lib/api-cliente'
+import { useQuery } from '@tanstack/react-query'
 import {
   Clock, ShieldCheck, ListChecks, Users, Wallet, UserRound, BarChart3, Info,
   ChevronRight, AlertTriangle, ClipboardCheck, MessageSquareWarning, UserX, TrendingDown, Ban,
@@ -41,42 +42,49 @@ export function DashboardAdministrador() {
   useEffect(() => {
     if (usuarios.length === 0) void cargarUsuarios()
   }, [usuarios.length, cargarUsuarios])
-  useEffect(() => {
-    let cancelado = false
-    async function cargar() {
-      setCargando(true)
+  const dashboardQuery = useQuery({
+    queryKey: ['dashboard-admin', desde, hasta],
+    queryFn: async () => {
       const qs = desde && hasta ? `desde=${desde}&hasta=${hasta}` : ''
       const mesF = (hasta || new Date().toISOString().slice(0, 10)).slice(5, 7)
       const anioF = (hasta || new Date().toISOString().slice(0, 10)).slice(0, 4)
-      try {
-        const [a, r, rp, c, cu, ap, u] = await Promise.all([
-          fetch('/api/areas', opcionesApi()).then((x) => x.ok ? x.json() : []),
-          fetch(`/api/actividades/resumen${qs ? `?${qs}` : ''}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
-          fetchPrevio(desde, hasta),
-          fetch('/api/clientes/cartera', opcionesApi()).then((x) => x.ok ? x.json() : null),
-          fetch(`/api/cumplimiento?anio=${anioF}&mes=${mesF}&desde=${desde}&hasta=${hasta}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
-          fetch('/api/aprobaciones', opcionesApi()).then((x) => x.ok ? x.json() : []),
-          fetch('/api/usuarios', opcionesApi()).then((x) => x.ok ? x.json() : []),
-        ])
-        if (cancelado) return
-        setAreas(Array.isArray(a) ? a : [])
-        setResumen(r as Resumen | null)
-        setResumenPrevio(rp as Resumen | null)
-        setCartera(c as CarteraRespuesta | null)
-        setCumplimiento(cu as Cumplimiento | null)
-        setAprobaciones(Array.isArray(ap) ? ap : [])
-        setUsuariosRemotos(Array.isArray(u) ? u : [])
-      } catch {
-        if (!cancelado) {
-          setResumen(null); setCartera(null); setCumplimiento(null); setAprobaciones([]); setUsuariosRemotos([])
-        }
-      } finally {
-        if (!cancelado) setCargando(false)
-      }
+      const [a, r, rp, c, cu, ap, u] = await Promise.all([
+        fetch('/api/areas', opcionesApi()).then((x) => x.ok ? x.json() : []),
+        fetch(`/api/actividades/resumen${qs ? `?${qs}` : ''}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
+        fetchPrevio(desde, hasta),
+        fetch('/api/clientes/cartera', opcionesApi()).then((x) => x.ok ? x.json() : null),
+        fetch(`/api/cumplimiento?anio=${anioF}&mes=${mesF}&desde=${desde}&hasta=${hasta}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
+        fetch('/api/aprobaciones', opcionesApi()).then((x) => x.ok ? x.json() : []),
+        fetch('/api/usuarios', opcionesApi()).then((x) => x.ok ? x.json() : []),
+      ])
+      return { a, r, rp, c, cu, ap, u }
+    },
+    staleTime: 60_000,
+  })
+
+  useEffect(() => {
+    if (!dashboardQuery.data) return
+    const { a, r, rp, c, cu, ap, u } = dashboardQuery.data
+    setAreas(Array.isArray(a) ? a : [])
+    setResumen(r as Resumen | null)
+    setResumenPrevio(rp as Resumen | null)
+    setCartera(c as CarteraRespuesta | null)
+    setCumplimiento(cu as Cumplimiento | null)
+    setAprobaciones(Array.isArray(ap) ? ap : [])
+    setUsuariosRemotos(Array.isArray(u) ? u : [])
+    setCargando(false)
+  }, [dashboardQuery.data])
+
+  useEffect(() => {
+    if (dashboardQuery.isError) {
+      setResumen(null); setCartera(null); setCumplimiento(null); setAprobaciones([]); setUsuariosRemotos([])
+      setCargando(false)
     }
-    void cargar()
-    return () => { cancelado = true }
-  }, [desde, hasta])
+  }, [dashboardQuery.isError])
+
+  useEffect(() => {
+    setCargando(dashboardQuery.isFetching)
+  }, [dashboardQuery.isFetching])
   const horasActual = resumen?.totales.horas ?? 0
   const horasPrevias = resumenPrevio?.totales.horas ?? 0
   const variacion = horasPrevias > 0 ? Math.round(((horasActual - horasPrevias) / horasPrevias) * 1000) / 10 : null
