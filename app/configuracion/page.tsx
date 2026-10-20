@@ -12,6 +12,7 @@ import { SettingsJefes } from '@/components/settings-jefes'
 import { SettingsSocios } from '@/components/settings-socios'
 import { SettingsUsuariosArea } from '@/components/settings-usuarios-area'
 import { SettingsProfile } from '@/components/settings-profile'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
 
@@ -58,6 +59,13 @@ export default function Configuracion() {
   return (
     <MainLayout title="Configuración" subtitle={esAdmin ? 'Administra las divisiones, empresa y usuarios de tu consultoría' : esJefeArea ? 'Administra los usuarios y datos de tu área' : esSocio ? 'Configuración de la empresa (solo lectura)' : 'Administra tu perfil y widget de escritorio'}>
       <div className="space-y-5">
+        <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">Apariencia</p>
+            <p className="text-xs text-muted-foreground">Cambia entre tema claro y oscuro.</p>
+          </div>
+          <ThemeToggle />
+        </div>
         <div className="flex gap-1 border-b border-border">
           {pestanas.map((p) => (
             <button
