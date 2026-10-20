@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
+import { registrarAuditoria } from '@/lib/auditoria'
 import {
   activarBolsas,
   aprobarPresupuesto,
@@ -70,6 +71,7 @@ export async function POST(request: Request, ctx: Contexto) {
         usuario,
         justificacion,
       })
+      await registrarAuditoria({ empresaId: base.empresaId, usuarioId: base.user.id, accion: 'PRESUPUESTO_' + accion, entidad: 'presupuesto', entidadId: presupuestoId, ip: request.headers.get('x-forwarded-for') || null })
       return NextResponse.json(r, { status: r.ok ? 200 : 400 })
     }
 
@@ -93,16 +95,19 @@ export async function POST(request: Request, ctx: Contexto) {
         actor: usuario,
         motivo: justificacion,
       })
+      await registrarAuditoria({ empresaId: base.empresaId, usuarioId: base.user.id, accion: 'PRESUPUESTO_' + accion, entidad: 'presupuesto', entidadId: presupuestoId, ip: request.headers.get('x-forwarded-for') || null })
       return NextResponse.json(r, { status: r.ok ? 200 : 400 })
     }
 
     case 'APROBAR': {
       const r = await aprobarPresupuesto({ presupuestoId, usuario, justificacion })
+      await registrarAuditoria({ empresaId: base.empresaId, usuarioId: base.user.id, accion: 'PRESUPUESTO_' + accion, entidad: 'presupuesto', entidadId: presupuestoId, ip: request.headers.get('x-forwarded-for') || null })
       return NextResponse.json(r, { status: r.ok ? 200 : 400 })
     }
 
     case 'ACTIVAR_BOLSAS': {
       const r = await activarBolsas({ presupuestoId, usuario, justificacion })
+      await registrarAuditoria({ empresaId: base.empresaId, usuarioId: base.user.id, accion: 'PRESUPUESTO_' + accion, entidad: 'presupuesto', entidadId: presupuestoId, ip: request.headers.get('x-forwarded-for') || null })
       return NextResponse.json(r, { status: r.ok ? 200 : 400 })
     }
 
