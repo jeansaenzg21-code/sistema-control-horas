@@ -12,22 +12,7 @@ const ANTIGUEDAD_MAXIMA_DIAS = 30
 
 let columnaDisponible: boolean | null = null
 
-export async function columnaIdOperacionDisponible(): Promise<boolean> {
-  if (columnaDisponible !== null) return columnaDisponible
-  try {
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS total
-       FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME = 'actividades'
-         AND COLUMN_NAME = 'id_operacion'`
-    )
-    columnaDisponible = Number(rows[0]?.total ?? 0) > 0
-  } catch {
-    columnaDisponible = false
-  }
-  return columnaDisponible
-}
+export async function columnaIdOperacionDisponible(): Promise<boolean> { return true }
 
 export function normalizarIdOperacion(valor: unknown): string | null {
   if (typeof valor !== 'string') return null

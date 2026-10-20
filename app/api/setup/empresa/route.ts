@@ -1,14 +1,28 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { verificarSetupToken } from '@/lib/setup-token'
 
 export async function POST(request: Request) {
-  try {
-    const { nombre, descripcion, pais, ciudad } = await request.json()
+  const sinToken = verificarSetupToken(request)
+  if (sinToken) return sinToken
 
-    if (!nombre?.trim()) {
+  try {
+    const { nombre, descripcion, pais, ciudad } = (await request.json().catch(() => ({}))) as {
+      nombre?: unknown
+      descripcion?: unknown
+      pais?: unknown
+      ciudad?: unknown
+    }
+
+    const nombreLimpio = String(nombre ?? '').trim()
+    const descripcionLimpia = String(descripcion ?? '').trim() || null
+    const paisLimpio = String(pais ?? '').trim()
+    const ciudadLimpia = String(ciudad ?? '').trim() || null
+
+    if (!nombreLimpio) {
       return NextResponse.json({ error: 'El nombre de la empresa es obligatorio.' }, { status: 400 })
     }
-    if (!pais?.trim()) {
+    if (!paisLimpio) {
       return NextResponse.json({ error: 'El país es obligatorio.' }, { status: 400 })
     }
 
@@ -24,7 +38,7 @@ export async function POST(request: Request) {
 
       const [empresaResult] = await connection.query(
         'INSERT INTO empresa (nombre, descripcion, pais, ciudad) VALUES (?, ?, ?, ?)',
-        [nombre.trim(), descripcion?.trim() || null, pais.trim(), ciudad?.trim() || null]
+        [nombreLimpio, descripcionLimpia, paisLimpio, ciudadLimpia]
       )
       const empresaId = (empresaResult as { insertId: number }).insertId
 

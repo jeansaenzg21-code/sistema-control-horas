@@ -25,6 +25,22 @@ export function esSocio(usuario: UsuarioConPermisos | null | undefined): boolean
   return String(usuario?.rol || '').toUpperCase() === 'SOCIO'
 }
 
+export function esSupervisor(usuario: UsuarioConPermisos | null | undefined): boolean {
+  return String(usuario?.rol || '').toUpperCase() === 'SUPERVISOR'
+}
+
+export function esPersonal(usuario: UsuarioConPermisos | null | undefined): boolean {
+  return String(usuario?.rol || '').toUpperCase() === 'PERSONAL'
+}
+
+export const ROLES = {
+  ADMINISTRACION: 'ADMINISTRACION',
+  SOCIO: 'SOCIO',
+  SUPERVISOR: 'SUPERVISOR',
+  JEFE_AREA: 'JEFE_AREA',
+  PERSONAL: 'PERSONAL',
+} as const
+
 /**
  * Perfiles que consultan la actividad de toda la empresa, no solo la propia.
  *

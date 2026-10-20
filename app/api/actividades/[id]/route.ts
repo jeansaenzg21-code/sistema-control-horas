@@ -1,7 +1,9 @@
+import { esAdministrador, esJefeDeArea, esSupervisor } from '@/lib/permisos'
 import { NextResponse } from 'next/server'
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
+import { registrarAuditoria } from '@/lib/auditoria'
 import {
   crearObservacion,
   obtenerActividadObservacion,
@@ -94,9 +96,9 @@ export async function PUT(
     // suyo. Quitar este filtro sin añadir aquel abriría la revisión a toda la
     // empresa.
     if (
-      context.user.rol !== 'ADMINISTRACION'
-      && context.user.rol !== 'SUPERVISOR'
-      && context.user.rol !== 'JEFE_AREA'
+      !esAdministrador(context.user)
+      && !esSupervisor(context.user)
+      && !esJefeDeArea(context.user)
     ) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
@@ -256,6 +258,15 @@ export async function PUT(
       mensaje: observacion.contenido,
       url: `/actividades?actividad=${actividad.id}&estado=${estado}&observacion=${observacion.id}`,
       clave_deduplicacion: `revision:${observacion.id}`,
+    })
+    await registrarAuditoria({
+      empresaId: context.empresaId,
+      usuarioId: context.user.id,
+      accion: estado === 'APROBADA' ? 'APROBAR_ACTIVIDAD' : 'RECHAZAR_ACTIVIDAD',
+      entidad: 'actividad',
+      entidadId: actividad.id,
+      despues: { estado, observacion: observacion.contenido },
+      ip: request.headers.get('x-forwarded-for') || null,
     })
     return NextResponse.json({ ok: true, actividad_id: actividad.id, estado, observacion })
   } catch (error) {

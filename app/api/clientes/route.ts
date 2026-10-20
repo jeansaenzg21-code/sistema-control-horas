@@ -3,6 +3,8 @@ import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
+import { leerJson } from '@/lib/validacion/leer-json'
+import { esquemaCliente } from '@/lib/validacion/clientes'
 import { notificarBolsaHoras } from '@/lib/bolsa-alertas'
 
 async function getContextoActivo(request: Request) {
@@ -84,7 +86,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
-    const { nombre, ruc, correo, telefono, direccion, area_id, horas_contratadas } = await request.json()
+    const lectura = await leerJson(request, esquemaCliente)
+    if (!lectura.ok) return lectura.response
+    const body = lectura.data
+    const { nombre, ruc, correo, telefono, direccion, area_id, horas_contratadas } = body
     const nombreLimpio = String(nombre ?? '').trim()
     const areaId = Number(area_id)
     if (!nombreLimpio) {
@@ -138,7 +143,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
-    const { id, nombre, ruc, correo, telefono, direccion, area_id, horas_contratadas } = await request.json()
+    const lectura = await leerJson(request, esquemaCliente)
+    if (!lectura.ok) return lectura.response
+    const body = lectura.data
+    const { id, nombre, ruc, correo, telefono, direccion, area_id, horas_contratadas } = body
     if (!id) return NextResponse.json({ error: 'ID requerido.' }, { status: 400 })
 
     const [exists] = await pool.query(

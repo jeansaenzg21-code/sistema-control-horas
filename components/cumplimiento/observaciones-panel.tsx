@@ -51,16 +51,8 @@ const etiquetasEstado: Record<string, string> = {
   RESUELTA: 'Resuelta',
 }
 
-function token(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-}
-
 function headers(): HeadersInit {
-  const valor = token()
-  return {
-    'Content-Type': 'application/json',
-    ...(valor ? { Authorization: `Bearer ${valor}` } : {}),
-  }
+  return { 'Content-Type': 'application/json' }
 }
 
 function filaCumplimiento(valor: unknown): CumplimientoObservacion | null {
@@ -150,7 +142,7 @@ export function ObservacionesCumplimientoPanel({
     try {
       const res = await fetch(
         `/api/cumplimiento/observaciones?anio=${periodo.anio}&mes=${periodo.mes}&usuario_id=${colaborador.id}`,
-        { headers: headers() },
+        { headers: headers(), credentials: 'same-origin' },
       )
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -198,6 +190,7 @@ export function ObservacionesCumplimientoPanel({
       const res = await fetch('/api/cumplimiento/observaciones', {
         method: 'POST',
         headers: headers(),
+        credentials: 'same-origin',
         body: JSON.stringify({
           usuario_id: colaborador.id,
           anio: periodo.anio,

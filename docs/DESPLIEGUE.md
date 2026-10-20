@@ -164,3 +164,8 @@ las carreras de concurrencia sin resolver.
   teléfono con la app instalada.
 - **El widget de escritorio.** No se ha probado en este ensayo.
 - **Nginx y el certificado.** El ensayo no los incluye.
+
+## Migraciones
+Ejecutar \
+pm run migrar\ antes de desplegar una version nueva. Orden: 0000 a 0009 en sql/migraciones. Las bifurcaciones de compatibilidad se eliminaron; la base debe estar migrada.
+

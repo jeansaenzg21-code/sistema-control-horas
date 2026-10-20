@@ -146,16 +146,21 @@ export function App() {
   const activateWidget = useCallback(async (u: WidgetUsuario, t: string) => {
     setUsuario(u)
     setToken(t)
-    await storage.set('pc_token', t)
-    overrideActual = null
-    setOverride(null)
-    const colapsada = layoutCompact(false).ventana
-    await resizeTauriWindow(colapsada.w, colapsada.h)
-    if (!ventanaPosicionada) {
-      ventanaPosicionada = true
-      await positionTauriWindowBottomRight()
+    try {
+      await storage.set('pc_token', t)
+      overrideActual = null
+      setOverride(null)
+      const colapsada = layoutCompact(false).ventana
+      await resizeTauriWindow(colapsada.w, colapsada.h)
+      if (!ventanaPosicionada) {
+        ventanaPosicionada = true
+        await positionTauriWindowBottomRight()
+      }
+    } finally {
+      // La ventana nace oculta. El show va en finally para que un fallo al
+      // guardar el token o al redimensionar no deje el widget invisible.
+      await showWindow()
     }
-    await showWindow()
   }, [])
 
   const deactivateWidget = useCallback(async () => {
@@ -226,13 +231,10 @@ export function App() {
   useEffect(() => {
     let cancelado = false
     const arrancar = async () => {
-      // El ocultado se ESPERA antes de sincronizar.
-      //
-      // Antes `hideWindow()` se lanzaba sin await y `restore()` corria en
-      // paralelo: el `hide` y el `show` de activateWidget compitian por la misma
-      // ventana. Si el hide caia despues, la ventana se quedaba oculta y ya nadie
-      // la volvia a mostrar.
-      await hideWindow()
+      // La ventana ya nace oculta desde tauri.conf.json (`visible: false`).
+      // No se llama a hideWindow aqui: eso competia con el show de
+      // activateWidget y, si el hide llegaba despues, el widget quedaba
+      // invisible hasta reiniciar la aplicacion.
       if (cancelado) return
       await syncWidget()
       if (cancelado) return

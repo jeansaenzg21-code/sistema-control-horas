@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  colorScheme: 'dark',
+  colorScheme: 'light dark',
   themeColor: '#7c3aed',
 }
 
@@ -21,7 +21,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es" className="dark" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <body className="antialiased bg-background text-foreground">
         <Providers>{children}</Providers>
       </body>

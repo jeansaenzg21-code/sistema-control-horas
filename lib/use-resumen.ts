@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { opcionesApi } from '@/lib/api-cliente'
 
 /**
  * Lee los AGREGADOS de un periodo desde /api/actividades/resumen.
@@ -60,8 +61,6 @@ export function useResumenActividades(
   const [error, setError] = useState<string | null>(null)
 
   const cargar = useCallback(async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (!token) return
     setCargando(true)
     setError(null)
     const params = new URLSearchParams()
@@ -70,9 +69,7 @@ export function useResumenActividades(
     if (areaId) params.set('area_id', areaId)
     if (usuarioId != null) params.set('usuario_id', String(usuarioId))
     try {
-      const res = await fetch(`/api/actividades/resumen?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetch(`/api/actividades/resumen?${params.toString()}`, opcionesApi())
       if (!res.ok) {
         setError('No se pudo cargar el resumen.')
         setResumen(VACIO)

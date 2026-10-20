@@ -1,3 +1,4 @@
+import { esJefeDeArea, esPersonal } from '@/lib/permisos'
 import { NextResponse } from 'next/server'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import pool from '@/lib/db'
@@ -144,7 +145,7 @@ export async function POST(
         }
       }
     } else {
-      if ((user.rol !== 'PERSONAL' && user.rol !== 'JEFE_AREA') || actividad.usuario_id !== user.id) {
+      if ((!esPersonal(user) && !esJefeDeArea(user)) || actividad.usuario_id !== user.id) {
         return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
       }
       if (body.tipo != null && String(body.tipo) !== 'RESPUESTA') {

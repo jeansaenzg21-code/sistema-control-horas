@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from './auth-context'
 import { notifyClientesChange } from './events'
+import { opcionesApi } from '@/lib/api-cliente'
 
 export interface Cliente {
   id: number
@@ -51,10 +52,7 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const token = localStorage.getItem('pc_token')
-      const res = await fetch('/api/clientes', {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
+      const res = await fetch('/api/clientes', opcionesApi())
       if (res.ok) {
         const data = (await res.json()) as Cliente[]
         setClientes(data.map(normalizarCliente))
@@ -76,22 +74,10 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
     }
   }, [usuario, empresaId, cargarClientes])
 
-  const headers = () => {
-    const token = localStorage.getItem('pc_token')
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-  }
-
   const crearCliente = useCallback(async (datos: Omit<Cliente, 'id' | 'area_nombre' | 'horas_consumidas' | 'activo' | 'created_at'>) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
-      const res = await fetch('/api/clientes', {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify(datos),
-      })
+      const res = await fetch('/api/clientes', opcionesApi({ method: 'POST', body: datos }))
       const data = await res.json()
       if (!res.ok) return { ok: false, error: data.error || 'Error al crear cliente.' }
       await cargarClientes()
@@ -112,11 +98,7 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
   const actualizarCliente = useCallback(async (id: number, datos: Partial<Cliente>) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
-      const res = await fetch('/api/clientes', {
-        method: 'PUT',
-        headers: headers(),
-        body: JSON.stringify({ id, ...datos }),
-      })
+      const res = await fetch('/api/clientes', opcionesApi({ method: 'PUT', body: { id, ...datos } }))
       const data = await res.json()
       if (!res.ok) return { ok: false, error: data.error || 'Error al actualizar cliente.' }
       await cargarClientes()
@@ -130,11 +112,7 @@ export function ClientesProvider({ children }: { children: ReactNode }) {
   const eliminarCliente = useCallback(async (id: number) => {
     if (!empresaId) return
     try {
-      await fetch('/api/clientes', {
-        method: 'DELETE',
-        headers: headers(),
-        body: JSON.stringify({ id }),
-      })
+      await fetch('/api/clientes', opcionesApi({ method: 'DELETE', body: { id } }))
       await cargarClientes()
       notifyClientesChange()
     } catch {

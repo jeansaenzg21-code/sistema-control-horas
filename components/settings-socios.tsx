@@ -3,7 +3,7 @@
 // Gestión del perfil SOCIO: usuarios que ven todo y no modifican nada.
 //
 // Sigue el mismo patrón que la pantalla de administradores (crear, promover,
-// revocar), con dos diferencias que no son-Estilísticas:
+// revocar), con dos diferencias que no son estilísticas:
 //
 //   - Pide DIVISIÓN. `usuarios.area_id` es NOT NULL, así que un socio tiene que
 //     estar en un área. No le da ningún permiso sobre ella: el bloqueo de
@@ -15,6 +15,7 @@ import { useState } from 'react'
 import { Eye, Plus } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useAreas } from '@/lib/areas-context'
+import { opcionesApi } from '@/lib/api-cliente'
 
 interface FormularioSocio {
   nombre: string
@@ -22,14 +23,6 @@ interface FormularioSocio {
   usuario: string
   password: string
   area_id: string
-}
-
-function getHeaders() {
-  const token = localStorage.getItem('pc_token')
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
 }
 
 export function SettingsSocios() {
@@ -61,11 +54,10 @@ export function SettingsSocios() {
     setCargando(userId)
     setError('')
     try {
-      const res = await fetch(`/api/usuarios/${userId}`, {
+      const res = await fetch(`/api/usuarios/${userId}`, opcionesApi({
         method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({ rol: 'socio' }),
-      })
+        body: { rol: 'socio' },
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error || 'No se pudo convertir en socio.')
@@ -86,12 +78,11 @@ export function SettingsSocios() {
     setCargando(userId)
     setError('')
     try {
-      const res = await fetch(`/api/usuarios/${userId}`, {
+      const res = await fetch(`/api/usuarios/${userId}`, opcionesApi({
         method: 'PUT',
-        headers: getHeaders(),
         // Vuelve a colaborador: recupera el acceso normal a sus propias horas.
-        body: JSON.stringify({ rol: 'personal' }),
-      })
+        body: { rol: 'personal' },
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error || 'No se pudo revocar el rol de socio.')
@@ -144,18 +135,17 @@ export function SettingsSocios() {
   const crearSocio = async () => {
     setError('')
     try {
-      const res = await fetch('/api/usuarios', {
+      const res = await fetch('/api/usuarios', opcionesApi({
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
+        body: {
           nombre: formulario.nombre,
           correo: formulario.correo,
           usuario: formulario.usuario,
           password: formulario.password,
           area_id: Number(formulario.area_id),
           rol: 'socio',
-        }),
-      })
+        },
+      }))
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'No se pudo crear el usuario.')

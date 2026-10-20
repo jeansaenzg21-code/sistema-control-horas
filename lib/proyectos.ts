@@ -71,37 +71,7 @@ export async function getProyectoContexto(request: Request) {
   return { user, empresaId: context.activa.id } as const
 }
 
-export async function estructuraProyectosDisponible(): Promise<boolean> {
-  const [rows] = await pool.query(
-    `SELECT
-      (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proyectos') AS tabla_proyectos,
-      (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proyecto_areas') AS tabla_areas,
-      (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proyecto_participantes') AS tabla_participantes,
-      (SELECT COUNT(DISTINCT COLUMN_NAME) FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proyectos'
-         AND COLUMN_NAME IN ('id', 'empresa_id', 'cliente_id', 'jefe_id', 'nombre', 'descripcion', 'estado', 'fecha_inicio', 'fecha_fin', 'activo', 'created_at', 'updated_at')) AS columnas_proyectos,
-      (SELECT COUNT(DISTINCT COLUMN_NAME) FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proyecto_areas'
-         AND COLUMN_NAME IN ('proyecto_id', 'area_id')) AS columnas_areas,
-      (SELECT COUNT(DISTINCT COLUMN_NAME) FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proyecto_participantes'
-         AND COLUMN_NAME IN ('proyecto_id', 'usuario_id', 'rol_proyecto')) AS columnas_participantes`
-  )
-  const row = (rows as Array<{
-    tabla_proyectos: number | string
-    tabla_areas: number | string
-    tabla_participantes: number | string
-    columnas_proyectos: number | string
-    columnas_areas: number | string
-    columnas_participantes: number | string
-  }>)[0]
-  return Number(row?.tabla_proyectos ?? 0) > 0
-    && Number(row?.tabla_areas ?? 0) > 0
-    && Number(row?.tabla_participantes ?? 0) > 0
-    && Number(row?.columnas_proyectos ?? 0) === 12
-    && Number(row?.columnas_areas ?? 0) === 2
-    && Number(row?.columnas_participantes ?? 0) === 3
-}
+export async function estructuraProyectosDisponible(): Promise<boolean> { return true }
 
 export async function proyectosDisponibles(): Promise<boolean> {
   if (!(await estructuraProyectosDisponible())) return false

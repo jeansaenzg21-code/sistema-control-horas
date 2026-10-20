@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { User } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { opcionesApi } from '@/lib/api-cliente'
 
 export function SettingsProfile() {
   const { usuario, cargarUsuarios } = useAuth()
@@ -30,16 +31,7 @@ export function SettingsProfile() {
       const body: Record<string, string> = { nombre: nombre.trim(), correo: correo.trim() }
       if (password) body.password = password
 
-      const res = await fetch(`/api/usuarios/${usuario?.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(localStorage.getItem('pc_token')
-            ? { Authorization: `Bearer ${localStorage.getItem('pc_token')}` }
-            : {}),
-        },
-        body: JSON.stringify(body),
-      })
+      const res = await fetch(`/api/usuarios/${usuario?.id}`, opcionesApi({ method: 'PUT', body }))
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'No se pudo guardar.')

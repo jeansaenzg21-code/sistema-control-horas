@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Clock, Plus, Pencil, Trash2, UserRound } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { SettingsHorario } from './settings-horario'
+import { opcionesApi } from '@/lib/api-cliente'
 
 interface SettingsUsersProps {
   areaId: number
@@ -15,14 +16,6 @@ interface FormularioUsuario {
   usuario: string
   password: string
   cargo: string
-}
-
-function getHeaders() {
-  const token = localStorage.getItem('pc_token')
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
 }
 
 export function SettingsUsers({ areaId }: SettingsUsersProps) {
@@ -123,11 +116,7 @@ export function SettingsUsers({ areaId }: SettingsUsersProps) {
         body.password = formulario.password
       }
 
-      const res = await fetch(url, {
-        method,
-        headers: getHeaders(),
-        body: JSON.stringify(body),
-      })
+      const res = await fetch(url, opcionesApi({ method, body }))
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'No se pudo guardar.')
@@ -153,7 +142,7 @@ export function SettingsUsers({ areaId }: SettingsUsersProps) {
     try {
       setError('')
       setExito('')
-      const res = await fetch(`/api/usuarios/${id}`, { method: 'DELETE', headers: getHeaders() })
+      const res = await fetch(`/api/usuarios/${id}`, opcionesApi({ method: 'DELETE' }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error || 'No se pudo eliminar.')
