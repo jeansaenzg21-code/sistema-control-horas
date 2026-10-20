@@ -17,6 +17,7 @@
     "migrar": "node scripts/migrar.js"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.104.5",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",

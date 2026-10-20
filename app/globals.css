@@ -47,46 +47,38 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Tema claro (predeterminado) */
 :root {
-  color-scheme: dark;
-  /* Identidad Paredes Cano — Morado institucional, sin azules */
-  --background: #09090b;
-  --foreground: #fafafa;
-  --card: #111217;
-  --card-foreground: #fafafa;
-  --popover: #131318;
-  --popover-foreground: #fafafa;
-  --header: #111217;
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --popover: #ffffff;
+  --popover-foreground: #09090b;
+  --header: #f4f4f5;
   --brand: #7c3aed;
-  /* Morado institucional */
   --primary: #7c3aed;
   --primary-foreground: #ffffff;
-  --secondary: #1b1b1f;
-  --secondary-foreground: #e4e4e7;
-  --muted: #17171a;
-  --muted-foreground: #a1a1aa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #09090b;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b;
   --accent: #8b5cf6;
   --accent-foreground: #ffffff;
-  --destructive: #f87171;
-  --border: #232327;
-  --input: #1c1c21;
+  --destructive: #dc2626;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
   --ring: #7c3aed;
-  /* Gráficos — escala de morado */
   --chart-1: #7c3aed;
   --chart-2: #8b5cf6;
   --chart-3: #a78bfa;
   --chart-4: #c4b5fd;
   --chart-5: #ede9fe;
   --radius: 0.625rem;
-  /* Sidebar */
-  --sidebar: #0d0d10;
-  --sidebar-foreground: #e4e4e7;
-  --sidebar-primary: #7c3aed;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #16161a;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #1c1c20;
-  --sidebar-ring: #7c3aed;
 }
 
 .dark {
@@ -902,4 +894,9 @@
     background: #fff !important;
     border-color: #d4d4d8 !important;
   }
+}
+/* Accesibilidad: foco visible */
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
