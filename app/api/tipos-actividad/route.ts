@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
-import { esJefeDeArea } from '@/lib/permisos'
+import { esJefeDeArea, esPersonal } from '@/lib/permisos'
 import { columnaExiste } from '@/lib/esquema'
 
 export async function GET(request: Request) {
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     const areaParam = searchParams.get('area_id')
     const areaJefe = esJefeDeArea(user) ? user.area_id : null
     let areaId = areaJefe
-    if (areaId == null && user.rol === 'PERSONAL') areaId = user.area_id
+    if (areaId == null && esPersonal(user)) areaId = user.area_id
     if (areaId == null && areaParam) {
       const parsedAreaId = Number(areaParam)
       if (!Number.isInteger(parsedAreaId) || parsedAreaId <= 0) {

@@ -1,3 +1,4 @@
+import { esAdministrador, esJefeDeArea, esSupervisor } from '@/lib/permisos'
 import { NextResponse } from 'next/server'
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import pool from '@/lib/db'
@@ -94,9 +95,9 @@ export async function PUT(
     // suyo. Quitar este filtro sin añadir aquel abriría la revisión a toda la
     // empresa.
     if (
-      context.user.rol !== 'ADMINISTRACION'
-      && context.user.rol !== 'SUPERVISOR'
-      && context.user.rol !== 'JEFE_AREA'
+      !esAdministrador(context.user)
+      && !esSupervisor(context.user)
+      && !esJefeDeArea(context.user)
     ) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }

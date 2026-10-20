@@ -12,7 +12,7 @@ import {
   type VisibilidadObservacion,
 } from '@/lib/observaciones'
 import { crearNotificacion } from '@/lib/notificaciones'
-import { esJefeDeArea } from '@/lib/permisos'
+import { esAdministrador, esJefeDeArea, esPersonal, esSupervisor } from '@/lib/permisos'
 
 const CONTENIDO_MAX = 2000
 type Conexion = Pool | PoolConnection
@@ -169,10 +169,10 @@ async function obtenerDestino(
 }
 
 function destinoPermitido(user: SessionUser, destino: DestinoCumplimiento): boolean {
-  if (user.rol === 'ADMINISTRACION') return true
-  if (user.rol === 'SUPERVISOR') return Number(destino.supervisor_id) === user.id
-  if (user.rol === 'JEFE_AREA') return user.area_id != null && Number(destino.area_id) === user.area_id
-  return user.rol === 'PERSONAL' && Number(destino.id) === user.id
+  if (esAdministrador(user)) return true
+  if (esSupervisor(user)) return Number(destino.supervisor_id) === user.id
+  if (esJefeDeArea(user)) return user.area_id != null && Number(destino.area_id) === user.area_id
+  return esPersonal(user) && Number(destino.id) === user.id
 }
 
 async function obtenerObservacionCumplimiento(
@@ -214,7 +214,7 @@ async function validarDestinoParaCumplimiento(
   usuarioId: number,
   empresaId: number,
 ): Promise<DestinoCumplimiento | null> {
-  if (user.rol === 'PERSONAL' && usuarioId !== user.id) return null
+  if (esPersonal(user) && usuarioId !== user.id) return null
   const destino = await obtenerDestino(conexion, usuarioId, empresaId)
   return destino && destinoPermitido(user, destino) ? destino : null
 }
@@ -237,7 +237,7 @@ async function responderObservacionCumplimiento(
   empresaId: number,
   body: Record<string, unknown>,
 ): Promise<NextResponse> {
-  if (user.rol !== 'PERSONAL') {
+  if (!esPersonal(user)) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
   }
   const validado = parsearRespuesta(body)
@@ -332,7 +332,7 @@ async function marcarObservacionCumplimiento(
   empresaId: number,
   body: Record<string, unknown>,
 ): Promise<NextResponse> {
-  if (user.rol !== 'PERSONAL') {
+  if (!esPersonal(user)) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
   }
   const observacionValidada = validarId(body.observacion_id ?? body.parent_id ?? body.id, 'La observación')
@@ -411,7 +411,7 @@ async function crearObservacionCumplimiento(
     if (accion === 'ATENDER') {
       return marcarObservacionCumplimiento(user, context.activa.id, body)
     }
-    if (user.rol !== 'ADMINISTRACION' && user.rol !== 'SUPERVISOR' && user.rol !== 'JEFE_AREA') {
+    if (!esAdministrador(user) && !esSupervisor(user) && !esJefeDeArea(user)) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
@@ -493,12 +493,12 @@ export async function GET(request: Request) {
       }
       usuarioId = usuarioValidado.valor
     }
-    if (user.rol === 'PERSONAL') {
+    if (esPersonal(user)) {
       if (usuarioId != null && usuarioId !== user.id) {
         return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
       }
       usuarioId = user.id
-    } else if (user.rol !== 'ADMINISTRACION' && user.rol !== 'SUPERVISOR' && user.rol !== 'JEFE_AREA') {
+    } else if (!esAdministrador(user) && !esSupervisor(user) && !esJefeDeArea(user)) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
@@ -520,10 +520,10 @@ export async function GET(request: Request) {
       condiciones.push('o.usuario_destino_id = ?')
       parametros.push(usuarioId)
     }
-    if (user.rol === 'PERSONAL') {
+    if (esPersonal(user)) {
       condiciones.push("o.visibilidad = 'TRABAJADOR'")
     }
-    if (user.rol === 'SUPERVISOR') {
+    if (esSupervisor(user)) {
       condiciones.push('destino.supervisor_id = ?')
       parametros.push(user.id)
     }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
-import { esJefeDeArea } from '@/lib/permisos'
+import { esJefeDeArea, esSocio } from '@/lib/permisos'
 import { diasEnMes, formatoFecha } from '@/lib/fechas'
 import { datosFaltantesActividad, textoDatosFaltantes } from '@/lib/cumplimiento'
 import type {
@@ -76,7 +76,7 @@ function redondear1(n: number): number {
 export async function GET(request: Request) {
   try {
     const user = await getUserFromRequest(request)
-    if (!user || (!esAdmin(user) && !esJefeDeArea(user) && user.rol !== 'SOCIO')) {
+    if (!user || (!esAdmin(user) && !esJefeDeArea(user) && !esSocio(user))) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
     const context = await getEmpresaContext(user)

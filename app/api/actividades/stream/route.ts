@@ -1,3 +1,4 @@
+import { esAdministrador } from '@/lib/permisos'
 import { subscribeActivityChanges } from '@/lib/events'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   if (!context.activa) return Response.json({ error: 'No hay una empresa activa.' }, { status: 409 })
   // La autorizacion se mantiene: un usuario normal solo puede escuchar sus
   // propios eventos, aunque manipule el `usuario_id` de la URL.
-  if (user.rol !== 'ADMINISTRACION' && user.id !== usuarioId) {
+  if (!esAdministrador(user) && user.id !== usuarioId) {
     return Response.json({ error: 'No autorizado.' }, { status: 403 })
   }
 

@@ -1,3 +1,4 @@
+import { esAdministrador } from '@/lib/permisos'
 import { randomUUID } from 'crypto'
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
     if (!Number.isInteger(targetId) || targetId <= 0) {
       return NextResponse.json({ error: 'usuario_id requerido.' }, { status: 400 })
     }
-    if (targetId !== user.id && user.rol !== 'ADMINISTRACION') {
+    if (targetId !== user.id && !esAdministrador(user)) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
