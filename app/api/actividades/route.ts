@@ -5,6 +5,8 @@ import { notifyActivityChange } from '@/lib/events'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { horarioDeHoy, enRangoHorario, minutosAcumuladosHoy, aMinutos } from '@/lib/horarios'
 import { esAdministrador, esJefeDeArea, esPersonal, esSocio, esSupervisor } from '@/lib/permisos'
+import { leerJson } from '@/lib/validacion/leer-json'
+import { esquemaActividad } from '@/lib/validacion/actividades'
 import { estructuraProyectosDisponible } from '@/lib/proyectos'
 import {
   buscarPorIdOperacion,
@@ -315,10 +317,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
     }
 
-    const body = await request.json().catch(() => null) as Record<string, unknown> | null
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return NextResponse.json({ error: 'El cuerpo de la solicitud no es válido.' }, { status: 400 })
-    }
+    const lectura = await leerJson(request, esquemaActividad)
+    if (!lectura.ok) return lectura.response
+    const body = lectura.data as Record<string, unknown>
     const { usuario_id, tipo_actividad_id, cliente_id, descripcion, facturable, proyecto_id, presupuesto_servicio_id, inicio, id_operacion } = body
     const usuarioObjetivoId = Number(usuario_id)
     const tipoActividadId = Number(tipo_actividad_id)

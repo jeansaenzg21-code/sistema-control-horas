@@ -4,6 +4,8 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
+import { leerJson } from '@/lib/validacion/leer-json'
+import { esquemaUsuario } from '@/lib/validacion/usuarios'
 import { hashearPassword, validarPassword } from '@/lib/validacion-password'
 
 const SELECT_USUARIOS = `
@@ -120,7 +122,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
-    const body = await request.json()
+    const lectura = await leerJson(request, esquemaUsuario)
+    if (!lectura.ok) return lectura.response
+    const body = lectura.data
     const { nombre, correo, usuario, password, rol, area_id, cargo, especialidad, supervisor_id } = body
     const nombreLimpio = String(nombre ?? '').trim()
     const usuarioLimpio = String(usuario ?? '').trim()
