@@ -4,7 +4,7 @@ import { RowDataPacket } from 'mysql2'
 import { notifyActivityChange } from '@/lib/events'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { horarioDeHoy, enRangoHorario, minutosAcumuladosHoy, aMinutos } from '@/lib/horarios'
-import { esJefeDeArea } from '@/lib/permisos'
+import { esAdministrador, esJefeDeArea, esPersonal, esSocio, esSupervisor } from '@/lib/permisos'
 import { estructuraProyectosDisponible } from '@/lib/proyectos'
 import {
   buscarPorIdOperacion,
@@ -82,12 +82,12 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'El usuario indicado no es válido.' }, { status: 400 })
       }
     }
-    if (user.rol === 'PERSONAL') {
+    if (esPersonal(user)) {
       if (usuarioId != null && usuarioId !== user.id) {
         return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
       }
       usuarioId = user.id
-    } else if (user.rol === 'SUPERVISOR') {
+    } else if (esSupervisor(user)) {
       if (usuarioId != null && usuarioId !== user.id) {
         const [destinos] = await pool.query<RowDataPacket[]>(
           `SELECT u.id
@@ -115,7 +115,7 @@ export async function GET(request: Request) {
           return NextResponse.json({ error: 'El colaborador no pertenece a tu área.' }, { status: 403 })
         }
       }
-    } else if (user.rol === 'ADMINISTRACION' || user.rol === 'SOCIO') {
+    } else if (esAdministrador(user) || esSocio(user)) {
       // Lectura completa de la empresa, sin narrowing por usuario ni por área.
       // El SOCIO entra por aquí: puede revisar todos los registros pero no
       // tocar ninguno, y la escritura ya está cerrada en lib/auth.ts.
@@ -177,7 +177,7 @@ export async function GET(request: Request) {
     if (usuarioId != null) {
       query += ' AND a.usuario_id = ?'
       params.push(usuarioId)
-    } else if (user.rol === 'SUPERVISOR') {
+    } else if (esSupervisor(user)) {
       query += ' AND u.supervisor_id = ?'
       params.push(user.id)
     } else if (esJefeDeArea(user)) {
@@ -368,7 +368,7 @@ export async function POST(request: Request) {
     if (!Number.isInteger(usuarioObjetivoId) || usuarioObjetivoId <= 0 || !Number.isInteger(tipoActividadId) || tipoActividadId <= 0) {
       return NextResponse.json({ error: 'Faltan campos obligatorios.' }, { status: 400 })
     }
-    if (user.rol !== 'ADMINISTRACION' && usuarioObjetivoId !== user.id) {
+    if (!esAdministrador(user) && usuarioObjetivoId !== user.id) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
