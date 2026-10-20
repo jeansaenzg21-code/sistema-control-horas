@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { esAdministrador, esJefeDeArea } from '@/lib/permisos'
+import { leerJson } from '@/lib/validacion/leer-json'
+import { esquemaProyecto } from '@/lib/validacion/proyectos'
 import {
   getProyectoContexto,
   obtenerProyectoRow,
@@ -132,7 +134,9 @@ export async function POST(request: Request) {
     const jefe = esJefeDeArea(context.user)
     if (!admin && !jefe) return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
 
-    const body = await request.json().catch(() => ({})) as Record<string, unknown>
+    const lectura = await leerJson(request, esquemaProyecto)
+    if (!lectura.ok) return lectura.response
+    const body = lectura.data as Record<string, unknown>
     const nombre = String(body.nombre ?? '').trim()
     const descripcion = String(body.descripcion ?? '').trim() || null
     const estadoCrudo = String(body.estado ?? 'PLANIFICACION').toUpperCase() as EstadoProyecto
