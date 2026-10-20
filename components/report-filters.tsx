@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, LayoutList, Building2 } from 'lucide-react'
+import { FileText, Building2 } from 'lucide-react'
 import { useAreas } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
@@ -11,10 +11,6 @@ export interface FiltrosReporte {
   desde: string
   hasta: string
 }
-
-const tipos = [
-  { id: 'mensual', etiqueta: 'Mensual' },
-]
 
 interface ReportFiltersProps {
   filtros: FiltrosReporte
@@ -42,10 +38,6 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
     onChange({ ...filtros, areaId })
   }
 
-  const seleccionarTipo = (tipo: string) => {
-    onChange({ ...filtros, tipo })
-  }
-
   const estiloControl =
     'w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50 disabled:cursor-not-allowed disabled:opacity-50'
 
@@ -54,7 +46,7 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
       <div
         className={cn(
           'grid grid-cols-1 gap-4 md:grid-cols-2',
-          'lg:grid-cols-4',
+          'lg:grid-cols-3',
         )}
       >
         <div>
@@ -86,24 +78,6 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
           {divisionFija && usuario?.area_id != null && (
             <p className="mt-1 text-[11px] text-muted-foreground">Sólo puedes consultar tu propia división.</p>
           )}
-        </div>
-
-        <div>
-          <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <LayoutList size={13} />
-            Tipo de reporte
-          </label>
-          <select
-            value={filtros.tipo}
-            onChange={(e) => seleccionarTipo(e.target.value)}
-            className={`${estiloControl} cursor-pointer`}
-          >
-            {tipos.map((tipo) => (
-              <option key={tipo.id} value={tipo.id}>
-                {tipo.etiqueta}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div>
