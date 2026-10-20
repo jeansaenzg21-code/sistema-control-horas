@@ -12,6 +12,7 @@ import {
 import { useAuth } from './auth-context'
 import { veActividadDeTodaLaEmpresa } from './permisos'
 import { ControlStream, crearStreamSse } from './sse'
+import { opcionesApi } from '@/lib/api-cliente'
 
 export interface Actividad {
   id: number
@@ -101,14 +102,6 @@ const LIMITE_PAGINA = 200
 const [streamConectado, setStreamConectado] = useState(false)
 const streamRef = useRef<ControlStream | null>(null)
 
-  const getHeaders = useCallback(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-  }, [])
-
   useEffect(() => {
     actividadRef.current = actividadActual
     if (actividadActual && actividadActual.estado === 'EN_CURSO') {
@@ -125,9 +118,7 @@ const streamRef = useRef<ControlStream | null>(null)
     const esCargaInicial = !cargaInicialRef.current
     if (esCargaInicial) setCargandoActividad(true)
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined
-      const res = await fetch(`/api/actividades?usuario_id=${usuarioId}&estado=EN_CURSO`, { headers })
+      const res = await fetch(`/api/actividades?usuario_id=${usuarioId}&estado=EN_CURSO`, opcionesApi())
       if (res.ok) {
         const data = await res.json()
         const primera = data[0] as Actividad | undefined
@@ -136,7 +127,7 @@ const streamRef = useRef<ControlStream | null>(null)
           setTiempoPausaMs(null)
           return primera
         }
-        const res2 = await fetch(`/api/actividades?usuario_id=${usuarioId}&estado=PAUSADA`, { headers })
+        const res2 = await fetch(`/api/actividades?usuario_id=${usuarioId}&estado=PAUSADA`, opcionesApi())
         if (res2.ok) {
           const data2 = await res2.json()
           const actividad = (data2.length > 0 ? data2[0] : null) as Actividad | null
@@ -198,10 +189,7 @@ const streamRef = useRef<ControlStream | null>(null)
         })
         if (soloPropias) params.set('usuario_id', String(usuarioId))
         const url = `/api/actividades?${params.toString()}`
-        const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-        const res = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        })
+        const res = await fetch(url, opcionesApi())
         if (!res.ok) {
           if (!append) setHistorial([])
           return
@@ -309,11 +297,7 @@ const streamRef = useRef<ControlStream | null>(null)
   const iniciarActividad = useCallback(async (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; descripcion?: string; facturable?: boolean | null }) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
-      const res = await fetch('/api/actividades', {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(datos),
-      })
+      const res = await fetch('/api/actividades', opcionesApi({ method: 'POST', body: datos }))
       const data = await res.json()
       if (!res.ok) {
         return { ok: false, error: data.error || 'Error al crear actividad.' }
@@ -324,18 +308,17 @@ const streamRef = useRef<ControlStream | null>(null)
     } catch {
       return { ok: false, error: 'No se pudo conectar al servidor.' }
     }
-  }, [empresaId, getHeaders])
+  }, [empresaId])
 
   const pausarActividad = useCallback(async () => {
     if (!usuario) return
     const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
     if (!actual) return
     try {
-      const res = await fetch(`/api/actividades/${actual.id}/pausar`, {
+      const res = await fetch(`/api/actividades/${actual.id}/pausar`, opcionesApi({
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ usuario_id: usuario.id }),
-      })
+        body: { usuario_id: usuario.id },
+      }))
       if (!res.ok) {
         console.warn('[actividad] No se pudo pausar:', res.status)
         return
@@ -351,18 +334,17 @@ const streamRef = useRef<ControlStream | null>(null)
     } catch {
       console.warn('[actividad] Sin conexión al pausar')
     }
-  }, [usuario, cargarActividadActual, getHeaders])
+  }, [usuario, cargarActividadActual])
 
   const reanudarActividad = useCallback(async () => {
     if (!usuario) return
     const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
     if (!actual) return
     try {
-      const res = await fetch(`/api/actividades/${actual.id}/continuar`, {
+      const res = await fetch(`/api/actividades/${actual.id}/continuar`, opcionesApi({
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ usuario_id: usuario.id }),
-      })
+        body: { usuario_id: usuario.id },
+      }))
       if (!res.ok) {
         console.warn('[actividad] No se pudo reanudar:', res.status)
         return
@@ -374,18 +356,17 @@ const streamRef = useRef<ControlStream | null>(null)
     } catch {
       console.warn('[actividad] Sin conexión al reanudar')
     }
-  }, [usuario, cargarActividadActual, getHeaders])
+  }, [usuario, cargarActividadActual])
 
   const finalizarActividad = useCallback(async () => {
     if (!usuario) return
     const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
     if (!actual) return
     try {
-      const res = await fetch(`/api/actividades/${actual.id}/finalizar`, {
+      const res = await fetch(`/api/actividades/${actual.id}/finalizar`, opcionesApi({
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ usuario_id: usuario.id }),
-      })
+        body: { usuario_id: usuario.id },
+      }))
       if (!res.ok) {
         console.warn('[actividad] No se pudo finalizar:', res.status)
         return
@@ -398,7 +379,7 @@ const streamRef = useRef<ControlStream | null>(null)
     } catch {
       console.warn('[actividad] Sin conexión al finalizar')
     }
-  }, [usuario, cargarActividadActual, cargarHistorial, getHeaders])
+  }, [usuario, cargarActividadActual, cargarHistorial])
 
   const continuarActividad = useCallback(() => {
     setAlertaVisible(false)

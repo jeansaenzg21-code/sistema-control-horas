@@ -7,6 +7,7 @@ import { PANEL } from '@/components/cartera-ui'
 import { cn } from '@/lib/utils'
 import { formatoHoras } from '@/lib/utils'
 import { useAuth } from '@/lib/auth-context'
+import { opcionesApi } from '@/lib/api-cliente'
 import {
   Clock, ShieldCheck, ListChecks, Users, Wallet, UserRound, BarChart3, Info,
   ChevronRight, AlertTriangle, ClipboardCheck, MessageSquareWarning, UserX, TrendingDown, Ban,
@@ -43,22 +44,19 @@ export function DashboardAdministrador() {
   useEffect(() => {
     let cancelado = false
     async function cargar() {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      if (!token) { setCargando(false); return }
       setCargando(true)
-      const h = { Authorization: `Bearer ${token}` }
       const qs = desde && hasta ? `desde=${desde}&hasta=${hasta}` : ''
       const mesF = (hasta || new Date().toISOString().slice(0, 10)).slice(5, 7)
       const anioF = (hasta || new Date().toISOString().slice(0, 10)).slice(0, 4)
       try {
         const [a, r, rp, c, cu, ap, u] = await Promise.all([
-          fetch('/api/areas', { headers: h }).then((x) => x.ok ? x.json() : []),
-          fetch(`/api/actividades/resumen${qs ? `?${qs}` : ''}`, { headers: h }).then((x) => x.ok ? x.json() : null),
-          fetchPrevio(desde, hasta, h),
-          fetch('/api/clientes/cartera', { headers: h }).then((x) => x.ok ? x.json() : null),
-          fetch(`/api/cumplimiento?anio=${anioF}&mes=${mesF}&desde=${desde}&hasta=${hasta}`, { headers: h }).then((x) => x.ok ? x.json() : null),
-          fetch('/api/aprobaciones', { headers: h }).then((x) => x.ok ? x.json() : []),
-          fetch('/api/usuarios', { headers: h }).then((x) => x.ok ? x.json() : []),
+          fetch('/api/areas', opcionesApi()).then((x) => x.ok ? x.json() : []),
+          fetch(`/api/actividades/resumen${qs ? `?${qs}` : ''}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
+          fetchPrevio(desde, hasta),
+          fetch('/api/clientes/cartera', opcionesApi()).then((x) => x.ok ? x.json() : null),
+          fetch(`/api/cumplimiento?anio=${anioF}&mes=${mesF}&desde=${desde}&hasta=${hasta}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
+          fetch('/api/aprobaciones', opcionesApi()).then((x) => x.ok ? x.json() : []),
+          fetch('/api/usuarios', opcionesApi()).then((x) => x.ok ? x.json() : []),
         ])
         if (cancelado) return
         setAreas(Array.isArray(a) ? a : [])
@@ -363,7 +361,7 @@ export function DashboardAdministrador() {
     </MainLayout>
   )
 }
-async function fetchPrevio(desde: string, hasta: string, h: Record<string, string>) {
+async function fetchPrevio(desde: string, hasta: string) {
   if (!desde || !hasta) return null
   const d = new Date(`${desde}T00:00:00`)
   const hh = new Date(`${hasta}T00:00:00`)
@@ -372,6 +370,6 @@ async function fetchPrevio(desde: string, hasta: string, h: Record<string, strin
   const fin = new Date(d); fin.setDate(fin.getDate() - 1)
   const ini = new Date(fin); ini.setDate(ini.getDate() - (dias - 1))
   const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
-  const r = await fetch(`/api/actividades/resumen?desde=${iso(ini)}&hasta=${iso(fin)}`, { headers: h })
+  const r = await fetch(`/api/actividades/resumen?desde=${iso(ini)}&hasta=${iso(fin)}`, opcionesApi())
   return r.ok ? r.json() : null
 }

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from './auth-context'
+import { opcionesApi } from '@/lib/api-cliente'
 
 export interface Area {
   id: number
@@ -41,14 +42,6 @@ export function AreasProvider({ children }: { children: ReactNode }) {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const getHeaders = useCallback(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-  }, [])
-
   const cargarAreas = useCallback(async () => {
     if (!empresaId) {
       setAreas([])
@@ -57,10 +50,7 @@ export function AreasProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      const res = await fetch('/api/areas', {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
+      const res = await fetch('/api/areas', opcionesApi())
       if (res.ok) {
         const data = await res.json()
         setAreas(Array.isArray(data) ? data : [])
@@ -91,11 +81,7 @@ export function AreasProvider({ children }: { children: ReactNode }) {
   const crearArea = useCallback(async (datos: { nombre: string; descripcion?: string }) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
-      const res = await fetch('/api/areas', {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify(datos),
-      })
+      const res = await fetch('/api/areas', opcionesApi({ method: 'POST', body: datos }))
       const data = await res.json()
       if (!res.ok) return { ok: false, error: data.error }
       await cargarAreas()
@@ -103,16 +89,12 @@ export function AreasProvider({ children }: { children: ReactNode }) {
     } catch {
       return { ok: false, error: 'Error de conexión.' }
     }
-  }, [empresaId, getHeaders, cargarAreas])
+  }, [empresaId, cargarAreas])
 
   const actualizarArea = useCallback(async (id: number, cambios: { nombre?: string; descripcion?: string; jefe_id?: number | null }) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
-      const res = await fetch('/api/areas', {
-        method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({ id, ...cambios }),
-      })
+      const res = await fetch('/api/areas', opcionesApi({ method: 'PUT', body: { id, ...cambios } }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) return { ok: false, error: data.error || 'Error al actualizar.' }
       await cargarAreas()
@@ -120,16 +102,12 @@ export function AreasProvider({ children }: { children: ReactNode }) {
     } catch {
       return { ok: false, error: 'Error de conexión.' }
     }
-  }, [empresaId, getHeaders, cargarAreas])
+  }, [empresaId, cargarAreas])
 
   const eliminarArea = useCallback(async (id: number) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
-      const res = await fetch('/api/areas', {
-        method: 'DELETE',
-        headers: getHeaders(),
-        body: JSON.stringify({ id }),
-      })
+      const res = await fetch('/api/areas', opcionesApi({ method: 'DELETE', body: { id } }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) return { ok: false, error: data.error || 'Error al eliminar.' }
       await cargarAreas()
@@ -137,7 +115,7 @@ export function AreasProvider({ children }: { children: ReactNode }) {
     } catch {
       return { ok: false, error: 'Error de conexión.' }
     }
-  }, [empresaId, getHeaders, cargarAreas])
+  }, [empresaId, cargarAreas])
 
   return (
     <AreasContext.Provider value={{

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CalendarOff, Check, Loader2, Pencil, Plus, Search, Sun, Trash2, Umbrella, X } from 'lucide-react'
 import { useAuth, type Usuario } from '@/lib/auth-context'
+import { opcionesApi } from '@/lib/api-cliente'
 
 interface ExcepcionRow {
   id: number
@@ -30,10 +31,6 @@ function normalizarTexto(valor: string): string {
 }
 
 const FORM_VACIO: FormEstado = { id: null, fecha: '', tipo: 'FERIADO', usuario_id: '', descripcion: '' }
-
-function token(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-}
 
 const estiloCampo =
   'h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/40'
@@ -74,9 +71,7 @@ export function ExcepcionesAdmin() {
         params.set('mes', String(hoy.getMonth() + 1))
       }
       const url = params.toString() ? `/api/excepciones?${params.toString()}` : '/api/excepciones'
-      const res = await fetch(url, {
-        headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
-      })
+      const res = await fetch(url, opcionesApi())
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setMensaje({ tipo: 'error', texto: data.error || 'No se pudieron cargar las excepciones.' })
@@ -140,14 +135,10 @@ export function ExcepcionesAdmin() {
         descripcion: form.descripcion,
       }
       const url = form.id ? `/api/excepciones/${form.id}` : '/api/excepciones'
-      const res = await fetch(url, {
+      const res = await fetch(url, opcionesApi({
         method: form.id ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
-        },
-        body: JSON.stringify(body),
-      })
+        body,
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setMensaje({ tipo: 'error', texto: data.error || 'No se pudo guardar la excepción.' })
@@ -167,10 +158,7 @@ export function ExcepcionesAdmin() {
     if (!window.confirm(`¿Eliminar la excepción del ${row.fecha} (${row.tipo})?`)) return
     setMensaje(null)
     try {
-      const res = await fetch(`/api/excepciones/${row.id}`, {
-        method: 'DELETE',
-        headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
-      })
+      const res = await fetch(`/api/excepciones/${row.id}`, opcionesApi({ method: 'DELETE' }))
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setMensaje({ tipo: 'error', texto: data.error || 'No se pudo eliminar.' })

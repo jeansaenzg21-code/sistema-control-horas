@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { opcionesApi } from '@/lib/api-cliente'
 
 export type Rol = 'personal' | 'supervisor' | 'jefe_area' | 'admin' | 'socio'
 
@@ -61,7 +62,7 @@ function mapRol(dbRol: string): Rol {
   // Antes este `return` sin más convertía cualquier rol desconocido en
   // 'personal'. Con el socio fue un problema real de seguridad: si el ENUM se
   // actualiza en la base y la aplicación no, el socio entraba degradado a
-  // 'personal', con permisos de collaborative y SIN el bloqueo de escritura.
+  // 'personal', con permisos de colaborador y SIN el bloqueo de escritura.
   // Un rol desconocido se trata como el más restrictivo, nunca como el más
   // permisivo.
   return 'socio'
@@ -96,12 +97,6 @@ function normalizeEmpresa(raw: Record<string, unknown>): Empresa {
   }
 }
 
-function limpiarSesionLocal() {
-  if (typeof window === 'undefined') return
-  localStorage.removeItem('pc_sesion')
-  localStorage.removeItem('pc_token')
-}
-
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -113,43 +108,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [cargando, setCargando] = useState(true)
   const temporizadorRenovacionRef = useRef<number | null>(null)
 
+  // La sesion vive en una cookie HttpOnly: el navegador la envia sola en cada
+  // peticion, sin que el JavaScript la toque. Por eso estas funciones ya no
+  // necesitan leer ningun token del localStorage.
   const cargarUsuarios = useCallback(async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (!token) {
-      setUsuarios([])
-      return
-    }
-
     try {
-      const res = await fetch('/api/usuarios', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setUsuarios(data.map((item: Record<string, unknown>) => normalizeUsuario(item)))
+      const data = await fetch('/api/usuarios', opcionesApi())
+      if (!data.ok) {
+        setUsuarios([])
+        return
       }
+      const filas = (await data.json()) as Array<Record<string, unknown>>
+      setUsuarios(filas.map((item) => normalizeUsuario(item)))
     } catch {
       setUsuarios([])
     }
   }, [])
 
   const cargarContextoEmpresa = useCallback(async (): Promise<boolean> => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (!token) {
-      setUsuario(null)
-      setEmpresaActiva(null)
-      setEmpresasDisponibles([])
-      setRequiereEmpresa(false)
-      return false
-    }
-
     try {
-      const res = await fetch('/api/auth/session', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
+      const res = await fetch('/api/auth/session', opcionesApi())
+      const data = (await res.json()) as Record<string, unknown>
       if (!res.ok) {
-        limpiarSesionLocal()
         setUsuario(null)
         setEmpresaActiva(null)
         setEmpresasDisponibles([])
@@ -157,11 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false
       }
 
-      setUsuario(normalizeUsuario(data.usuario))
-      setEmpresaActiva(data.empresa_activa ? normalizeEmpresa(data.empresa_activa) : null)
+      setUsuario(normalizeUsuario(data.usuario as Record<string, unknown>))
+      setEmpresaActiva(
+        data.empresa_activa ? normalizeEmpresa(data.empresa_activa as Record<string, unknown>) : null
+      )
       setEmpresasDisponibles(
         Array.isArray(data.empresas)
-          ? data.empresas.map((item: Record<string, unknown>) => normalizeEmpresa(item))
+          ? (data.empresas as Array<Record<string, unknown>>).map((item) => normalizeEmpresa(item))
           : []
       )
       setRequiereEmpresa(Boolean(data.requiere_empresa))
@@ -172,27 +154,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
     // El widget es el temporizador de registro. Ni el admin ni el socio
     // registran horas, así que no se les ofrece ni se les sincroniza.
-    if (!token || !usuario || !empresaActiva || usuario.rol === 'admin' || usuario.rol === 'socio') return
+    if (!usuario || !empresaActiva || usuario.rol === 'admin' || usuario.rol === 'socio') return
 
     const controller = new AbortController()
-    void fetch('/api/widget/sync', {
+    void fetch('/api/widget/sync', opcionesApi({
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        token,
+      body: {
         usuarioId: usuario.id,
         usuario: usuario.usuario,
         nombre: usuario.nombre,
         rol: usuario.rol,
-      }),
+      },
       signal: controller.signal,
-    }).catch(() => {})
+    })).catch(() => {})
 
     return () => controller.abort()
   }, [usuario, empresaActiva])
@@ -206,8 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // y solo con la pestana visible, para no renovar en segundo plano sin parar.
   //
   // La cookie de renovacion es HttpOnly: la envia el navegador sola, no hay que
-  // leerla. El token de acceso se sigue guardando porque lo necesitan las
-  // peticiones que lo mandan en la cabecera Authorization.
+  // leerla. El nuevo token de acceso llega en otra cookie HttpOnly, asi que
+  // tampoco hay que guardarlo en ningun lado.
   useEffect(() => {
     if (!usuario) return
     const MARGEN_MINUTOS = 45
@@ -215,16 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const revisar = async () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
       try {
-        const res = await fetch('/api/auth/sesion', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-        })
-        if (!res.ok) return
-        const datos = (await res.json()) as { token?: string }
-        if (typeof datos.token === 'string' && datos.token.length > 20) {
-          localStorage.setItem('pc_token', datos.token)
-        }
+        await fetch('/api/auth/sesion', opcionesApi({ method: 'POST' }))
       } catch {
         // Sin red no se renueva. El proximo 401 reintentara y, si el token de
         // renovacion sigue vivo, el usuario no llega a ver el login.
@@ -254,13 +221,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let vigente = true
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (!token) {
-      limpiarSesionLocal()
-      setCargando(false)
-      return
-    }
 
+    // Ya no se puede saber "de entrada" si hay sesion mirando un token: la
+    // cookie es invisible al JavaScript. Se pregunta al servidor y, si responde,
+    // se cargan los usuarios.
     cargarContextoEmpresa()
       .then((ok) => {
         if (ok && vigente) return cargarUsuarios()
@@ -275,28 +239,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [cargarContextoEmpresa, cargarUsuarios])
 
-  useEffect(() => {
-    if (!cargando && usuario) {
-      localStorage.setItem('pc_sesion', String(usuario.id))
-    }
-  }, [usuario, cargando])
-
   const login = useCallback(async (credenciales: { usuario: string; password: string }) => {
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credenciales),
-      })
-      const data = await res.json()
+      const res = await fetch('/api/auth/login', opcionesApi({ method: 'POST', body: credenciales }))
+      const data = (await res.json()) as { usuario?: Record<string, unknown>; error?: string }
       if (!res.ok) {
         return { ok: false, error: data.error || 'Error al iniciar sesión.' }
       }
 
-      const normalized = normalizeUsuario(data.usuario)
+      const normalized = normalizeUsuario(data.usuario ?? {})
       setUsuario(normalized)
-      localStorage.setItem('pc_sesion', String(normalized.id))
-      if (data.token) localStorage.setItem('pc_token', data.token)
       await cargarContextoEmpresa()
       await cargarUsuarios()
       return { ok: true }
@@ -306,15 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [cargarContextoEmpresa, cargarUsuarios])
 
   const salirDeEmpresa = useCallback(async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (!token) return { ok: false, error: 'La sesión no está disponible.' }
-
     try {
-      const res = await fetch('/api/auth/empresa', {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
+      const res = await fetch('/api/auth/empresa', opcionesApi({ method: 'DELETE' }))
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) return { ok: false, error: data.error || 'No se pudo salir de la empresa.' }
       setEmpresaActiva(null)
       setUsuario((actual) => actual ? { ...actual, empresa_id: null } : actual)
@@ -327,21 +273,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const entrarEnEmpresa = useCallback(async (empresaId: number) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (!token) return { ok: false, error: 'La sesión no está disponible.' }
-
     try {
-      const res = await fetch('/api/auth/empresa', {
+      const res = await fetch('/api/auth/empresa', opcionesApi({
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ empresa_id: empresaId }),
-      })
-      const data = await res.json()
+        body: { empresa_id: empresaId },
+      }))
+      const data = (await res.json()) as {
+        error?: string
+        empresa_activa?: Record<string, unknown>
+      }
       if (!res.ok) return { ok: false, error: data.error || 'No se pudo ingresar a la empresa.' }
-      setEmpresaActiva(normalizeEmpresa(data.empresa_activa))
+      setEmpresaActiva(normalizeEmpresa(data.empresa_activa ?? {}))
       setUsuario((actual) => actual ? { ...actual, empresa_id: empresaId } : actual)
       setRequiereEmpresa(false)
       await cargarUsuarios()
@@ -352,20 +294,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [cargarUsuarios])
 
   const logout = useCallback(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    if (token) {
-      fetch('/api/auth/session', {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {})
-      fetch('/api/widget/sync', { method: 'DELETE' }).catch(() => {})
-    }
+    fetch('/api/auth/session', opcionesApi({ method: 'DELETE' })).catch(() => {})
+    fetch('/api/widget/sync', { method: 'DELETE' }).catch(() => {})
     setUsuario(null)
     setUsuarios([])
     setEmpresaActiva(null)
     setEmpresasDisponibles([])
     setRequiereEmpresa(false)
-    limpiarSesionLocal()
   }, [])
 
   return (
