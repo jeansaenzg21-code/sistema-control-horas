@@ -43,11 +43,11 @@ export function formatoHoras(horas: number): string {
   return `${h}h ${m}min`
 }
 
-/** Sin tildes, sin signos y en minÃºsculas, para comparar dos palabras. */
+/** Sin tildes, sin signos y en minusculas, para comparar dos palabras. */
 function planchar(valor: string): string {  return valor
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-ZÃ±Ã‘\s]/g, '')
+    .replace(/[^a-zA-ZñÑ\s]/g, '')
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')

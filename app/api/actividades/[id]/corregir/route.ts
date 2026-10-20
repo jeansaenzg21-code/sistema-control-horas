@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
+import { registrarAuditoria } from '@/lib/auditoria'
 import {
   crearObservacion,
   obtenerActividadObservacion,
@@ -210,6 +211,14 @@ export async function POST(
       `/aprobaciones?actividad=${actividad.id}&observacion=${observacion.id}`,
       `respuesta-correccion:${observacion.id}`,
     )
+    await registrarAuditoria({
+      empresaId: context.activa?.id ?? null,
+      usuarioId: user.id,
+      accion: 'CORREGIR_ACTIVIDAD',
+      entidad: 'actividad',
+      entidadId: actividad.id,
+      ip: request.headers.get('x-forwarded-for') || null,
+    })
     return NextResponse.json({
       ok: true,
       actividad_id: actividad.id,

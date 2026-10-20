@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from './auth-context'
+import { opcionesApi } from '@/lib/api-cliente'
 
 export interface Notificacion {
   id: number
@@ -35,24 +36,13 @@ export function NotificacionesProvider({ children }: { children: ReactNode }) {
   const empresaId = empresaActiva?.id ?? null
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>([])
 
-  const getHeaders = useCallback(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    return {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    }
-  }, [])
-
   const cargarNotificaciones = useCallback(async (usuarioId: number) => {
     if (!empresaId) {
       setNotificaciones([])
       return
     }
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      const res = await fetch(`/api/notificaciones?usuario_id=${usuarioId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
+      const res = await fetch(`/api/notificaciones?usuario_id=${usuarioId}`, opcionesApi())
       if (res.ok) setNotificaciones(await res.json())
       else setNotificaciones([])
     } catch {
@@ -70,44 +60,41 @@ export function NotificacionesProvider({ children }: { children: ReactNode }) {
 
   const agregarNotificacionAUsuario = useCallback(async (targetId: number, titulo: string, mensaje: string, url?: string) => {
     try {
-      await fetch('/api/notificaciones', {
+      await fetch('/api/notificaciones', opcionesApi({
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ usuario_id: targetId, titulo, mensaje, url }),
-      })
+        body: { usuario_id: targetId, titulo, mensaje, url },
+      }))
       if (usuario && targetId === usuario.id) await cargarNotificaciones(usuario.id)
     } catch {
       return
     }
-  }, [usuario, cargarNotificaciones, getHeaders])
+  }, [usuario, cargarNotificaciones])
 
   const marcarLeida = useCallback(async (id: number) => {
     if (!usuario) return
     try {
-      await fetch('/api/notificaciones', {
+      await fetch('/api/notificaciones', opcionesApi({
         method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({ usuario_id: usuario.id, notificacion_id: id }),
-      })
+        body: { usuario_id: usuario.id, notificacion_id: id },
+      }))
       setNotificaciones((prev) => prev.map((n) => (n.id === id ? { ...n, leida: true } : n)))
     } catch {
       return
     }
-  }, [usuario, getHeaders])
+  }, [usuario])
 
   const marcarTodasLeidas = useCallback(async () => {
     if (!usuario) return
     try {
-      await fetch('/api/notificaciones', {
+      await fetch('/api/notificaciones', opcionesApi({
         method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({ usuario_id: usuario.id, marcar_todas: true }),
-      })
+        body: { usuario_id: usuario.id, marcar_todas: true },
+      }))
       setNotificaciones((prev) => prev.map((n) => ({ ...n, leida: true })))
     } catch {
       return
     }
-  }, [usuario, getHeaders])
+  }, [usuario])
 
   const noLeidas = notificaciones.filter((n) => !n.leida).length
 

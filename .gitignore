@@ -19,3 +19,9 @@ target/
 
 .DS_Store
 Thumbs.db
+
+# Respaldos y binarios grandes (servir desde GitHub Releases)
+sql/respaldo-santa-rosa.sql
+tests/migracion-prueba.db
+public/downloads/*.exe
+

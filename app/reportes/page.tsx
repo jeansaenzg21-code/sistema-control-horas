@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth-context'
 import type { Actividad } from '@/lib/actividad-context'
 import { exportarExcel } from '@/lib/exporter'
 import { esFacturable, esNoFacturable, fechaLocalISO } from '@/lib/utils'
+import { opcionesApi } from '@/lib/api-cliente'
 
 function iso(fecha: Date): string {
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`
@@ -42,7 +43,6 @@ export default function Reportes() {
     tipo: 'mensual',
     desde: inicial.desde,
     hasta: inicial.hasta,
-    cargo: 'todas',
   })
 
   // Los datos del reporte se piden al servidor con el rango aplicado. Antes se
@@ -73,10 +73,7 @@ export default function Reportes() {
       // `todo=1` pide el rango completo sin paginar: un reporte parcial daria
       // numeros que no cuadran con la realidad.
       params.set('todo', '1')
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      const res = await fetch(`/api/actividades?${params.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      })
+      const res = await fetch(`/api/actividades?${params.toString()}`, opcionesApi())
       const data = await res.json().catch(() => [])
       if (!res.ok) {
         throw new Error(Array.isArray(data) ? 'No se pudieron cargar los registros.' : data?.error || 'No se pudieron cargar los registros.')
@@ -102,14 +99,8 @@ export default function Reportes() {
 
   if (cargando || !usuario || !puedeVerReportes) return null
 
-  // El cargo se filtra aqui porque la API no lo expone como parametro y son solo
-  // unas decenas de valores sobre un rango acotado.
-  const registrosFiltrados = registros.filter((registro) =>
-    filtros.cargo === 'todas' ? true : (registro.cargo || '').toLowerCase() === filtros.cargo,
-  )
-
   const manejarExcel = () => {
-    const calcularHoras = (r: typeof registrosFiltrados[0]): string => {
+    const calcularHoras = (r: typeof registros[0]): string => {
       if (!r.fin || !r.inicio) return '�?"'
       const inicioMs = new Date(r.inicio).getTime()
       const finMs = new Date(r.fin).getTime()
@@ -123,7 +114,7 @@ export default function Reportes() {
 
     exportarExcel(
       ['Actividad', 'Cliente', 'Usuario', 'Cargo', 'Duración', 'Facturable', 'Estado', 'Fecha'],
-      registrosFiltrados.map((r) => ({
+      registros.map((r) => ({
         Actividad: r.descripcion ?? '',
         Cliente: r.cliente_nombre ?? '',
         Usuario: r.usuario_nombre ?? '',
@@ -155,10 +146,10 @@ export default function Reportes() {
           </div>
         ) : (
           <>
-            <ReportSummary registros={registrosFiltrados} />
+            <ReportSummary registros={registros} />
             <ReportPreview
               filtros={filtros}
-              registros={registrosFiltrados}
+              registros={registros}
               onExportar={manejarExcel}
             />
           </>

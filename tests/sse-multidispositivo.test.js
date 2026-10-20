@@ -2,7 +2,7 @@
 const mysql = require('mysql2/promise')
 
 const BASE = 'http://127.0.0.1:3123'
-const BD = { host: '127.0.0.1', user: 'root', password: 'MYSQL', database: 'paredescano_test' }
+const BD = require('./config.js')
 const CLAVE = 'Prueba123!'
 
 let pass = 0, fail = 0

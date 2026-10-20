@@ -18,6 +18,7 @@ import {
 import type { AccionMisObservacion, MisObservacion } from '@/lib/observaciones-ui'
 import { esVisibleParaTrabajador, normalizarEstadoAtencion } from '@/lib/observaciones-ui'
 import { cn, fechaLocalISO } from '@/lib/utils'
+import { opcionesApi } from '@/lib/api-cliente'
 
 const filtros = {
   pendientes: 'Pendientes',
@@ -26,10 +27,6 @@ const filtros = {
 } as const
 
 type Filtro = keyof typeof filtros
-
-function token(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-}
 
 function normalizarAcciones(valor: unknown, observacion: MisObservacion): AccionMisObservacion[] {
   if (Array.isArray(valor)) {
@@ -162,8 +159,7 @@ export function MisObservaciones() {
       setCargando(true)
       setError(null)
       try {
-        const valor = token()
-        const res = await fetch('/api/observaciones/mis', { headers: valor ? { Authorization: `Bearer ${valor}` } : undefined })
+        const res = await fetch('/api/observaciones/mis', opcionesApi())
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.error || 'No se pudieron cargar tus observaciones.')
         if (vigente) {
@@ -190,15 +186,10 @@ export function MisObservaciones() {
     setAccionCargando(observacion.id)
     setFeedback(null)
     try {
-      const valor = token()
-      const res = await fetch('/api/cumplimiento/observaciones', {
+      const res = await fetch('/api/cumplimiento/observaciones', opcionesApi({
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(valor ? { Authorization: `Bearer ${valor}` } : {}),
-        },
-        body: JSON.stringify({ accion: 'ATENDER', observacion_id: observacion.id }),
-      })
+        body: { accion: 'ATENDER', observacion_id: observacion.id },
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'No se pudo marcar la observación como atendida.')
       setObservaciones((prev) => prev.map((item) => item.id === observacion.id
@@ -217,20 +208,15 @@ export function MisObservaciones() {
     setAccionCargando(observacion.id)
     setFeedback(null)
     try {
-      const valor = token()
-      const res = await fetch('/api/cumplimiento/observaciones', {
+      const res = await fetch('/api/cumplimiento/observaciones', opcionesApi({
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(valor ? { Authorization: `Bearer ${valor}` } : {}),
-        },
-        body: JSON.stringify({
+        body: {
           accion: 'RESPONDER',
           parent_id: observacion.id,
           observacion_id: observacion.id,
           contenido: respuesta.trim(),
-        }),
-      })
+        },
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'No se pudo enviar la respuesta.')
       setObservaciones((prev) => prev.map((item) => item.id === observacion.id

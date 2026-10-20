@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise'
-import bcrypt from 'bcryptjs'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
+import { registrarAuditoria } from '@/lib/auditoria'
+import { leerJson } from '@/lib/validacion/leer-json'
+import { esquemaUsuario } from '@/lib/validacion/usuarios'
+import { hashearPassword, validarPassword } from '@/lib/validacion-password'
 
 const SELECT_USUARIOS = `
   SELECT u.id, u.nombre, u.correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad,
@@ -120,7 +123,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
-    const body = await request.json()
+    const lectura = await leerJson(request, esquemaUsuario)
+    if (!lectura.ok) return lectura.response
+    const body = lectura.data
     const { nombre, correo, usuario, password, rol, area_id, cargo, especialidad, supervisor_id } = body
     const nombreLimpio = String(nombre ?? '').trim()
     const usuarioLimpio = String(usuario ?? '').trim()
@@ -132,8 +137,9 @@ export async function POST(request: Request) {
     if (!nombreLimpio || !usuarioLimpio) {
       return NextResponse.json({ error: 'Nombre y usuario son obligatorios.' }, { status: 400 })
     }
-    if (!password) {
-      return NextResponse.json({ error: 'La contraseña es obligatoria.' }, { status: 400 })
+    const validacion = validarPassword(password)
+    if (!validacion.ok) {
+      return NextResponse.json({ error: validacion.error }, { status: 400 })
     }
     if (!rolDb) {
       return NextResponse.json({ error: 'El rol solicitado no es válido.' }, { status: 400 })
@@ -184,7 +190,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El usuario o correo ya existe.' }, { status: 400 })
     }
 
-    const hash = await bcrypt.hash(password, 10)
+    const hash = await hashearPassword(String(password))
     let id: number
 
     if (rolDb === 'JEFE_AREA') {
@@ -243,6 +249,15 @@ export async function POST(request: Request) {
     }
 
     const [rows] = await pool.query(`${SELECT_USUARIOS} WHERE u.id = ?`, [id])
+    await registrarAuditoria({
+      empresaId: context.empresaId,
+      usuarioId: context.user.id,
+      accion: 'CREAR_USUARIO',
+      entidad: 'usuario',
+      entidadId: id,
+      despues: { nombre: nombreLimpio, usuario: usuarioLimpio, rol: rolDb },
+      ip: request.headers.get('x-forwarded-for') || null,
+    })
     return NextResponse.json({ usuario: (rows as unknown[])[0] })
   } catch (error) {
     console.error('Error al crear usuario:', error)

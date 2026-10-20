@@ -9,7 +9,7 @@ const bcrypt = require('bcryptjs')
 const WEB = 'C:\\Users\\tsoporte\\Downloads\\paredes-cano-CONTROL-HORAS\\paredes-cano-CONTROL-HORAS'
 const STANDALONE = path.join(WEB, '.next', 'standalone')
 const BASE = 'http://127.0.0.1:3123'
-const BD = { host: '127.0.0.1', user: 'root', password: 'MYSQL', database: 'paredescano_test' }
+const BD = require('./config.js')
 const CLAVE = 'Prueba123!'
 
 let pass = 0
@@ -78,7 +78,7 @@ async function main() {
     console.log(`  cuerpo: ${JSON.stringify(r.json).slice(0, 400)}`)
     if (r.status !== 200) {
       console.log('  -> diagnosing...')
-      // Â¿Es horario? Â¿Area? Â¿Empresa activa?
+      // Es horario? Area? Empresa activa?
       const [[u]] = await q('SELECT u.id, u.activo, u.area_id, ar.empresa_id FROM usuarios u JOIN areas ar ON ar.id = u.area_id WHERE u.id = ?', [id])
       console.log(`  usuario: ${JSON.stringify(u)}`)
       const [hs] = await q('SELECT * FROM horarios WHERE usuario_id = ?', [id])

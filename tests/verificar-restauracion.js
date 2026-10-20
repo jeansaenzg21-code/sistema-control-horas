@@ -12,7 +12,8 @@ const mysql = require('mysql2/promise')
 
 const ORIGEN = process.argv[2] || 'paredescano'
 const DESTINO = process.argv[3] || 'paredescano_restaurada'
-const cfg = (db) => ({ host: '127.0.0.1', user: 'root', password: 'MYSQL', database: db })
+const _cfg = require('./config.js')
+const cfg = (db) => ({ ..._cfg, database: db })
 
 async function columnas(conn, db, tabla) {
   const [r] = await conn.query(

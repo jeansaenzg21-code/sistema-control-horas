@@ -4,8 +4,9 @@
 const mysql = require('mysql2/promise')
 const bcrypt = require('bcryptjs')
 
-const ORIGEN = { host: '127.0.0.1', user: 'root', password: 'MYSQL', database: 'paredescano' }
-const PRUEBA = { host: '127.0.0.1', user: 'root', password: 'MYSQL', database: 'paredescano_test' }
+const _cfg = require('./config.js')
+const ORIGEN = { ..._cfg, database: process.env.DB_NAME || 'paredescano' }
+const PRUEBA = _cfg
 
 const USUARIOS = Number(process.env.USUARIOS || 200)
 const ACTIVIDADES = Number(process.env.ACTIVIDADES || 50000)

@@ -1,3 +1,4 @@
+import { esAdministrador, esJefeDeArea, esPersonal, esSocio, esSupervisor } from '@/lib/permisos'
 import { NextResponse } from 'next/server'
 import type { RowDataPacket } from 'mysql2/promise'
 import pool from '@/lib/db'
@@ -23,11 +24,11 @@ export async function GET(request: Request) {
     if (supervisorId === undefined || usuarioId === undefined) {
       return NextResponse.json({ error: 'Los filtros de usuario no son válidos.' }, { status: 400 })
     }
-    if (user.rol === 'PERSONAL') {
+    if (esPersonal(user)) {
       if (supervisorId != null || (usuarioId != null && usuarioId !== user.id)) {
         return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
       }
-    } else if (user.rol === 'SUPERVISOR') {
+    } else if (esSupervisor(user)) {
       if (supervisorId != null && supervisorId !== user.id) {
         return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
       }
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
           return NextResponse.json({ error: 'El colaborador no está asignado a este supervisor.' }, { status: 403 })
         }
       }
-    } else if (user.rol === 'JEFE_AREA') {
+    } else if (esJefeDeArea(user)) {
       // Antes devolvia 403 aqui y el jefe no podia ni LISTAR. Ahora revisa los
       // registros de su area: el recorte lo hace el propio SQL de abajo con
       // `u.area_id = ?`, no una comprobacion en el cliente. Si se aprobara el
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
       if (user.area_id == null) {
         return NextResponse.json({ error: 'No tienes una división asignada.' }, { status: 403 })
       }
-    } else if (user.rol !== 'ADMINISTRACION' && user.rol !== 'SOCIO') {
+    } else if (!esAdministrador(user) && !esSocio(user)) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
@@ -81,7 +82,7 @@ export async function GET(request: Request) {
       WHERE ar.empresa_id = ? AND a.estado IN ('PENDIENTE_APROBACION', 'CORRECCION_SOLICITADA', 'APROBADA', 'RECHAZADA')`
     const params: Array<string | number> = [context.activa.id]
 
-    const usuarioFiltro = user.rol === 'PERSONAL' ? user.id : usuarioId
+    const usuarioFiltro = esPersonal(user) ? user.id : usuarioId
     if (usuarioFiltro != null) {
       query += ' AND a.usuario_id = ?'
       params.push(usuarioFiltro)
@@ -90,13 +91,13 @@ export async function GET(request: Request) {
     if (supervisorId != null) {
       query += ' AND u.supervisor_id = ?'
       params.push(supervisorId)
-    } else if (user.rol === 'SUPERVISOR') {
+    } else if (esSupervisor(user)) {
       query += ' AND u.supervisor_id = ?'
       params.push(user.id)
-    } else if (user.rol === 'ADMINISTRACION') {
+    } else if (esAdministrador(user)) {
       // El administrador solo revisa las actividades que envian los jefes de área.
       query += " AND u.rol = 'JEFE_AREA'"
-    } else if (user.rol === 'JEFE_AREA' && user.area_id != null) {
+    } else if (esJefeDeArea(user) && user.area_id != null) {
       query += ' AND u.area_id = ?'
       params.push(user.area_id)
     }

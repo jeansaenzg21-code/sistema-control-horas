@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { RowDataPacket } from 'mysql2'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
-import { esJefeDeArea } from '@/lib/permisos'
+import { esAdministrador, esJefeDeArea, esPersonal, esSocio, esSupervisor } from '@/lib/permisos'
 import { columnaExiste } from '@/lib/esquema'
 
 /**
@@ -60,14 +60,14 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'El usuario indicado no es válido.' }, { status: 400 })
       }
     }
-    if (user.rol === 'PERSONAL') {
+    if (esPersonal(user)) {
       if (usuarioId != null && usuarioId !== user.id) {
         return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
       }
       usuarioId = user.id
     } else if (usuarioId == null) {
-      if (user.rol === 'SUPERVISOR') usuarioId = null
-      else if (!esJefeDeArea(user) && user.rol !== 'ADMINISTRACION' && user.rol !== 'SOCIO') {
+      if (esSupervisor(user)) usuarioId = null
+      else if (!esJefeDeArea(user) && !esAdministrador(user) && !esSocio(user)) {
         return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
       }
     }
@@ -78,7 +78,7 @@ export async function GET(request: Request) {
     if (usuarioId != null) {
       where.push('a.usuario_id = ?')
       params.push(usuarioId)
-    } else if (user.rol === 'SUPERVISOR') {
+    } else if (esSupervisor(user)) {
       where.push('u.supervisor_id = ?')
       params.push(user.id)
     } else if (esJefeDeArea(user)) {

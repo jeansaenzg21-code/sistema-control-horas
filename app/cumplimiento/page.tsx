@@ -10,9 +10,7 @@ import { ObservacionesCumplimientoPanel } from '@/components/cumplimiento/observ
 import { useAuth } from '@/lib/auth-context'
 import { useAreas } from '@/lib/areas-context'
 
-function token(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-}
+
 
 const NOMBRES_MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -103,10 +101,9 @@ export default function CumplimientoResumen() {
       const params = new URLSearchParams({ anio: String(anio), mes: String(mes) })
       if (areaId) params.set('area_id', areaId)
       if (usuarioId) params.set('usuario_id', usuarioId)
-      const headers = token() ? { Authorization: `Bearer ${token()}` } : undefined
       const [res, resObs] = await Promise.all([
-        fetch(`/api/cumplimiento?${params.toString()}`, { headers }),
-        fetch(`/api/cumplimiento/observaciones?anio=${anio}&mes=${mes}`, { headers }),
+        fetch(`/api/cumplimiento?${params.toString()}`, { credentials: 'same-origin' }),
+        fetch(`/api/cumplimiento/observaciones?anio=${anio}&mes=${mes}`, { credentials: 'same-origin' }),
       ])
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))

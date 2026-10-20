@@ -7,6 +7,8 @@ import { PANEL } from '@/components/cartera-ui'
 import { cn } from '@/lib/utils'
 import { formatoHoras } from '@/lib/utils'
 import { useAuth } from '@/lib/auth-context'
+import { opcionesApi } from '@/lib/api-cliente'
+import { useQuery } from '@tanstack/react-query'
 import {
   Clock, ShieldCheck, ListChecks, Users, Wallet, UserRound, BarChart3, Info,
   ChevronRight, AlertTriangle, ClipboardCheck, MessageSquareWarning, UserX, TrendingDown, Ban,
@@ -40,45 +42,49 @@ export function DashboardAdministrador() {
   useEffect(() => {
     if (usuarios.length === 0) void cargarUsuarios()
   }, [usuarios.length, cargarUsuarios])
-  useEffect(() => {
-    let cancelado = false
-    async function cargar() {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      if (!token) { setCargando(false); return }
-      setCargando(true)
-      const h = { Authorization: `Bearer ${token}` }
+  const dashboardQuery = useQuery({
+    queryKey: ['dashboard-admin', desde, hasta],
+    queryFn: async () => {
       const qs = desde && hasta ? `desde=${desde}&hasta=${hasta}` : ''
       const mesF = (hasta || new Date().toISOString().slice(0, 10)).slice(5, 7)
       const anioF = (hasta || new Date().toISOString().slice(0, 10)).slice(0, 4)
-      try {
-        const [a, r, rp, c, cu, ap, u] = await Promise.all([
-          fetch('/api/areas', { headers: h }).then((x) => x.ok ? x.json() : []),
-          fetch(`/api/actividades/resumen${qs ? `?${qs}` : ''}`, { headers: h }).then((x) => x.ok ? x.json() : null),
-          fetchPrevio(desde, hasta, h),
-          fetch('/api/clientes/cartera', { headers: h }).then((x) => x.ok ? x.json() : null),
-          fetch(`/api/cumplimiento?anio=${anioF}&mes=${mesF}&desde=${desde}&hasta=${hasta}`, { headers: h }).then((x) => x.ok ? x.json() : null),
-          fetch('/api/aprobaciones', { headers: h }).then((x) => x.ok ? x.json() : []),
-          fetch('/api/usuarios', { headers: h }).then((x) => x.ok ? x.json() : []),
-        ])
-        if (cancelado) return
-        setAreas(Array.isArray(a) ? a : [])
-        setResumen(r as Resumen | null)
-        setResumenPrevio(rp as Resumen | null)
-        setCartera(c as CarteraRespuesta | null)
-        setCumplimiento(cu as Cumplimiento | null)
-        setAprobaciones(Array.isArray(ap) ? ap : [])
-        setUsuariosRemotos(Array.isArray(u) ? u : [])
-      } catch {
-        if (!cancelado) {
-          setResumen(null); setCartera(null); setCumplimiento(null); setAprobaciones([]); setUsuariosRemotos([])
-        }
-      } finally {
-        if (!cancelado) setCargando(false)
-      }
+      const [a, r, rp, c, cu, ap, u] = await Promise.all([
+        fetch('/api/areas', opcionesApi()).then((x) => x.ok ? x.json() : []),
+        fetch(`/api/actividades/resumen${qs ? `?${qs}` : ''}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
+        fetchPrevio(desde, hasta),
+        fetch('/api/clientes/cartera', opcionesApi()).then((x) => x.ok ? x.json() : null),
+        fetch(`/api/cumplimiento?anio=${anioF}&mes=${mesF}&desde=${desde}&hasta=${hasta}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
+        fetch('/api/aprobaciones', opcionesApi()).then((x) => x.ok ? x.json() : []),
+        fetch('/api/usuarios', opcionesApi()).then((x) => x.ok ? x.json() : []),
+      ])
+      return { a, r, rp, c, cu, ap, u }
+    },
+    staleTime: 60_000,
+  })
+
+  useEffect(() => {
+    if (!dashboardQuery.data) return
+    const { a, r, rp, c, cu, ap, u } = dashboardQuery.data
+    setAreas(Array.isArray(a) ? a : [])
+    setResumen(r as Resumen | null)
+    setResumenPrevio(rp as Resumen | null)
+    setCartera(c as CarteraRespuesta | null)
+    setCumplimiento(cu as Cumplimiento | null)
+    setAprobaciones(Array.isArray(ap) ? ap : [])
+    setUsuariosRemotos(Array.isArray(u) ? u : [])
+    setCargando(false)
+  }, [dashboardQuery.data])
+
+  useEffect(() => {
+    if (dashboardQuery.isError) {
+      setResumen(null); setCartera(null); setCumplimiento(null); setAprobaciones([]); setUsuariosRemotos([])
+      setCargando(false)
     }
-    void cargar()
-    return () => { cancelado = true }
-  }, [desde, hasta])
+  }, [dashboardQuery.isError])
+
+  useEffect(() => {
+    setCargando(dashboardQuery.isFetching)
+  }, [dashboardQuery.isFetching])
   const horasActual = resumen?.totales.horas ?? 0
   const horasPrevias = resumenPrevio?.totales.horas ?? 0
   const variacion = horasPrevias > 0 ? Math.round(((horasActual - horasPrevias) / horasPrevias) * 1000) / 10 : null
@@ -273,17 +279,17 @@ export function DashboardAdministrador() {
               <Link href="/clientes" className="shrink-0 rounded-md border border-border px-2 py-1 text-[10px] text-violet-300 hover:bg-muted/30">Ver cartera <ChevronRight size={12} className="inline"/></Link>
             </div>
               <div className="grid grid-cols-[minmax(0,1.45fr)_4.2rem_4.4rem_4.3rem_4.2rem] items-center gap-2 border-b border-border/40 bg-muted/15 px-3 py-2 text-[10px] font-medium text-muted-foreground">
-                <span>División / clientes</span><span className="text-right">Contrato</span><span className="text-right">Consumo</span><span className="text-right">Saldo</span><span className="text-right">Desvío</span>
+                <span>División / clientes</span><span className="text-center">Contrato</span><span className="text-center">Consumo</span><span className="text-center">Saldo</span><span className="text-center">Desvío</span>
               </div>
                   <div className="max-h-[224px] min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-color:rgba(139,92,246,.35)_transparent] [scrollbar-width:thin]" role="region" aria-label="Cartera completa por división" tabIndex={0}>
                 {areasCartera.map(a => {
                   const hayExceso = a.excedidas > 0
                   return <div key={a.id} className="grid min-h-[44px] grid-cols-[minmax(0,1.45fr)_4.2rem_4.4rem_4.3rem_4.2rem] items-center gap-2 border-b border-border/30 px-3 py-1.5 text-[10px] last:border-0 hover:bg-muted/20">
                     <div className="min-w-0"><div className="truncate font-semibold text-[11px]" title={a.nombre}>{a.nombre}</div><div className="mt-0.5 truncate text-[9px] text-muted-foreground">{a.clientes} clientes · <span className={a.riesgo?'text-rose-300':''}>{a.riesgo} en riesgo</span>{a.sinBolsa ? ` · ${a.sinBolsa} sin bolsa` : ''}</div></div>
-                    <span className="text-right tabular-nums" title="Horas contratadas">{a.clientes ? formatoHoras(a.contratadas) : '—'}</span>
-                    <span className="text-right tabular-nums" title="Horas consumidas">{a.clientes ? formatoHoras(a.consumidas) : '—'}</span>
-                    <span className="text-right tabular-nums text-emerald-300" title="Saldo disponible">{a.clientes ? formatoHoras(a.disponibles) : '—'}</span>
-                    <span className={cn('text-right font-semibold tabular-nums', hayExceso?'text-rose-300':'text-muted-foreground')} title="Horas excedidas acumuladas por registros de cartera">{hayExceso ? `+${formatoHoras(a.excedidas)}` : '—'}</span>
+                    <span className="text-center tabular-nums" title="Horas contratadas">{a.clientes ? formatoHoras(a.contratadas) : '—'}</span>
+                    <span className="text-center tabular-nums" title="Horas consumidas">{a.clientes ? formatoHoras(a.consumidas) : '—'}</span>
+                    <span className="text-center tabular-nums text-emerald-300" title="Saldo disponible">{a.clientes ? formatoHoras(a.disponibles) : '—'}</span>
+                    <span className={cn('text-center font-semibold tabular-nums', hayExceso?'text-rose-300':'text-muted-foreground')} title="Horas excedidas acumuladas por registros de cartera">{hayExceso ? `+${formatoHoras(a.excedidas)}` : '—'}</span>
                   </div>
                 })}
                 {areasCartera.length === 0 && <p className="px-3 py-6 text-center text-xs text-muted-foreground">Sin cartera registrada.</p>}
@@ -363,7 +369,7 @@ export function DashboardAdministrador() {
     </MainLayout>
   )
 }
-async function fetchPrevio(desde: string, hasta: string, h: Record<string, string>) {
+async function fetchPrevio(desde: string, hasta: string) {
   if (!desde || !hasta) return null
   const d = new Date(`${desde}T00:00:00`)
   const hh = new Date(`${hasta}T00:00:00`)
@@ -372,6 +378,6 @@ async function fetchPrevio(desde: string, hasta: string, h: Record<string, strin
   const fin = new Date(d); fin.setDate(fin.getDate() - 1)
   const ini = new Date(fin); ini.setDate(ini.getDate() - (dias - 1))
   const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
-  const r = await fetch(`/api/actividades/resumen?desde=${iso(ini)}&hasta=${iso(fin)}`, { headers: h })
+  const r = await fetch(`/api/actividades/resumen?desde=${iso(ini)}&hasta=${iso(fin)}`, opcionesApi())
   return r.ok ? r.json() : null
 }

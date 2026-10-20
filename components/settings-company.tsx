@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Building2, CheckCircle2, Globe, MapPin, Plus } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { opcionesApi } from '@/lib/api-cliente'
 
 interface Empresa {
   id: number
@@ -51,10 +52,7 @@ export function SettingsCompany({
 
   useEffect(() => {
     let vigente = true
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-    fetch('/api/empresa?todas=1', {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    })
+    fetch('/api/empresa?todas=1', opcionesApi())
       .then(async (response) => {
         const data = await response.json()
         if (!response.ok) throw new Error(data.error || 'No se pudieron cargar las empresas.')
@@ -106,15 +104,7 @@ export function SettingsCompany({
 
     setGuardando(true)
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
-      const response = await fetch('/api/empresa', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(formulario),
-      })
+      const response = await fetch('/api/empresa', opcionesApi({ method: 'POST', body: formulario }))
       const data = await response.json()
       if (!response.ok) {
         setError(data.error || 'No se pudo crear la empresa.')

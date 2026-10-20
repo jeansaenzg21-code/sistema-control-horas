@@ -3,20 +3,13 @@
 import { useState } from 'react'
 import { Shield, ShieldCheck, Plus } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { opcionesApi } from '@/lib/api-cliente'
 
 interface FormularioAdmin {
   nombre: string
   correo: string
   usuario: string
   password: string
-}
-
-function getHeaders() {
-  const token = localStorage.getItem('pc_token')
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
 }
 
 export function SettingsAdmins() {
@@ -43,11 +36,10 @@ export function SettingsAdmins() {
   const promover = async (userId: number) => {
     setCargando(userId)
     try {
-      const res = await fetch(`/api/usuarios/${userId}`, {
+      const res = await fetch(`/api/usuarios/${userId}`, opcionesApi({
         method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({ rol: 'admin' }),
-      })
+        body: { rol: 'admin' },
+      }))
       if (res.ok) {
         await cargarUsuarios()
         setFormularioAbierto(false)
@@ -62,11 +54,10 @@ export function SettingsAdmins() {
     if (userId === actual?.id) return
     setCargando(userId)
     try {
-      const res = await fetch(`/api/usuarios/${userId}`, {
+      const res = await fetch(`/api/usuarios/${userId}`, opcionesApi({
         method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify({ rol: 'personal' }),
-      })
+        body: { rol: 'personal' },
+      }))
       if (res.ok) await cargarUsuarios()
     } finally {
       setCargando(null)
@@ -101,17 +92,16 @@ export function SettingsAdmins() {
   const crearAdmin = async () => {
     setError('')
     try {
-      const res = await fetch('/api/usuarios', {
+      const res = await fetch('/api/usuarios', opcionesApi({
         method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
+        body: {
           nombre: formulario.nombre,
           correo: formulario.correo,
           usuario: formulario.usuario,
           password: formulario.password,
           rol: 'admin',
-        }),
-      })
+        },
+      }))
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'No se pudo crear el usuario.')

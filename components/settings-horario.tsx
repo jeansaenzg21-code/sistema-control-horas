@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import { NOMBRES_DIAS } from '@/lib/dias'
+import { opcionesApi } from '@/lib/api-cliente'
 
 interface Props {
   usuario: { id: number; nombre: string }
@@ -13,10 +14,6 @@ interface DiaHorario {
   activo: boolean
   hora_inicio: string
   hora_fin: string
-}
-
-function token(): string | null {
-  return typeof window !== 'undefined' ? localStorage.getItem('pc_token') : null
 }
 
 const estiloCampo =
@@ -41,9 +38,7 @@ export function SettingsHorario({ usuario, onClose }: Props) {
     setMensaje(null)
     const base = iniciales()
     try {
-      const res = await fetch(`/api/horarios?usuario_id=${usuario.id}`, {
-        headers: token() ? { Authorization: `Bearer ${token()}` } : undefined,
-      })
+      const res = await fetch(`/api/horarios?usuario_id=${usuario.id}`, opcionesApi())
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setMensaje({ tipo: 'error', texto: data.error || 'No se pudo cargar el horario.' })
@@ -97,14 +92,10 @@ export function SettingsHorario({ usuario, onClose }: Props) {
     setGuardando(true)
     setMensaje(null)
     try {
-      const res = await fetch('/api/horarios', {
+      const res = await fetch('/api/horarios', opcionesApi({
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
-        },
-        body: JSON.stringify({ usuario_id: usuario.id, dias: aEnviar }),
-      })
+        body: { usuario_id: usuario.id, dias: aEnviar },
+      }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setMensaje({ tipo: 'error', texto: data.error || 'No se pudo guardar el horario.' })

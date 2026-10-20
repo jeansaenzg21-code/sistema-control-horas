@@ -15,6 +15,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Logo } from './logo'
 import { useAuth, type Rol } from '@/lib/auth-context'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 interface NavItem {
   label: string
@@ -118,6 +119,9 @@ export function Sidebar({ abierto, onCerrar }: SidebarProps) {
             )
           })}
         </nav>
+        <div className="border-t border-sidebar-border px-3 py-3">
+          <ThemeToggle />
+        </div>
       </aside>
     </>
   )

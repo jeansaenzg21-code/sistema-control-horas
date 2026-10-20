@@ -1,6 +1,6 @@
 'use client'
 
-import { Calendar, FileText, LayoutList, Building2 } from 'lucide-react'
+import { FileText, Building2 } from 'lucide-react'
 import { useAreas } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
@@ -10,13 +10,7 @@ export interface FiltrosReporte {
   tipo: string
   desde: string
   hasta: string
-  cargo: string
 }
-
-const tipos = [
-  { id: 'mensual', etiqueta: 'Mensual' },
-  { id: 'cargo', etiqueta: 'Por cargo' },
-]
 
 interface ReportFiltersProps {
   filtros: FiltrosReporte
@@ -33,14 +27,6 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
   const divisionFija = usuario?.rol === 'jefe_area'
   const areaBloqueada = divisionFija && usuario?.area_id != null ? String(usuario.area_id) : ''
   const areaSeleccionada = areas.find((a) => String(a.id) === (areaBloqueada || filtros.areaId))
-  // Los cargos salen del area elegida, o de TODAS las areas si no se ha elegido
-  // ninguna. Antes el filtro de cargo se quedaba vacio y bloqueado hasta que se
-  // elegia una division, aunque el reporte entero ya se podia ver sin division.
-  const cargos = areaSeleccionada
-    ? usuarios.filter((u) => u.area_id === areaSeleccionada.id && u.cargo)
-    : usuarios.filter((u) => u.cargo)
-  const cargosDisponibles = [...new Set(cargos.map((u) => u.cargo as string))].sort()
-
   const actualizar = <K extends keyof FiltrosReporte>(clave: K, valor: FiltrosReporte[K]) => {
     onChange({ ...filtros, [clave]: valor })
   }
@@ -49,11 +35,7 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
   // nueva area y dejaria el reporte en cero sin avisar.
   const seleccionarArea = (areaId: string) => {
     if (divisionFija) return
-    onChange({ ...filtros, areaId, cargo: 'todas' })
-  }
-
-  const seleccionarTipo = (tipo: string) => {
-    onChange({ ...filtros, tipo, cargo: tipo === 'cargo' ? filtros.cargo : 'todas' })
+    onChange({ ...filtros, areaId })
   }
 
   const estiloControl =
@@ -64,7 +46,7 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
       <div
         className={cn(
           'grid grid-cols-1 gap-4 md:grid-cols-2',
-          filtros.tipo === 'cargo' ? 'lg:grid-cols-5' : 'lg:grid-cols-4',
+          'lg:grid-cols-3',
         )}
       >
         <div>
@@ -97,41 +79,6 @@ export function ReportFilters({ filtros, onChange }: ReportFiltersProps) {
             <p className="mt-1 text-[11px] text-muted-foreground">Sólo puedes consultar tu propia división.</p>
           )}
         </div>
-
-        <div>
-          <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <LayoutList size={13} />
-            Tipo de reporte
-          </label>
-          <select
-            value={filtros.tipo}
-            onChange={(e) => seleccionarTipo(e.target.value)}
-            className={`${estiloControl} cursor-pointer`}
-          >
-            {tipos.map((tipo) => (
-              <option key={tipo.id} value={tipo.id}>
-                {tipo.etiqueta}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {filtros.tipo === 'cargo' && (
-          <div>
-            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-              <Calendar size={13} />
-              Cargo
-            </label>
-            <select
-              value={filtros.cargo}
-              onChange={(e) => actualizar('cargo', e.target.value)}
-              className={`${estiloControl} cursor-pointer`}
-            >
-              <option value="todas">Todos</option>
-              {cargosDisponibles.map((cargo) => <option key={cargo} value={cargo.toLowerCase()}>{cargo}</option>)}
-            </select>
-          </div>
-        )}
 
         <div>
           <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">

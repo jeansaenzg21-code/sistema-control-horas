@@ -15,7 +15,7 @@ const mysql = require('mysql2/promise')
 const { execSync } = require('child_process')
 
 const BASE = 'http://127.0.0.1:3123'
-const BD = { host: '127.0.0.1', user: 'root', password: 'MYSQL', database: 'paredescano_test' }
+const BD = require('./config.js')
 const CLAVE = 'Prueba123!'
 const ADMINS = Number(process.env.ADMINS || 8)
 const RONDAS = Number(process.env.RONDAS || 3)

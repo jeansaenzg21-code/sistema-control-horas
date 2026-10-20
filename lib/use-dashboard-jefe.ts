@@ -21,6 +21,7 @@ import type { Resumen } from './use-resumen'
 import type { CumplimientoReporte } from './cumplimiento'
 import type { AlertaCartera, ClienteCartera } from '@/components/cartera-ui'
 import { subscribeClientesChanges } from './events'
+import { opcionesApi } from '@/lib/api-cliente'
 
 export type TotalesCartera = {
   clientes: number
@@ -100,10 +101,6 @@ export function rangoAnterior(
   return { desde: iso(ini), hasta: iso(fin) }
 }
 
-function authHeaders(token: string): Record<string, string> {
-  return { Authorization: `Bearer ${token}` }
-}
-
 export function useDatosJefeArea(rango: { desde: string; hasta: string }): DatosJefeArea {
   const [datos, setDatos] = useState<DatosJefeArea>(VACIO)
   const { desde, hasta } = rango
@@ -114,12 +111,6 @@ export function useDatosJefeArea(rango: { desde: string; hasta: string }): Datos
       setDatos(VACIO)
       return
     }
-    const token = localStorage.getItem('pc_token')
-    if (!token) {
-      setDatos(VACIO)
-      return
-    }
-
     setDatos((d) => ({ ...d, cargando: true, error: null }))
     const anterior = rangoAnterior(desde, hasta)
     const mes = hasta.slice(5, 7)
@@ -131,24 +122,22 @@ export function useDatosJefeArea(rango: { desde: string; hasta: string }): Datos
     // propósito: mezclar "cumplimiento de mayo" con un rango de marzo daría dos
     // escalas distintas en la misma pantalla sin avisar.
     const [resumen, cartera, cumplimiento, recientes] = await Promise.all([
-      fetch(`/api/actividades/resumen?${qs}`, { headers: authHeaders(token) })
+      fetch(`/api/actividades/resumen?${qs}`, opcionesApi())
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-      fetch('/api/clientes/cartera', { headers: authHeaders(token) })
+      fetch('/api/clientes/cartera', opcionesApi())
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-      fetch(`/api/cumplimiento?anio=${anio}&mes=${mes}`, { headers: authHeaders(token) })
+      fetch(`/api/cumplimiento?anio=${anio}&mes=${mes}`, opcionesApi())
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-      fetch(`/api/actividades?${qs}&limite=${RECIENTES_LIMITE}`, { headers: authHeaders(token) })
+      fetch(`/api/actividades?${qs}&limite=${RECIENTES_LIMITE}`, opcionesApi())
         .then((r) => (r.ok ? r.json() : []))
         .catch(() => []),
     ])
 
     const resumenPrevio = anterior
-      ? await fetch(`/api/actividades/resumen?desde=${anterior.desde}&hasta=${anterior.hasta}`, {
-          headers: authHeaders(token),
-        })
+      ? await fetch(`/api/actividades/resumen?desde=${anterior.desde}&hasta=${anterior.hasta}`, opcionesApi())
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null)
       : null
