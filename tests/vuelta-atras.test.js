@@ -4,7 +4,7 @@
 // Es la pregunta que decide si la vuelta atras es segura: si el codigo viejo
 // tocara las columnas nuevas, al volver atras se caeria el login.
 const BASE = 'http://127.0.0.1:3124'
-const BD = { host: '127.0.0.1', user: 'root', password: 'MYSQL', database: 'paredescano_test' }
+const BD = require('./config.js')
 const CLAVE = 'Prueba123!'
 
 let pass = 0, fail = 0
