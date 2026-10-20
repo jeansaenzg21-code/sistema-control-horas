@@ -43,7 +43,6 @@ export default function Reportes() {
     tipo: 'mensual',
     desde: inicial.desde,
     hasta: inicial.hasta,
-    cargo: 'todas',
   })
 
   // Los datos del reporte se piden al servidor con el rango aplicado. Antes se
@@ -100,14 +99,8 @@ export default function Reportes() {
 
   if (cargando || !usuario || !puedeVerReportes) return null
 
-  // El cargo se filtra aqui porque la API no lo expone como parametro y son solo
-  // unas decenas de valores sobre un rango acotado.
-  const registrosFiltrados = registros.filter((registro) =>
-    filtros.cargo === 'todas' ? true : (registro.cargo || '').toLowerCase() === filtros.cargo,
-  )
-
   const manejarExcel = () => {
-    const calcularHoras = (r: typeof registrosFiltrados[0]): string => {
+    const calcularHoras = (r: typeof registros[0]): string => {
       if (!r.fin || !r.inicio) return '�?"'
       const inicioMs = new Date(r.inicio).getTime()
       const finMs = new Date(r.fin).getTime()
@@ -121,7 +114,7 @@ export default function Reportes() {
 
     exportarExcel(
       ['Actividad', 'Cliente', 'Usuario', 'Cargo', 'Duración', 'Facturable', 'Estado', 'Fecha'],
-      registrosFiltrados.map((r) => ({
+      registros.map((r) => ({
         Actividad: r.descripcion ?? '',
         Cliente: r.cliente_nombre ?? '',
         Usuario: r.usuario_nombre ?? '',
@@ -153,10 +146,10 @@ export default function Reportes() {
           </div>
         ) : (
           <>
-            <ReportSummary registros={registrosFiltrados} />
+            <ReportSummary registros={registros} />
             <ReportPreview
               filtros={filtros}
-              registros={registrosFiltrados}
+              registros={registros}
               onExportar={manejarExcel}
             />
           </>
