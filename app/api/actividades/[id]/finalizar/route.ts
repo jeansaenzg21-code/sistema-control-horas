@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { RowDataPacket } from 'mysql2'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
+import { registrarAuditoria } from '@/lib/auditoria'
 import { notifyActivityChange } from '@/lib/events'
 import { notificarBolsaHorasPorId } from '@/lib/bolsa-alertas'
 import { notificarRevisoresActividad } from '@/lib/notificaciones'
@@ -147,6 +148,14 @@ export async function POST(
     )
 
     notifyActivityChange(user.id)
+    await registrarAuditoria({
+      empresaId: context.activa?.id ?? null,
+      usuarioId: user.id,
+      accion: 'FINALIZAR_ACTIVIDAD',
+      entidad: 'actividad',
+      entidadId: Number(actividades[0].id),
+      ip: request.headers.get('x-forwarded-for') || null,
+    })
     return NextResponse.json({ ok: true, actividad: actividadDevuelta })
   } catch (error) {
     console.error('Error al finalizar actividad:', error)

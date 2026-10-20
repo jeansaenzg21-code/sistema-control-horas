@@ -4,6 +4,7 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
+import { registrarAuditoria } from '@/lib/auditoria'
 import { leerJson } from '@/lib/validacion/leer-json'
 import { esquemaUsuario } from '@/lib/validacion/usuarios'
 import { hashearPassword, validarPassword } from '@/lib/validacion-password'
@@ -248,6 +249,15 @@ export async function POST(request: Request) {
     }
 
     const [rows] = await pool.query(`${SELECT_USUARIOS} WHERE u.id = ?`, [id])
+    await registrarAuditoria({
+      empresaId: context.empresaId,
+      usuarioId: context.user.id,
+      accion: 'CREAR_USUARIO',
+      entidad: 'usuario',
+      entidadId: id,
+      despues: { nombre: nombreLimpio, usuario: usuarioLimpio, rol: rolDb },
+      ip: request.headers.get('x-forwarded-for') || null,
+    })
     return NextResponse.json({ usuario: (rows as unknown[])[0] })
   } catch (error) {
     console.error('Error al crear usuario:', error)
