@@ -279,17 +279,17 @@ export function DashboardAdministrador() {
               <Link href="/clientes" className="shrink-0 rounded-md border border-border px-2 py-1 text-[10px] text-violet-300 hover:bg-muted/30">Ver cartera <ChevronRight size={12} className="inline"/></Link>
             </div>
               <div className="grid grid-cols-[minmax(0,1.45fr)_4.2rem_4.4rem_4.3rem_4.2rem] items-center gap-2 border-b border-border/40 bg-muted/15 px-3 py-2 text-[10px] font-medium text-muted-foreground">
-                <span>División / clientes</span><span className="text-right">Contrato</span><span className="text-right">Consumo</span><span className="text-right">Saldo</span><span className="text-right">Desvío</span>
+                <span>División / clientes</span><span className="text-center">Contrato</span><span className="text-center">Consumo</span><span className="text-center">Saldo</span><span className="text-center">Desvío</span>
               </div>
                   <div className="max-h-[224px] min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-color:rgba(139,92,246,.35)_transparent] [scrollbar-width:thin]" role="region" aria-label="Cartera completa por división" tabIndex={0}>
                 {areasCartera.map(a => {
                   const hayExceso = a.excedidas > 0
                   return <div key={a.id} className="grid min-h-[44px] grid-cols-[minmax(0,1.45fr)_4.2rem_4.4rem_4.3rem_4.2rem] items-center gap-2 border-b border-border/30 px-3 py-1.5 text-[10px] last:border-0 hover:bg-muted/20">
                     <div className="min-w-0"><div className="truncate font-semibold text-[11px]" title={a.nombre}>{a.nombre}</div><div className="mt-0.5 truncate text-[9px] text-muted-foreground">{a.clientes} clientes · <span className={a.riesgo?'text-rose-300':''}>{a.riesgo} en riesgo</span>{a.sinBolsa ? ` · ${a.sinBolsa} sin bolsa` : ''}</div></div>
-                    <span className="text-right tabular-nums" title="Horas contratadas">{a.clientes ? formatoHoras(a.contratadas) : '—'}</span>
-                    <span className="text-right tabular-nums" title="Horas consumidas">{a.clientes ? formatoHoras(a.consumidas) : '—'}</span>
-                    <span className="text-right tabular-nums text-emerald-300" title="Saldo disponible">{a.clientes ? formatoHoras(a.disponibles) : '—'}</span>
-                    <span className={cn('text-right font-semibold tabular-nums', hayExceso?'text-rose-300':'text-muted-foreground')} title="Horas excedidas acumuladas por registros de cartera">{hayExceso ? `+${formatoHoras(a.excedidas)}` : '—'}</span>
+                    <span className="text-center tabular-nums" title="Horas contratadas">{a.clientes ? formatoHoras(a.contratadas) : '—'}</span>
+                    <span className="text-center tabular-nums" title="Horas consumidas">{a.clientes ? formatoHoras(a.consumidas) : '—'}</span>
+                    <span className="text-center tabular-nums text-emerald-300" title="Saldo disponible">{a.clientes ? formatoHoras(a.disponibles) : '—'}</span>
+                    <span className={cn('text-center font-semibold tabular-nums', hayExceso?'text-rose-300':'text-muted-foreground')} title="Horas excedidas acumuladas por registros de cartera">{hayExceso ? `+${formatoHoras(a.excedidas)}` : '—'}</span>
                   </div>
                 })}
                 {areasCartera.length === 0 && <p className="px-3 py-6 text-center text-xs text-muted-foreground">Sin cartera registrada.</p>}
