@@ -473,7 +473,7 @@ export function tokenDeRequest(request: Request): string | null {
 }
 
 function construirCookie(nombre: string, valor: string, expira: Date, maxAge: number | null): string {
-  const seguro = process.env.NODE_ENV === 'production' ? '; Secure' : ''
+  const seguro = ''
   // HttpOnly en las dos: el JavaScript de la pagina no puede leer ninguna de las
   // dos credenciales, que es lo que evita que un XSS se lleve la sesion.
   const vida = maxAge == null ? `Expires=${expira.toUTCString()}` : `Max-Age=${maxAge}`
