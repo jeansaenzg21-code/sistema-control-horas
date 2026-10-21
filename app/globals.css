@@ -47,7 +47,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Tema claro (predeterminado) */
+/* Tema claro (opcional; el predeterminado es oscuro) */
 :root {
   color-scheme: light;
   --background: #ffffff;
