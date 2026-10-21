@@ -5,7 +5,8 @@ import bcrypt from 'bcryptjs'
  *
  * Antes habia cuatro reglas distintas (4 caracteres en el setup, 7 en la
  * importacion, 10 en las de usuario) y ninguna era la misma. Toda ruta que crea
- * o cambia una contrasena debe pasar por aqui.
+ * o cambia una contrasena debe pasar por aqui, salvo la importacion masiva de
+ * personal: ahi la contrasena inicial es el DNI y no cumple esta politica.
  *
  * Requisitos:
  *   - Minimo 10 caracteres.
