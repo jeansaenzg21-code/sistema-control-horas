@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
 import { useAuth } from '@/lib/auth-context'
+import { cn } from '@/lib/utils'
 
 interface MainLayoutProps {
   children: React.ReactNode
@@ -22,6 +23,7 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal' }: Main
   const { usuario, empresaActiva, cargando } = useAuth()
   const router = useRouter()
   const [menuAbierto, setMenuAbierto] = useState(false)
+  const [sidebarMinimizada, setSidebarMinimizada] = useState(false)
 
   useEffect(() => {
     if (cargando) return
@@ -32,15 +34,49 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal' }: Main
     }
   }, [cargando, usuario, empresaActiva, router])
 
+  useEffect(() => {
+    setSidebarMinimizada(localStorage.getItem('sidebar-minimizada') === 'true')
+  }, [])
+
+  useEffect(() => {
+    if (!menuAbierto) return
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const alPresionar = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') setMenuAbierto(false)
+    }
+    document.addEventListener('keydown', alPresionar)
+    return () => {
+      document.body.style.overflow = overflow
+      document.removeEventListener('keydown', alPresionar)
+    }
+  }, [menuAbierto])
+
+  const alternarSidebar = () => {
+    setSidebarMinimizada((anterior) => {
+      const siguiente = !anterior
+      localStorage.setItem('sidebar-minimizada', String(siguiente))
+      return siguiente
+    })
+  }
+
   if (cargando || !usuario || !empresaActiva) return null
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar abierto={menuAbierto} onCerrar={() => setMenuAbierto(false)} />
+      <Sidebar
+        abierto={menuAbierto}
+        minimizada={sidebarMinimizada}
+        onAlternarMinimizado={alternarSidebar}
+        onCerrar={() => setMenuAbierto(false)}
+      />
 
-      {/* pl-56 = 224 px, el mismo ancho que el sidebar en md (w-56). Si cambia
-          uno, hay que cambiar el otro o queda un hueco o se solapa. */}
-      <div className="flex min-w-0 flex-1 flex-col md:pl-56">
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 flex-col transition-[padding] duration-200',
+          sidebarMinimizada ? 'md:pl-[4.75rem]' : 'md:pl-56',
+        )}
+      >
         <Header
           title={title}
           subtitle={subtitle}

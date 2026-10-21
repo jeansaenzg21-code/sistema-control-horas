@@ -27,6 +27,7 @@ export interface EmpresaSesion {
   pais: string
   ciudad: string | null
   logo: string | null
+  permite_salir_empresa: boolean
 }
 
 export interface SessionUser {
@@ -58,6 +59,9 @@ function mapEmpresa(row: Record<string, unknown>): EmpresaSesion {
     pais: String(row.pais || 'Perú'),
     ciudad: row.ciudad == null ? null : String(row.ciudad),
     logo: row.logo == null ? null : String(row.logo),
+    permite_salir_empresa: row.permite_salir_empresa == null
+      ? true
+      : Boolean(Number(row.permite_salir_empresa)),
   }
 }
 
@@ -162,14 +166,14 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
 export async function getEmpresasDisponibles(user: SessionUser): Promise<EmpresaSesion[]> {
   if (user.rol === 'ADMINISTRACION') {
     const [rows] = await pool.query(
-      'SELECT id, nombre, descripcion, pais, ciudad, logo FROM empresa ORDER BY id'
+      'SELECT id, nombre, descripcion, pais, ciudad, logo, permite_salir_empresa FROM empresa ORDER BY id'
     )
     return (rows as Array<Record<string, unknown>>).map(mapEmpresa)
   }
 
   if (!user.area_id) return []
   const [rows] = await pool.query(
-    `SELECT DISTINCT e.id, e.nombre, e.descripcion, e.pais, e.ciudad, e.logo
+    `SELECT DISTINCT e.id, e.nombre, e.descripcion, e.pais, e.ciudad, e.logo, e.permite_salir_empresa
      FROM empresa e
      INNER JOIN areas a ON a.empresa_id = e.id
      WHERE a.id = ?`,

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Building2, CheckCircle2, Globe, MapPin, Plus } from 'lucide-react'
+import { Building2, CheckCircle2, DoorOpen, Globe, MapPin, Plus } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { opcionesApi } from '@/lib/api-cliente'
 
@@ -12,6 +12,7 @@ interface Empresa {
   pais: string
   ciudad: string | null
   logo: string | null
+  permite_salir_empresa: boolean
 }
 
 interface FormularioEmpresa {
@@ -47,6 +48,8 @@ export function SettingsCompany({
   const [formularioAbierto, setFormularioAbierto] = useState(abrirFormularioAlMontar)
   const [formulario, setFormulario] = useState<FormularioEmpresa>(formularioInicial)
   const [guardando, setGuardando] = useState(false)
+  const [guardandoPermiso, setGuardandoPermiso] = useState(false)
+  const [errorPermiso, setErrorPermiso] = useState('')
   const [error, setError] = useState('')
   const [exito, setExito] = useState('')
 
@@ -125,6 +128,38 @@ export function SettingsCompany({
     }
   }
 
+  const manejarPermisoSalida = async () => {
+    if (!empresa || guardandoPermiso) return
+
+    const nuevoValor = !empresa.permite_salir_empresa
+    setErrorPermiso('')
+    setGuardandoPermiso(true)
+
+    try {
+      const response = await fetch('/api/empresa', opcionesApi({
+        method: 'PATCH',
+        body: { permite_salir_empresa: nuevoValor },
+      }))
+      const data = await response.json().catch(() => ({})) as { error?: string }
+
+      if (!response.ok) {
+        setErrorPermiso(data.error || 'No se pudo actualizar el permiso.')
+        return
+      }
+
+      setEmpresas((actual) => actual.map((item) => (
+        item.id === empresa.id
+          ? { ...item, permite_salir_empresa: nuevoValor }
+          : item
+      )))
+      await recargarContextoEmpresa()
+    } catch {
+      setErrorPermiso('No se pudo conectar al servidor.')
+    } finally {
+      setGuardandoPermiso(false)
+    }
+  }
+
   if (cargando) {
     return (
       <div className="rounded-xl border border-border bg-card p-5">
@@ -188,6 +223,58 @@ export function SettingsCompany({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {!soloRegistro && empresa && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#7c3aed]/15">
+                <DoorOpen size={18} className="text-[#a78bfa]" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">Salida de empresa</h2>
+                <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                  Permite que los usuarios usen la opción “Salir de empresa” del menú de su perfil.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Los administradores y socios siempre pueden cambiar de empresa.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 sm:shrink-0">
+              <span className="text-sm font-medium text-foreground">
+                {empresa.permite_salir_empresa ? 'Habilitada' : 'Deshabilitada'}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={empresa.permite_salir_empresa}
+                aria-label="Permitir salir de la empresa"
+                onClick={manejarPermisoSalida}
+                disabled={guardandoPermiso}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  empresa.permite_salir_empresa
+                    ? 'border-[#7c3aed] bg-[#7c3aed]'
+                    : 'border-border bg-muted'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    empresa.permite_salir_empresa ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {errorPermiso && (
+            <p className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-400">
+              {errorPermiso}
+            </p>
+          )}
         </div>
       )}
 

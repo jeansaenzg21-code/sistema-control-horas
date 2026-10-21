@@ -20,6 +20,7 @@ export interface Empresa {
   pais: string
   ciudad: string | null
   logo: string | null
+  permite_salir_empresa: boolean
 }
 
 export interface Usuario {
@@ -94,6 +95,9 @@ function normalizeEmpresa(raw: Record<string, unknown>): Empresa {
     pais: String(raw.pais || 'Perú'),
     ciudad: raw.ciudad == null ? null : String(raw.ciudad),
     logo: raw.logo == null ? null : String(raw.logo),
+    permite_salir_empresa: raw.permite_salir_empresa == null
+      ? true
+      : Boolean(Number(raw.permite_salir_empresa)),
   }
 }
 

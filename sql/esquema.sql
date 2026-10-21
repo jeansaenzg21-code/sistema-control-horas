@@ -120,6 +120,7 @@ CREATE TABLE `empresa` (
   `pais` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Perú',
   `ciudad` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `logo` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `permite_salir_empresa` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
