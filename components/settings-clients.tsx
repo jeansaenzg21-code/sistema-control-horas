@@ -165,7 +165,9 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
       {creando && (
         <ImportadorPresupuesto
           onCancelar={cancelar}
+          errorExterno={error}
           onListo={async (datos) => {
+            setError('')
             // Primero el cliente, porque presupuesto_servicios y el propio
             // presupuesto cuelgan de él y no pueden existir sin cliente.
             //
