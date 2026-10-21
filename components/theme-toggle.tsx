@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react'
 
 export function ThemeToggle() {
-  const [oscuro, setOscuro] = useState(false)
+  const [oscuro, setOscuro] = useState(true)
 
   useEffect(() => {
     const guardado = localStorage.getItem('tema')
-    const esOscuro = guardado === 'oscuro'
+    const esOscuro = guardado !== 'claro'
     setOscuro(esOscuro)
     document.documentElement.classList.toggle('dark', esOscuro)
   }, [])

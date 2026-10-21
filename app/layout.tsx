@@ -21,7 +21,14 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es" className="dark" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{if(localStorage.getItem('tema')==='claro'){document.documentElement.classList.remove('dark')}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="antialiased bg-background text-foreground">
         <Providers>{children}</Providers>
       </body>

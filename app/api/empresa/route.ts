@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     await connection.commit()
 
     const [rows] = await pool.query(
-      'SELECT id, nombre, descripcion, pais, ciudad, logo FROM empresa WHERE id = ?',
+      'SELECT id, nombre, descripcion, pais, ciudad, logo, permite_salir_empresa FROM empresa WHERE id = ?',
       [empresaId]
     )
     const empresa = (rows as Array<Record<string, unknown>>)[0]
@@ -96,6 +96,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
   } finally {
     connection.release()
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const user = await getUserFromRequest(request)
+    if (!user || !esAdmin(user)) {
+      return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
+    }
+
+    const context = await getEmpresaContext(user)
+    if (!context.activa) {
+      return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
+    }
+
+    const body = await request.json().catch(() => ({})) as { permite_salir_empresa?: unknown }
+    if (typeof body.permite_salir_empresa !== 'boolean') {
+      return NextResponse.json(
+        { error: 'El permiso de salida de empresa no es valido.' },
+        { status: 400 }
+      )
+    }
+
+    await pool.query(
+      'UPDATE empresa SET permite_salir_empresa = ? WHERE id = ?',
+      [body.permite_salir_empresa ? 1 : 0, context.activa.id]
+    )
+
+    return NextResponse.json({
+      ok: true,
+      permite_salir_empresa: body.permite_salir_empresa,
+    })
+  } catch (error) {
+    console.error('Error al actualizar el permiso de salida:', error)
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
   }
 }
 
