@@ -42,6 +42,7 @@ export type PrevisualizacionPresupuesto = {
 export function ImportadorPresupuesto({
   onListo,
   onCancelar,
+  errorExterno,
 }: {
   /** El usuario confirma: se le pasa el Excel ya leído para crear el cliente. */
   onListo: (datos: {
@@ -52,6 +53,7 @@ export function ImportadorPresupuesto({
     horas: number
   }) => void
   onCancelar: () => void
+  errorExterno?: string | null
 }) {
   const [previa, setPrevia] = useState<PrevisualizacionPresupuesto | null>(null)
   const [nombre, setNombre] = useState('')
@@ -207,9 +209,9 @@ export function ImportadorPresupuesto({
           {previa.clienteYaExiste && (
             <p className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
               <AlertTriangle size={14} className="mt-0.5 flex-none" />
-              Ya existe un cliente llamado «{previa.clienteYaExiste.nombre}». Si creas otro
-              más con el mismo nombre quedará duplicado; en ese caso conviene cancelar y
-              usar el botón «Presupuestos» del cliente existente.
+              Ya existe un cliente llamado “{previa.clienteYaExiste.nombre}”. No se puede
+              registrar dos veces en la misma división; usa el botón “Presupuestos” del
+              cliente existente.
             </p>
           )}
 
@@ -302,12 +304,12 @@ export function ImportadorPresupuesto({
         </div>
       )}
 
-      {error && (
+      {(error || errorExterno) && (
         <p
           role="alert"
           className="mt-3 rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-400"
         >
-          {error}
+          {error || errorExterno}
         </p>
       )}
       </div>
