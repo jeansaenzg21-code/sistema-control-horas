@@ -7,6 +7,7 @@ import {
   hashToken,
   tokenDeRequest,
 } from '@/lib/auth'
+import { esAdministrador, esSocio } from '@/lib/permisos'
 
 export async function GET(request: Request) {
   const user = await getUserFromRequest(request)
@@ -57,12 +58,25 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
   const user = await getUserFromRequest(request)
   if (!user) {
-    return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 })
+    return NextResponse.json({ error: 'Sesi��n invǭlida o expirada.' }, { status: 401 })
+  }
+
+  const context = await getEmpresaContext(user)
+  if (
+    context.activa
+    && !context.activa.permite_salir_empresa
+    && !esAdministrador(user)
+    && !esSocio(user)
+  ) {
+    return NextResponse.json(
+      { error: 'El administrador ha deshabilitado la salida de esta empresa.' },
+      { status: 403 }
+    )
   }
 
   const token = tokenDeRequest(request)
   if (!token) {
-    return NextResponse.json({ error: 'Sesión inválida o expirada.' }, { status: 401 })
+    return NextResponse.json({ error: 'Sesi��n invǭlida o expirada.' }, { status: 401 })
   }
 
   await pool.query(
