@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
-import { esJefeDeArea } from '@/lib/permisos'
+import { esAdministrador, esJefeDeArea } from '@/lib/permisos'
 import { leerJson } from '@/lib/validacion/leer-json'
 import { esquemaCliente } from '@/lib/validacion/clientes'
 import { notificarBolsaHoras } from '@/lib/bolsa-alertas'
@@ -82,6 +82,13 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const areaId = searchParams.get('area_id')
 
+    // Los formularios de registro de actividades piden `solo_asignados=1` para no
+    // ofrecer clientes donde la persona no tiene ninguna bolsa confirmada. El
+    // ADMINISTRACION se salta el filtro: no tiene asignaciones propias y se
+    // quedaría sin ningún cliente para elegir.
+    const soloAsignados =
+      searchParams.get('solo_asignados') === '1' && !esAdministrador(context.user)
+
     let query = `SELECT c.id, c.nombre, c.ruc, c.correo, c.telefono, c.direccion,
        c.area_id, c.horas_contratadas,
        COALESCE((SELECT SUM(GREATEST(0, TIMESTAMPDIFF(SECOND, a.inicio, a.fin) -
@@ -95,6 +102,21 @@ export async function GET(request: Request) {
       INNER JOIN areas a ON a.id = c.area_id
       WHERE c.activo = TRUE AND a.empresa_id = ?`
     const params: (string | number)[] = [context.empresaId]
+
+    if (soloAsignados) {
+      query += ` AND EXISTS (
+        SELECT 1
+          FROM presupuestos p
+          INNER JOIN presupuesto_servicios s ON s.presupuesto_id = p.id
+          INNER JOIN presupuesto_asignaciones pa ON pa.servicio_id = s.id
+         WHERE p.cliente_id = c.id
+           AND pa.usuario_id = ?
+           AND pa.estado = 'CONFIRMADA'
+           AND s.activo = TRUE
+           AND s.origen IN ('DETALLADO', 'COMPLEMENTARIO')
+      )`
+      params.push(context.user.id)
+    }
 
     const areaJefe = esJefeDeArea(context.user) ? context.user.area_id : null
     if (areaId) {

@@ -8,7 +8,7 @@ import {
 
   AlertTriangle, BarChart3, Clock3, Eye, FileSpreadsheet,
 
-  Hourglass, MoreHorizontal, Pencil, Plus, Search, Trash2, TrendingUp,
+  Hourglass, MoreHorizontal, Pencil, Search, Trash2, TrendingUp,
 
   Wallet, X,
 
@@ -252,9 +252,7 @@ function GraficoCartera({ clientes, modo }: {
   )
 }
 
-export function CarteraClientes({ onCrear, onEditar, onEliminar, onImportarPresupuesto, onAbrirGestion, areaId = null }: {
-  onCrear: () => void
-
+export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, onAbrirGestion, onImportarClientes, areaId = null }: {
   onEditar: (cliente: ClienteCartera) => void
 
   onEliminar: (cliente: ClienteCartera) => void
@@ -262,6 +260,9 @@ export function CarteraClientes({ onCrear, onEditar, onEliminar, onImportarPresu
   onImportarPresupuesto: (cliente: ClienteCartera) => void
 
   onAbrirGestion: (cliente: ClienteCartera) => void
+
+  /** Alta de uno o varios clientes desde Excel. */
+  onImportarClientes: () => void
   areaId?: number | null
 }) {
 
@@ -397,7 +398,7 @@ export function CarteraClientes({ onCrear, onEditar, onEliminar, onImportarPresu
                 })}
               </div>
               <button type="button" onClick={() => setMostrarBusqueda((v) => !v)} aria-label="Buscar clientes" title="Buscar clientes" className={`${BOTON} !h-8 !shrink-0 !px-2.5`}><Search size={14} /></button>
-              {!soloLectura && <button type="button" onClick={onCrear} className={`${PRIMARIO} !h-8 !shrink-0 !px-2.5 !text-[11px]`}><Plus size={14} /> Nuevo cliente</button>}
+              {!soloLectura && <button type="button" onClick={onImportarClientes} title="Registrar clientes desde Excel" className={`${PRIMARIO} !h-8 !shrink-0 !px-2.5 !text-[11px]`}><FileSpreadsheet size={14} /> Importar clientes</button>}
             </div>
             {(mostrarBusqueda || busqueda) && <div className="relative mt-1.5 w-full"><Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#929bb1]" /><input autoFocus value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar cliente, servicio o división..." className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-9 text-xs text-white outline-none placeholder:text-[#858fa6] focus:border-violet-500" />{busqueda && <button type="button" onClick={() => setBusqueda('')} aria-label="Limpiar búsqueda" className="absolute right-3 top-1/2 -translate-y-1/2 text-[#a5acc2]"><X size={14} /></button>}</div>}
           </div>
