@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarCheck, ListChecks, MessageSquare, Play } from 'lucide-react'
+import { CalendarCheck, Clock, ListChecks, MessageSquare, Play } from 'lucide-react'
 import { MainLayout } from '@/components/main-layout'
 import { ActivityCard } from '@/components/activity-card'
 import { ActivityForm } from '@/components/activity-form'
+import { RegistroDiaForm } from '@/components/registro-dia-form'
 import { MisRegistros } from '@/components/mis-registros'
 import { MisObservaciones } from '@/components/mis-observaciones'
 import { useActividad } from '@/lib/actividad-context'
@@ -14,6 +15,8 @@ import { useRegistros } from '@/lib/use-registros'
 import { cn, nombreCorto } from '@/lib/utils'
 
 type Pestana = 'registrar' | 'registros' | 'observaciones'
+
+type ModoRegistro = 'tiempo-real' | 'dia'
 
 /**
  * Nombre para el saludo: "Yonny Flores", no "Flores".
@@ -44,6 +47,20 @@ export default function Actividades() {
   const registros = useRegistros()
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('registrar')
+  const [modoRegistro, setModoRegistro] = useState<ModoRegistro>('tiempo-real')
+
+  // La preferencia se recuerda: quien trabaja siempre al final del día no
+  // debería volver a elegir el modo cada mañana.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const guardado = window.localStorage.getItem('pc_modo_registro')
+    if (guardado === 'tiempo-real' || guardado === 'dia') setModoRegistro(guardado)
+  }, [])
+
+  const cambiarModoRegistro = (modo: ModoRegistro) => {
+    setModoRegistro(modo)
+    if (typeof window !== 'undefined') window.localStorage.setItem('pc_modo_registro', modo)
+  }
 
   useEffect(() => {
     if (cargando) return
@@ -184,29 +201,69 @@ export default function Actividades() {
               </div>
             </div>
 
-            {cargandoActividad ? (
-              <section className="rounded-xl border border-border bg-card p-5">
-                <div className="h-5 w-48 animate-pulse rounded bg-muted" />
-                <div className="mt-4 h-24 animate-pulse rounded-xl bg-muted/60" />
-              </section>
-            ) : actividadActual ? (
-              <ActivityCard />
+            <div className="grid grid-cols-1 gap-2 rounded-xl border border-border bg-card p-2 sm:grid-cols-2">
+              <OpcionModo
+                activo={modoRegistro === 'tiempo-real'}
+                onClick={() => cambiarModoRegistro('tiempo-real')}
+                icono={<Play size={17} />}
+                titulo="Tiempo real"
+                descripcion="Inicia el cronómetro mientras trabajas y finalízalo al terminar."
+              />
+              <OpcionModo
+                activo={modoRegistro === 'dia'}
+                onClick={() => cambiarModoRegistro('dia')}
+                icono={<Clock size={17} />}
+                titulo="Al final del día"
+                descripcion="Carga tus actividades con hora de inicio y fin cuando termines la jornada."
+              />
+            </div>
+
+            {modoRegistro === 'tiempo-real' ? (
+              cargandoActividad ? (
+                <section className="rounded-xl border border-border bg-card p-5">
+                  <div className="h-5 w-48 animate-pulse rounded bg-muted" />
+                  <div className="mt-4 h-24 animate-pulse rounded-xl bg-muted/60" />
+                </section>
+              ) : actividadActual ? (
+                <ActivityCard />
+              ) : (
+                <section className="rounded-xl border border-border bg-card p-5">
+                  <div className="mb-4 flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#7c3aed]/15">
+                      <CalendarCheck size={17} className="text-[#c4b5fd]" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">
+                        Registrar nueva actividad
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        Inicia el registro con fecha y hora automáticas.
+                      </p>
+                    </div>
+                  </div>
+                  <ActivityForm />
+                </section>
+              )
             ) : (
               <section className="rounded-xl border border-border bg-card p-5">
                 <div className="mb-4 flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#7c3aed]/15">
-                    <CalendarCheck size={17} className="text-[#c4b5fd]" />
+                  <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-emerald-500/15">
+                    <Clock size={17} className="text-emerald-300" />
                   </div>
                   <div>
-                    <h2 className="text-base font-semibold text-foreground">
-                      Registrar nueva actividad
-                    </h2>
+                    <h2 className="text-base font-semibold text-foreground">Registrar horas del día</h2>
                     <p className="text-sm text-muted-foreground">
-                      Inicia el registro con fecha y hora automáticas.
+                      Al terminar tu jornada, anota el bloque con hora de inicio y fin. Queda pendiente de
+                      aprobación.
                     </p>
                   </div>
                 </div>
-                <ActivityForm />
+                {actividadActual && (
+                  <p className="mb-4 rounded-lg border border-[#7c3aed]/30 bg-[#7c3aed]/10 px-3 py-2 text-xs leading-relaxed text-[#c4b5fd]">
+                    Tienes una actividad en curso. Cambia a “Tiempo real” para pausarla o finalizarla.
+                  </p>
+                )}
+                <RegistroDiaForm />
               </section>
             )}
           </>
@@ -217,5 +274,48 @@ export default function Actividades() {
         )}
       </div>
     </MainLayout>
+  )
+}
+
+function OpcionModo({
+  activo,
+  onClick,
+  icono,
+  titulo,
+  descripcion,
+}: {
+  activo: boolean
+  onClick: () => void
+  icono: React.ReactNode
+  titulo: string
+  descripcion: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={activo}
+      className={cn(
+        'flex items-start gap-3 rounded-lg px-3.5 py-3 text-left transition-colors',
+        activo
+          ? 'bg-[#7c3aed]/15 ring-1 ring-inset ring-[#7c3aed]/40'
+          : 'hover:bg-muted/50',
+      )}
+    >
+      <span
+        className={cn(
+          'mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg',
+          activo ? 'bg-[#7c3aed]/20 text-[#c4b5fd]' : 'bg-muted text-muted-foreground',
+        )}
+      >
+        {icono}
+      </span>
+      <span className="min-w-0">
+        <span className={cn('block text-sm font-semibold', activo ? 'text-foreground' : 'text-foreground/90')}>
+          {titulo}
+        </span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{descripcion}</span>
+      </span>
+    </button>
   )
 }

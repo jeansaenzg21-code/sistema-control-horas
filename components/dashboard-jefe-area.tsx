@@ -64,17 +64,6 @@ function colorDeEstado(estado: string, valor: number): string {
   return COLOR_ESTADO_EN_CERO
 }
 
-/**
- * Cuántos clientes y colaboradores se listan antes de resumir el resto.
- *
- * Un tope, no un capricho: sin él, un área con 40 clientes produce una tabla de
- * 40 filas que empuja el resto del panel fuera de la pantalla, y con ella
- * desaparecen los KPIs y las alertas, que es justo lo que hay que ver primero.
- *
- * Los que sobran se cuentan en un renglón de resumen, nunca se descartan en
- * silencio: "y 12 más" es información, una lista truncada sin contarla es ruido.
- */
-const MAX_CLIENTES = 8
 const MAX_COLABORADORES = 10
 
 export function DashboardJefeArea() {
@@ -247,39 +236,46 @@ function construirModelo(
   // propuesta. Sin ese margen, un cliente cuyo presupuesto sigue en revisión
   // desaparece del gráfico y el panel parece vacío cuando lo que hay es un
   // trabajo de aprobación pendiente, que es justo lo que el jefe tiene que ver.
-  // Cartera del área, ORDENADA POR LO QUE NECESITA ATENCIÓN y no por tamaño.
+  // Cartera del área, ORDENADA POR RIESGO DE DESVIACIÓN y no por tamaño ni por
+  // orden de alta. La tarjeta es un resumen: no crece con cada cliente nuevo y
+  // siempre deja arriba a los que están más cerca de pasarse de la bolsa.
   //
-  // Antes esta información vivía en dos sitios: el donut "Distribución por
-  // cliente" y la tabla "Cartera del área", con las mismas cifras de los mismos
-  // clientes. Se fusionaron en una sola tabla porque el gráfico solo añadía
-  // proporción, y la proporción ya sale de las columnas de la tabla.
-  //
-  // El orden NO es por horas contratadas a secas: un cliente con 272 h de bolsa y
-  // cero gastadas es un problema distinto de uno con 40 h y 20 gastadas. Se
-  // ordena por urgencia real:
-  //   1. los que se pasaron de la bolsa (hay que hablar con el cliente YA),
+  // El orden es:
+  //   1. los que ya se pasaron (mayor % de exceso primero),
   //   2. los que gastan sin bolsa declarada (trabajo que no se factura),
-  //   3. los que tienen bolsa sin tocar (dinero comprometido sin usar),
-  //   4. el resto, por tamaño.
-  // Un área con muchos clientes mantiene los que importan arriba, que es lo
-  // contrario de lo que pasa ordenando por cifra.
+  //   3. los que tienen bolsa y ya consumieron parte (mayor % consumido primero),
+  //   4. los que tienen bolsa sin tocar (dinero comprometido sin usar).
+  // Dentro de cada grupo manda el porcentaje, no la cifra absoluta: 40 h de 50
+  // (80 %) es más urgente que 100 h de 400 (25 %), aunque la segunda cifra sea
+  // mayor.
   const cartera = carteraRespuesta?.clientes ?? []
-  const urgente = (c: (typeof cartera)[number]): number => {
-    if (c.horasExcedidas > 0) return 0
-    if (c.horasContratadas === 0 && c.horasConsumidas > 0) return 1
-    if (c.horasContratadas > 0 && c.horasConsumidas === 0) return 2
-    return 3
+  const grupoRiesgo = (c: (typeof cartera)[number]): number => {
+    if (c.horasExcedidas > 0) return 3
+    if (c.horasContratadas === 0 && c.horasConsumidas > 0) return 2
+    if (c.horasContratadas > 0 && c.horasConsumidas > 0) return 1
+    return 0
   }
+  const porcentajeConsumido = (c: (typeof cartera)[number]): number =>
+    c.horasContratadas > 0 ? (c.horasConsumidas / c.horasContratadas) * 100 : 0
   const carteraOrdenada = [...cartera].sort((a, b) => {
-    const ua = urgente(a)
-    const ub = urgente(b)
-    if (ua !== ub) return ua - ub
-    if (ua === 0) return b.horasExcedidas - a.horasExcedidas
-    if (ua === 3) return b.horasContratadas - a.horasContratadas
-    return b.horasConsumidas - a.horasConsumidas
+    const ga = grupoRiesgo(a)
+    const gb = grupoRiesgo(b)
+    if (ga !== gb) return gb - ga
+    if (ga === 3) {
+      const pa = a.desviacionPorcentaje ?? porcentajeConsumido(a)
+      const pb = b.desviacionPorcentaje ?? porcentajeConsumido(b)
+      if (pb !== pa) return pb - pa
+      return b.horasExcedidas - a.horasExcedidas
+    }
+    if (ga === 2) return b.horasConsumidas - a.horasConsumidas
+    if (ga === 1) {
+      const pa = porcentajeConsumido(a)
+      const pb = porcentajeConsumido(b)
+      if (pb !== pa) return pb - pa
+      return b.horasConsumidas - a.horasConsumidas
+    }
+    return b.horasContratadas - a.horasContratadas
   })
-  const carteraCabecera = carteraOrdenada.slice(0, MAX_CLIENTES)
-  const carteraCola = carteraOrdenada.slice(MAX_CLIENTES)
 
   const pendientesAprobacion = porEstado.get('PENDIENTE_APROBACION')?.registros ?? 0
   const observados = porEstado.get('CORRECCION_SOLICITADA')?.registros ?? 0
@@ -312,11 +308,7 @@ function construirModelo(
     estadosPorEstado,
     estados: { pendientesAprobacion, observados },
     colaboradores,
-    /** Cartera ordenada por urgencia y recortada a MAX_CLIENTES. */
-    carteraCabecera,
-    /** Los que no caben arriba. Se muestran como renglón de resumen. */
-    carteraCola,
-    /** Lista completa ordenada para paginación. */
+    /** Cartera completa ordenada por riesgo de desviación. */
     carteraOrdenada,
     totalesClientesCartera: cartera.length,
     totalesCartera: datos.cartera?.totales ?? null,
@@ -648,35 +640,37 @@ function PanelEquipo({ modelo }: { modelo: Modelo }) {
 }
 
 /**
- * Cartera del área: bolsa contratada contra lo consumido, ordenado por urgencia.
+ * Cartera del área: resumen fijo + lista desplazable ordenada por riesgo.
  *
- * Esta tabla ABSORBIÓ la que era "Distribución por cliente". Las dos mostraban
- * los mismos clientes con las mismas cifras, una en donut y la otra en tabla; la
- * proporción del anillo ya sale de la columna de desviación, así que el gráfico
- * solo ocupaba sitio.
+ * La tarjeta ya no crece con cada cliente nuevo. El alto lo marcan el resumen y
+ * la lista con scroll propio; agregar clientes solo agrega filas dentro de ese
+ * scroll, nunca empuja los KPIs ni las alertas fuera de la pantalla.
  *
- * Cómo escala con muchos clientes:
- * - Se listan MAX_CLIENTES y el resto se cuenta en un renglón de resumen, con
- *   sus horas sumadas. Nada se descarta en silencio.
- * - El `tbody` tiene alto máximo y scroll propio. Sin eso, un área con 40
- *   clientes produce una tabla tan alta que empuja los KPIs y las alertas fuera
- *   de la pantalla, que es justo lo que hay que mirar primero.
- * - El orden pone arriba lo que hay que resolver hoy (excesos, gasto sin bolsa),
- *   no lo más grande. Con muchos clientes, ordenar por cifra esconde justo los
- *   casos urgentes debajo de la lista.
+ * El orden es por riesgo de desviación, no por tamaño: primero los que ya se
+ * pasaron de la bolsa (mayor % de exceso), después los que gastan sin bolsa y,
+ * por último, los que más han consumido de su bolsa. Un cliente recién creado
+ * sin horas no desplaza a uno que está a punto de agotarse.
  */
 function PanelCartera({ modelo }: { modelo: Modelo }) {
-  const [pagina, setPagina] = useState(1)
-  const totalPaginas = Math.ceil(modelo.carteraOrdenada.length / MAX_CLIENTES)
-  const inicio = (pagina - 1) * MAX_CLIENTES
-  const clientesPagina = modelo.carteraOrdenada.slice(inicio, inicio + MAX_CLIENTES)
+  const clientes = modelo.carteraOrdenada
+  const excedidos = clientes.filter((c) => c.horasExcedidas > 0).length
+  const sinBolsa = clientes.filter(
+    (c) => c.horasContratadas === 0 && c.horasConsumidas > 0,
+  ).length
+  const enRiesgo = excedidos + sinBolsa
+
+  const totales = modelo.totalesCartera
+  const contratadas =
+    totales?.contratadas ?? clientes.reduce((t, c) => t + c.horasContratadas, 0)
+  const consumidas =
+    totales?.consumidas ?? clientes.reduce((t, c) => t + c.horasConsumidas, 0)
 
   return (
-    <section className={`${PANEL} flex min-w-0 flex-col overflow-hidden`}>
+    <section className={`${PANEL} flex min-h-[420px] min-w-0 flex-col overflow-hidden`}>
       <CabeceraPanel
         icono={<Wallet size={19} />}
         titulo="Cartera del área"
-        descripcion="Primero lo que hay que resolver: excesos y gasto sin bolsa"
+        descripcion="Resumen fijo y prioridad por riesgo de desviación"
         accion={
           <Link
             href="/clientes"
@@ -686,7 +680,47 @@ function PanelCartera({ modelo }: { modelo: Modelo }) {
           </Link>
         }
       />
-      <div className="overflow-x-auto">
+
+      {/* Resumen: no depende de cuántos clientes haya, siempre ocupa lo mismo. */}
+      <div className="grid shrink-0 grid-cols-4 divide-x divide-border/60 border-b border-border/60">
+        <div className="px-3 py-2">
+          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">Clientes</p>
+          <p className="text-sm font-semibold tabular-nums text-foreground">
+            {modelo.totalesClientesCartera}
+          </p>
+        </div>
+        <div className="px-3 py-2">
+          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">Contratadas</p>
+          <p className="text-sm font-semibold tabular-nums text-foreground">{horas(contratadas)}</p>
+        </div>
+        <div className="px-3 py-2">
+          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">Consumidas</p>
+          <p className="text-sm font-semibold tabular-nums text-foreground">{horas(consumidas)}</p>
+        </div>
+        <div className="px-3 py-2">
+          <p className="text-[9px] uppercase tracking-wide text-muted-foreground">En riesgo</p>
+          <p
+            className={cn(
+              'text-sm font-semibold tabular-nums',
+              enRiesgo > 0 ? 'text-rose-300' : 'text-foreground',
+            )}
+          >
+            {enRiesgo}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 pt-2">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          Mayor riesgo de desviación
+        </p>
+        <p className="text-[10px] text-muted-foreground">
+          {excedidos} excedidos · {sinBolsa} sin bolsa
+        </p>
+      </div>
+
+      {/* Alto de exactamente 4 filas: el resto se alcanza con la barra. */}
+      <div className="h-[252px] shrink-0 overflow-y-auto">
         <table className="w-full table-fixed border-collapse text-left text-[11px]">
           <colgroup>
             <col style={{ width: '30%' }} />
@@ -695,26 +729,26 @@ function PanelCartera({ modelo }: { modelo: Modelo }) {
             <col style={{ width: '16%' }} />
             <col style={{ width: '20%' }} />
           </colgroup>
-          <thead className="bg-muted text-muted-foreground">
+          <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
             <tr>
-              <th className="px-3 py-2.5 font-medium">Cliente</th>
-              <th className="px-2 py-2.5 text-center font-medium">Contratadas</th>
-              <th className="px-2 py-2.5 text-center font-medium">Consumidas</th>
-              <th className="px-2 py-2.5 text-center font-medium">Disponibles</th>
-              <th className="px-2 py-2.5 text-center font-medium">Desviación</th>
+              <th className="px-3 py-2 font-medium">Cliente</th>
+              <th className="px-2 py-2 text-center font-medium">Contratadas</th>
+              <th className="px-2 py-2 text-center font-medium">Consumidas</th>
+              <th className="px-2 py-2 text-center font-medium">Disponibles</th>
+              <th className="px-2 py-2 text-center font-medium">Desviación</th>
             </tr>
           </thead>
-          <tbody className="sm:table-row-group">
-            {clientesPagina.length === 0 && (
+          <tbody>
+            {clientes.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
                   Sin clientes en el área. Todas las cifras a 0.
                 </td>
               </tr>
             )}
-            {clientesPagina.map((c) => (
+            {clientes.map((c) => (
               <tr key={c.id} className="border-t border-border/60 hover:bg-muted/40">
-                <td className="px-3 py-2">
+                <td className="px-3 py-1.5">
                   <p className="truncate font-medium text-foreground" title={c.nombre}>
                     {c.nombre}
                   </p>
@@ -722,13 +756,13 @@ function PanelCartera({ modelo }: { modelo: Modelo }) {
                     <Estado valor={c.estado} />
                   </div>
                 </td>
-                <td className="px-2 py-2 text-center tabular-nums text-foreground">
+                <td className="px-2 py-1.5 text-center tabular-nums text-foreground">
                   {c.horasContratadas > 0 ? horas(c.horasContratadas) : '—'}
                 </td>
-                <td className="px-2 py-2 text-center tabular-nums text-foreground">
+                <td className="px-2 py-1.5 text-center tabular-nums text-foreground">
                   {horas(c.horasConsumidas)}
                 </td>
-                <td className="px-2 py-2 text-center tabular-nums">
+                <td className="px-2 py-1.5 text-center tabular-nums">
                   {c.horasDisponibles > 0 ? (
                     <span className="text-emerald-300">{horas(c.horasDisponibles)}</span>
                   ) : c.horasContratadas > 0 ? (
@@ -739,7 +773,7 @@ function PanelCartera({ modelo }: { modelo: Modelo }) {
                     </span>
                   )}
                 </td>
-                <td className="px-2 py-2 text-center">
+                <td className="px-2 py-1.5 text-center">
                   {c.horasExcedidas > 0 ? (
                     <span className="font-semibold tabular-nums text-rose-300">
                       +{horas(c.horasExcedidas)}
@@ -757,29 +791,20 @@ function PanelCartera({ modelo }: { modelo: Modelo }) {
           </tbody>
         </table>
       </div>
-      {totalPaginas > 1 && (
-        <div className="flex items-center justify-between border-t border-border/60 px-3 py-2">
-          <p className="text-[10px] text-muted-foreground">
-            Página {pagina} de {totalPaginas}
-          </p>
-          <div className="flex gap-1">
-            <button
-              onClick={() => setPagina((p) => Math.max(1, p - 1))}
-              disabled={pagina === 1}
-              className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
-            >
-              Anterior
-            </button>
-            <button
-              onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
-              disabled={pagina === totalPaginas}
-              className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
-            >
-              Siguiente
-            </button>
-          </div>
-        </div>
-      )}
+
+      <div className="flex flex-1 items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
+        <p className="text-[10px] text-muted-foreground">
+          {clientes.length > 4
+            ? `${clientes.length - 4} clientes más abajo, ordenados por riesgo`
+            : 'Cartera completa, ordenada por riesgo'}
+        </p>
+        <Link
+          href="/clientes"
+          className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Ver cartera <ArrowRight size={11} />
+        </Link>
+      </div>
     </section>
   )
 }
