@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { CalendarCheck, Clock, ListChecks, MessageSquare, Play } from 'lucide-react'
 import { MainLayout } from '@/components/main-layout'
 import { ActivityCard } from '@/components/activity-card'
@@ -11,8 +12,8 @@ import { MisRegistros } from '@/components/mis-registros'
 import { MisObservaciones } from '@/components/mis-observaciones'
 import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
-import { useRegistros } from '@/lib/use-registros'
-import { cn, nombreCorto } from '@/lib/utils'
+import { opcionesApi } from '@/lib/api-cliente'
+import { cn, fechaLocalISO, nombreCorto } from '@/lib/utils'
 
 type Pestana = 'registrar' | 'registros' | 'observaciones'
 
@@ -40,14 +41,52 @@ function nombreParaSaludo(nombre: string, correo?: string | null): string {
   return nombreCorto(limpio, correo)
 }
 
+type ResumenDia = {
+  fecha: string
+  total: number
+  por_estado: Array<{ estado: string; registros: number }>
+}
+
 export default function Actividades() {
-  const { actividadActual, cargandoActividad } = useActividad()
-  const { usuario, cargando } = useAuth()
+  const { actividadActual, cargandoActividad, historial, totalHistorial } = useActividad()
+  const { usuario, empresaActiva, cargando } = useAuth()
   const esJefeArea = usuario?.rol === 'jefe_area'
-  const registros = useRegistros()
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('registrar')
   const [modoRegistro, setModoRegistro] = useState<ModoRegistro>('tiempo-real')
+  const [hoy, setHoy] = useState(() => fechaLocalISO(new Date()))
+
+  // La tarjeta se calcula para el dia de HOY. Si la aplicacion queda abierta
+  // pasada la medianoche, el estado cambia de fecha y la consulta se renueva
+  // sola, sin recargar la pagina.
+  useEffect(() => {
+    const revisar = () => {
+      const actual = fechaLocalISO(new Date())
+      setHoy((anterior) => (anterior === actual ? anterior : actual))
+    }
+    const intervalo = window.setInterval(revisar, 60_000)
+    return () => window.clearInterval(intervalo)
+  }, [])
+
+  const { data: resumenDia, refetch: refetchResumenDia } = useQuery({
+    queryKey: ['actividades-resumen-dia', empresaActiva?.id, usuario?.id, hoy],
+    enabled: Boolean(empresaActiva) && Boolean(usuario) && usuario?.rol !== 'admin' && usuario?.rol !== 'socio',
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const res = await fetch(`/api/actividades/resumen-dia?fecha=${hoy}`, opcionesApi())
+      if (!res.ok) throw new Error('No se pudo cargar el resumen del día.')
+      return (await res.json()) as ResumenDia
+    },
+  })
+
+  // El historial ya se refresca por SSE al crear o finalizar una actividad.
+  // Aprovechamos ese aviso para volver a pedir el conteo del dia, sin bajar las
+  // filas otra vez.
+  useEffect(() => {
+    if (!usuario || usuario.rol === 'admin' || usuario.rol === 'socio') return
+    void refetchResumenDia()
+  }, [historial, usuario, refetchResumenDia])
 
   // La preferencia se recuerda: quien trabaja siempre al final del día no
   // debería volver a elegir el modo cada mañana.
@@ -86,19 +125,15 @@ export default function Actividades() {
     router.replace(`/aprobaciones?${params.toString()}`)
   }, [usuario, router])
 
-  const resumen = useMemo(() => {
-    return {
-      total: registros.length,
-      pendientes: registros.filter((r) => r.estado === 'PENDIENTE_APROBACION').length,
-      aprobadas: registros.filter((r) => r.estado === 'APROBADA').length,
-    }
-  }, [registros])
+  const totalHoy = resumenDia?.total ?? 0
+  const aprobadasHoy = resumenDia?.por_estado.find((e) => e.estado === 'APROBADA')?.registros ?? 0
+  const pendientesHoy = resumenDia?.por_estado.find((e) => e.estado === 'PENDIENTE_APROBACION')?.registros ?? 0
 
   // El admin y el socio no registran horas: la redirección ya está lanzada en el
   // efecto de arriba, así que aquí no se monta nada para ninguno de los dos.
   if (cargando || !usuario || usuario.rol === 'admin' || usuario.rol === 'socio') return null
 
-  const fechaHoy = new Date().toLocaleDateString('es-PE', {
+  const fechaHoy = new Date(`${hoy}T00:00:00`).toLocaleDateString('es-PE', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -109,7 +144,7 @@ export default function Actividades() {
     { id: 'registrar', etiqueta: 'Registrar', icono: <Play size={16} /> },
     {
       id: 'registros',
-      etiqueta: `${esJefeArea ? 'Registros del área' : 'Mis registros'}${resumen.total > 0 ? ` (${resumen.total})` : ''}`,
+      etiqueta: `${esJefeArea ? 'Registros del área' : 'Mis registros'}${totalHistorial > 0 ? ` (${totalHistorial})` : ''}`,
       icono: <ListChecks size={16} />,
     },
     {
@@ -120,9 +155,9 @@ export default function Actividades() {
   ]
 
   const tarjetasResumen = [
-    { etiqueta: 'Registros', valor: String(resumen.total) },
-    { etiqueta: 'Aprobados', valor: String(resumen.aprobadas) },
-    { etiqueta: 'Pendientes', valor: String(resumen.pendientes) },
+    { etiqueta: 'Hoy', ayuda: 'Registros de hoy', valor: String(totalHoy) },
+    { etiqueta: 'Aprobados', ayuda: 'Aprobados de hoy', valor: String(aprobadasHoy) },
+    { etiqueta: 'Pendientes', ayuda: 'Pendientes de hoy', valor: String(pendientesHoy) },
   ]
 
   return (
@@ -151,11 +186,11 @@ export default function Actividades() {
 
         {pestana === 'registrar' ? (
           <>
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-5 py-4">
-              <div className="min-w-0">
-                <p className="text-xs capitalize text-muted-foreground">{fechaHoy}</p>
-                <h2 className="text-lg font-semibold text-foreground">Hola, {primerNombre}</h2>
-                <p className="text-sm text-muted-foreground">
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs capitalize text-muted-foreground">{fechaHoy}</p>
+                <h2 className="truncate text-base font-semibold text-foreground sm:text-lg">Hola, {primerNombre}</h2>
+                <p className="text-xs leading-snug text-muted-foreground sm:text-sm">
                   {actividadActual
                     ? 'Tienes una actividad en curso, puedes pausarla o finalizarla.'
                     : '¿Qué vas a trabajar hoy?'}
@@ -189,13 +224,19 @@ export default function Actividades() {
                 )}
               </div>
 
-              <div className="ml-auto flex divide-x divide-border rounded-lg bg-muted/60">
+              <div className="flex shrink-0 divide-x divide-border rounded-lg bg-muted/60">
                 {tarjetasResumen.map((tarjeta) => (
-                  <div key={tarjeta.etiqueta} className="px-4 py-2 text-center">
-                    <p className="text-lg font-bold leading-tight text-foreground">
+                  <div
+                    key={tarjeta.etiqueta}
+                    title={tarjeta.ayuda}
+                    className="min-w-[3.25rem] px-2 py-1.5 text-center sm:min-w-[4rem] sm:px-4 sm:py-2"
+                  >
+                    <p className="text-base font-bold leading-tight text-foreground sm:text-lg">
                       {tarjeta.valor}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">{tarjeta.etiqueta}</p>
+                    <p className="whitespace-nowrap text-[10px] text-muted-foreground sm:text-[11px]">
+                      {tarjeta.etiqueta}
+                    </p>
                   </div>
                 ))}
               </div>
