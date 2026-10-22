@@ -46,8 +46,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Renovar NO salta el bloqueo de horario: solo se cambia el token. Quien
-    // esta fuera de su horario sigue sin poder iniciar ni finalizar operaciones.
+    // Renovar solo cambia el token: no vuelve a comprobar credenciales ni
+    // horarios, que ya no limitan el acceso.
     const cabeceras = new Headers()
     for (const cookie of cookiesSesion(emitida.token, emitida.expiraAcceso, emitida.refreshToken, emitida.expiraRenovacion)) {
       cabeceras.append('Set-Cookie', cookie)
