@@ -104,10 +104,11 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
           <button
             type="button"
             onClick={onCerrar}
-            aria-label="Minimizar menú"
-            className="ml-auto rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
+            aria-label="Cerrar menú"
+            className="ml-auto flex touch-manipulation items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted md:hidden"
           >
-            <X size={18} />
+            <X size={16} />
+            Cerrar
           </button>
         </div>
 
@@ -152,8 +153,16 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
             )
           })}
         </nav>
-        <div className={cn('border-t border-sidebar-border px-3 py-3', minimizada && 'md:px-1.5')}>
+        <div className={cn('space-y-2 border-t border-sidebar-border px-3 py-3', minimizada && 'md:px-1.5')}>
           <ThemeToggle />
+          <button
+            type="button"
+            onClick={onCerrar}
+            className="flex w-full touch-manipulation items-center justify-center gap-2 rounded-lg border border-sidebar-border py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent md:hidden"
+          >
+            <X size={16} />
+            Cerrar menú
+          </button>
         </div>
       </aside>
     </>

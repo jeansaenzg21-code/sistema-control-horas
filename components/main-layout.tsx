@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Sidebar } from './sidebar'
 import { Header } from './header'
 import { useAuth } from '@/lib/auth-context'
@@ -22,6 +22,7 @@ interface MainLayoutProps {
 export function MainLayout({ children, title, subtitle, ancho = 'normal' }: MainLayoutProps) {
   const { usuario, empresaActiva, cargando } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [sidebarMinimizada, setSidebarMinimizada] = useState(false)
 
@@ -37,6 +38,12 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal' }: Main
   useEffect(() => {
     setSidebarMinimizada(localStorage.getItem('sidebar-minimizada') === 'true')
   }, [])
+
+  // Al cambiar de modulo el cajon movil debe quedar cerrado, aunque la
+  // navegacion no venga de un enlace del propio menu.
+  useEffect(() => {
+    setMenuAbierto(false)
+  }, [pathname])
 
   useEffect(() => {
     if (!menuAbierto) return

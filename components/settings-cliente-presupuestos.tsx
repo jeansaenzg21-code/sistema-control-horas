@@ -158,7 +158,7 @@ export function SettingsClientePresupuestos({
         </header>
 
         <div className="space-y-4 px-5 py-4">
-          {puedeImportar && (
+          {puedeImportar && !exito && (
           <>
           {/* Zona de importación */}
           <div
@@ -219,10 +219,24 @@ export function SettingsClientePresupuestos({
             </p>
           )}
           {exito && (
-            <p className="flex items-start gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
-              <CheckCircle2 size={15} className="mt-0.5 flex-none" />
-              {exito}
-            </p>
+            <div className="animate-in slide-in-from-bottom-4 flex items-start gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3.5">
+              <span className="success-pop flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+                <CheckCircle2 size={20} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground">
+                  Presupuesto importado correctamente
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-emerald-300">{exito}</p>
+                <button
+                  type="button"
+                  onClick={() => setExito(null)}
+                  className="mt-2.5 rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-emerald-200 transition-colors hover:bg-emerald-500/10"
+                >
+                  Importar otra versión
+                </button>
+              </div>
+            </div>
           )}
 
           {cargando ? (
