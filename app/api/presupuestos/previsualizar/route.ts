@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       areaCoincide: area !== null,
     },
     clienteYaExiste: clienteExistente
-      ? { id: clienteExistente.id, nombre: clienteExistente.nombre }
+      ? { id: clienteExistente.id, nombre: clienteExistente.nombre, areaId: clienteExistente.areaId }
       : null,
     puedeImportar: permiso.permitido,
     motivoPermiso: permiso.motivo,

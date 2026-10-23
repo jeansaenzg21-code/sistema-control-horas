@@ -52,7 +52,7 @@ interface ActividadContextValue {
   alertaVisible: boolean
   tiempoPausaMs: number | null
   configurarAlertas: (minutos: number) => void
-  iniciarActividad: (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; presupuesto_servicio_id?: number | null; descripcion?: string; facturable?: boolean | null }) => Promise<{ ok: boolean; error?: string }>
+  iniciarActividad: (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; presupuesto_servicio_id?: number | null; descripcion?: string; facturable?: boolean | null; inicio?: string; fin?: string }) => Promise<{ ok: boolean; error?: string }>
   pausarActividad: () => Promise<void>
   reanudarActividad: () => Promise<void>
   finalizarActividad: () => Promise<void>
@@ -294,7 +294,7 @@ const streamRef = useRef<ControlStream | null>(null)
     setAlertasCada(minutos)
   }, [])
 
-  const iniciarActividad = useCallback(async (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; descripcion?: string; facturable?: boolean | null }) => {
+  const iniciarActividad = useCallback(async (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; presupuesto_servicio_id?: number | null; descripcion?: string; facturable?: boolean | null; inicio?: string; fin?: string }) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
       const res = await fetch('/api/actividades', opcionesApi({ method: 'POST', body: datos }))
@@ -302,13 +302,20 @@ const streamRef = useRef<ControlStream | null>(null)
       if (!res.ok) {
         return { ok: false, error: data.error || 'Error al crear actividad.' }
       }
-      setActividadActual(data.actividad)
+      // Un bloque con hora de fin ya está cerrado: no debe reemplazar la
+      // actividad en curso. Se refresca el historial para que aparezca en
+      // "Mis registros" de inmediato.
+      if (datos.fin) {
+        if (usuario) await cargarHistorial(usuario.id, !veActividadDeTodaLaEmpresa(usuario))
+      } else {
+        setActividadActual(data.actividad)
+      }
       setAlertaVisible(false)
       return { ok: true }
     } catch {
       return { ok: false, error: 'No se pudo conectar al servidor.' }
     }
-  }, [empresaId])
+  }, [empresaId, usuario, cargarHistorial])
 
   const pausarActividad = useCallback(async () => {
     if (!usuario) return

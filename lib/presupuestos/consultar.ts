@@ -118,17 +118,23 @@ export async function buscarAreaPorNombre(
 export async function buscarClientePorNombre(
   nombre: string,
   empresaId: number
-): Promise<{ id: number; nombre: string } | null> {
+): Promise<{ id: number; nombre: string; areaId: number } | null> {
   const objetivo = sinAcentos(nombre)
-  const [rows] = await pool.query<(RowDataPacket & { id: number; nombre: string })[]>(
-    `SELECT c.id, c.nombre
+  const [rows] = await pool.query<(RowDataPacket & { id: number; nombre: string; area_id: number })[]>(
+    `SELECT c.id, c.nombre, c.area_id
        FROM clientes c
        INNER JOIN areas a ON a.id = c.area_id
       WHERE a.empresa_id = ? AND c.activo = TRUE`,
     [empresaId]
   )
   const coincidencias = rows.filter((c) => sinAcentos(c.nombre) === objetivo)
-  return coincidencias.length === 1 ? { id: coincidencias[0].id, nombre: coincidencias[0].nombre } : null
+  return coincidencias.length === 1
+    ? {
+        id: coincidencias[0].id,
+        nombre: coincidencias[0].nombre,
+        areaId: Number(coincidencias[0].area_id),
+      }
+    : null
 }
 
 export async function listarAreas(empresaId: number): Promise<{ id: number; nombre: string }[]> {

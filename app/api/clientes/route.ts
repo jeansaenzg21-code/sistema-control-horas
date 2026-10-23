@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
-import { esJefeDeArea } from '@/lib/permisos'
+import { esAdministrador, esJefeDeArea } from '@/lib/permisos'
 import { leerJson } from '@/lib/validacion/leer-json'
 import { esquemaCliente } from '@/lib/validacion/clientes'
 import { notificarBolsaHoras } from '@/lib/bolsa-alertas'
@@ -15,6 +15,63 @@ async function getContextoActivo(request: Request) {
   return { user, empresaId: context.activa.id } as const
 }
 
+function normalizarNombreCliente(nombre: string): string {
+  return nombre.trim().replace(/\s+/g, ' ')
+}
+
+function normalizarRucCliente(ruc: string): string {
+  return ruc.trim().toUpperCase().replace(/[\s.-]/g, '')
+}
+
+async function buscarClienteDuplicado(
+  empresaId: number,
+  areaId: number,
+  nombre: string | null,
+  ruc: string | null,
+  excluirId?: number,
+): Promise<{ campo: 'nombre' | 'ruc' } | null> {
+  const nombreNormalizado = nombre ? normalizarNombreCliente(nombre) : ''
+  if (nombreNormalizado) {
+    const [porNombre] = await pool.query(
+      `SELECT c.id FROM clientes c
+       INNER JOIN areas a ON a.id = c.area_id
+       WHERE a.empresa_id = ? AND c.area_id = ? AND c.activo = TRUE
+         AND LOWER(REGEXP_REPLACE(TRIM(c.nombre), '[[:space:]]+', ' ')) = LOWER(?)
+         ${excluirId ? 'AND c.id <> ?' : ''}
+       LIMIT 1`,
+      excluirId
+        ? [empresaId, areaId, nombreNormalizado, excluirId]
+        : [empresaId, areaId, nombreNormalizado]
+    )
+    if ((porNombre as unknown[]).length > 0) return { campo: 'nombre' }
+  }
+
+  const rucNormalizado = ruc ? normalizarRucCliente(ruc) : ''
+  if (rucNormalizado) {
+    const [porRuc] = await pool.query(
+      `SELECT c.id FROM clientes c
+       INNER JOIN areas a ON a.id = c.area_id
+       WHERE a.empresa_id = ? AND c.activo = TRUE
+         AND c.ruc IS NOT NULL AND TRIM(c.ruc) <> ''
+         AND REPLACE(REPLACE(REPLACE(UPPER(TRIM(c.ruc)), '.', ''), '-', ''), ' ', '') = ?
+         ${excluirId ? 'AND c.id <> ?' : ''}
+       LIMIT 1`,
+      excluirId
+        ? [empresaId, rucNormalizado, excluirId]
+        : [empresaId, rucNormalizado]
+    )
+    if ((porRuc as unknown[]).length > 0) return { campo: 'ruc' }
+  }
+
+  return null
+}
+
+function mensajeClienteDuplicado(campo: 'nombre' | 'ruc'): string {
+  return campo === 'nombre'
+    ? 'Ya existe un cliente con ese nombre en esta división.'
+    : 'Ya existe un cliente con ese RUC en esta empresa.'
+}
+
 export async function GET(request: Request) {
   try {
     const context = await getContextoActivo(request)
@@ -24,6 +81,13 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const areaId = searchParams.get('area_id')
+
+    // Los formularios de registro de actividades piden `solo_asignados=1` para no
+    // ofrecer clientes donde la persona no tiene ninguna bolsa confirmada. El
+    // ADMINISTRACION se salta el filtro: no tiene asignaciones propias y se
+    // quedaría sin ningún cliente para elegir.
+    const soloAsignados =
+      searchParams.get('solo_asignados') === '1' && !esAdministrador(context.user)
 
     let query = `SELECT c.id, c.nombre, c.ruc, c.correo, c.telefono, c.direccion,
        c.area_id, c.horas_contratadas,
@@ -38,6 +102,21 @@ export async function GET(request: Request) {
       INNER JOIN areas a ON a.id = c.area_id
       WHERE c.activo = TRUE AND a.empresa_id = ?`
     const params: (string | number)[] = [context.empresaId]
+
+    if (soloAsignados) {
+      query += ` AND EXISTS (
+        SELECT 1
+          FROM presupuestos p
+          INNER JOIN presupuesto_servicios s ON s.presupuesto_id = p.id
+          INNER JOIN presupuesto_asignaciones pa ON pa.servicio_id = s.id
+         WHERE p.cliente_id = c.id
+           AND pa.usuario_id = ?
+           AND pa.estado = 'CONFIRMADA'
+           AND s.activo = TRUE
+           AND s.origen IN ('DETALLADO', 'COMPLEMENTARIO')
+      )`
+      params.push(context.user.id)
+    }
 
     const areaJefe = esJefeDeArea(context.user) ? context.user.area_id : null
     if (areaId) {
@@ -90,7 +169,8 @@ export async function POST(request: Request) {
     if (!lectura.ok) return lectura.response
     const body = lectura.data
     const { nombre, ruc, correo, telefono, direccion, area_id, horas_contratadas } = body
-    const nombreLimpio = String(nombre ?? '').trim()
+    const nombreLimpio = normalizarNombreCliente(String(nombre ?? ''))
+    const rucLimpio = ruc?.trim() || null
     const areaId = Number(area_id)
     if (!nombreLimpio) {
       return NextResponse.json({ error: 'El nombre del cliente es obligatorio.' }, { status: 400 })
@@ -107,7 +187,15 @@ export async function POST(request: Request) {
       [areaId, context.empresaId]
     )
     if ((areaRows as unknown[]).length === 0) {
-      return NextResponse.json({ error: 'La división no pertenece a la empresa activa.' }, { status: 400 })
+      return NextResponse.json({ error: 'La divisi��n no pertenece a la empresa activa.' }, { status: 400 })
+    }
+
+    const duplicado = await buscarClienteDuplicado(context.empresaId, areaId, nombreLimpio, rucLimpio)
+    if (duplicado) {
+      return NextResponse.json(
+        { error: mensajeClienteDuplicado(duplicado.campo) },
+        { status: 409 }
+      )
     }
 
     const [result] = await pool.query(
@@ -115,7 +203,7 @@ export async function POST(request: Request) {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         nombreLimpio,
-        ruc?.trim() || null,
+        rucLimpio,
         correo?.trim() || null,
         telefono?.trim() || null,
         direccion?.trim() || null,
@@ -150,11 +238,16 @@ export async function PUT(request: Request) {
     if (!id) return NextResponse.json({ error: 'ID requerido.' }, { status: 400 })
 
     const [exists] = await pool.query(
-      `SELECT c.id, c.area_id FROM clientes c INNER JOIN areas a ON a.id = c.area_id
+      `SELECT c.id, c.area_id, c.nombre, c.ruc FROM clientes c INNER JOIN areas a ON a.id = c.area_id
        WHERE c.id = ? AND a.empresa_id = ?`,
       [id, context.empresaId]
     )
-    const clienteExistente = (exists as Array<{ id: number; area_id: number }>)[0]
+    const clienteExistente = (exists as Array<{
+      id: number
+      area_id: number
+      nombre: string
+      ruc: string | null
+    }>)[0]
     if (!clienteExistente) {
       return NextResponse.json({ error: 'Cliente no encontrado.' }, { status: 404 })
     }
@@ -173,7 +266,37 @@ export async function PUT(request: Request) {
         [nuevaAreaId, context.empresaId]
       )
       if ((areaRows as unknown[]).length === 0) {
-        return NextResponse.json({ error: 'La división no pertenece a la empresa activa.' }, { status: 400 })
+        return NextResponse.json({ error: 'La divisi��n no pertenece a la empresa activa.' }, { status: 400 })
+      }
+    }
+
+    const nombreEfectivo = nombre != null && String(nombre).trim()
+      ? String(nombre)
+      : clienteExistente.nombre
+    const rucEfectivo = ruc != null && String(ruc).trim()
+      ? String(ruc)
+      : clienteExistente.ruc
+    const areaEfectiva = nuevaAreaId ?? Number(clienteExistente.area_id)
+    const nombreCambia = normalizarNombreCliente(nombreEfectivo)
+      !== normalizarNombreCliente(clienteExistente.nombre)
+    const rucCambia = Boolean(rucEfectivo)
+      && normalizarRucCliente(String(rucEfectivo))
+        !== normalizarRucCliente(String(clienteExistente.ruc ?? ''))
+    const areaCambia = areaEfectiva !== Number(clienteExistente.area_id)
+
+    if (nombreCambia || rucCambia || areaCambia) {
+      const duplicado = await buscarClienteDuplicado(
+        context.empresaId,
+        areaEfectiva,
+        nombreCambia || areaCambia ? nombreEfectivo : null,
+        rucCambia ? rucEfectivo : null,
+        Number(id)
+      )
+      if (duplicado) {
+        return NextResponse.json(
+          { error: mensajeClienteDuplicado(duplicado.campo) },
+          { status: 409 }
+        )
       }
     }
 

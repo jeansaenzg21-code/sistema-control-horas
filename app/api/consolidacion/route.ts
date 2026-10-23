@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { RowDataPacket } from 'mysql2'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esJefeDeArea } from '@/lib/permisos'
@@ -15,19 +16,18 @@ export async function GET(request: Request) {
     const desde = searchParams.get('desde')
     const hasta = searchParams.get('hasta')
 
-    let query = `SELECT
-      u.id AS usuario_id, u.nombre AS usuario_nombre, u.cargo,
-      a.estado,
-      a.facturable,
-      COALESCE((SELECT SUM(TIMESTAMPDIFF(SECOND, p.inicio, COALESCE(p.fin, NOW()))) FROM pausas p WHERE p.actividad_id = a.id), 0) AS pausa_segundos,
-      CASE
-        WHEN a.fin IS NOT NULL THEN TIMESTAMPDIFF(SECOND, a.inicio, a.fin)
-        ELSE 0
-      END AS duracion_bruta_segundos
-      FROM actividades a
-      INNER JOIN usuarios u ON u.id = a.usuario_id
-      INNER JOIN areas ar ON ar.id = u.area_id
-      WHERE ar.empresa_id = ? AND a.estado IN ('APROBADA', 'PENDIENTE_APROBACION', 'RECHAZADA')`
+    if (desde && !/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
+      return NextResponse.json({ error: 'La fecha inicial no es válida.' }, { status: 400 })
+    }
+    if (hasta && !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+      return NextResponse.json({ error: 'La fecha final no es válida.' }, { status: 400 })
+    }
+
+    // La consolidación solo necesita los TOTALES por persona. Antes esta ruta
+    // devolvía una fila por actividad y sumaba en JavaScript; la pantalla, en
+    // paralelo, se bajaba todas las filas del área para hacer lo mismo. Agrupar
+    // en SQL deja la respuesta en una fila por colaborador.
+    const where: string[] = ['ar.empresa_id = ?']
     const params: (string | number)[] = [context.activa.id]
 
     const areaJefe = esJefeDeArea(user) ? user.area_id : null
@@ -35,69 +35,74 @@ export async function GET(request: Request) {
       if (areaId && Number(areaId) !== areaJefe) {
         return NextResponse.json({ error: 'Sólo puedes consultar la consolidación de tu área.' }, { status: 403 })
       }
-      query += ' AND u.area_id = ?'
+      where.push('u.area_id = ?')
       params.push(areaJefe)
     } else if (areaId) {
       const parsedAreaId = Number(areaId)
       if (!Number.isInteger(parsedAreaId) || parsedAreaId <= 0) {
         return NextResponse.json({ error: 'La división indicada no es válida.' }, { status: 400 })
       }
-      query += ' AND u.area_id = ?'
+      where.push('u.area_id = ?')
       params.push(parsedAreaId)
     }
     if (desde) {
-      query += ' AND DATE(a.inicio) >= ?'
-      params.push(desde)
+      where.push('a.inicio >= ?')
+      params.push(`${desde} 00:00:00`)
     }
     if (hasta) {
-      query += ' AND DATE(a.inicio) <= ?'
-      params.push(hasta)
+      // Rango semiabierto: `DATE(a.inicio) <= ?` impide usar el índice de
+      // `inicio`. Se compara contra el día siguiente a las 00:00.
+      const dia = new Date(`${hasta}T00:00:00Z`)
+      dia.setUTCDate(dia.getUTCDate() + 1)
+      where.push('a.inicio < ?')
+      params.push(`${dia.toISOString().slice(0, 10)} 00:00:00`)
     }
 
-    const [rows] = await pool.query(query, params)
-    const registros = rows as Array<Record<string, unknown>>
+    const [filas] = await pool.query<RowDataPacket[]>(
+      `SELECT x.usuario_id, u.nombre AS usuario_nombre, u.cargo,
+              COUNT(*) AS registros,
+              COALESCE(SUM(x.segundos), 0) AS total_segundos,
+              COALESCE(SUM(CASE WHEN x.estado = 'APROBADA' AND x.facturable = 1 THEN x.segundos ELSE 0 END), 0) AS facturadas_segundos,
+              COALESCE(SUM(CASE WHEN x.estado = 'RECHAZADA' OR (x.estado = 'APROBADA' AND x.facturable = 0) THEN x.segundos ELSE 0 END), 0) AS no_facturadas_segundos
+         FROM (
+           SELECT a.usuario_id, a.estado, a.facturable,
+                  CASE
+                    WHEN a.fin IS NOT NULL
+                      THEN GREATEST(0, TIMESTAMPDIFF(SECOND, a.inicio, a.fin) - COALESCE(pa.segundos, 0))
+                    ELSE 0
+                  END AS segundos
+             FROM actividades a
+             INNER JOIN usuarios u ON u.id = a.usuario_id
+             INNER JOIN areas ar ON ar.id = u.area_id
+             LEFT JOIN (
+               SELECT p.actividad_id,
+                      SUM(TIMESTAMPDIFF(SECOND, p.inicio, COALESCE(p.fin, NOW()))) AS segundos
+                 FROM pausas p
+                GROUP BY p.actividad_id
+             ) pa ON pa.actividad_id = a.id
+            WHERE ${where.join(' AND ')}
+         ) x
+         INNER JOIN usuarios u ON u.id = x.usuario_id
+        GROUP BY x.usuario_id, u.nombre, u.cargo
+        ORDER BY total_segundos DESC, u.nombre ASC`,
+      params
+    )
 
-    const mapa = new Map<string, {
-      usuario_id: number
-      usuario_nombre: string
-      cargo: string | null
-      total_segundos: number
-      facturables_segundos: number
-      no_facturables_segundos: number
-      pendientes: number
-      aprobadas: number
-      rechazadas: number
-    }>()
-
-    for (const r of registros) {
-      const key = `${r.usuario_id}`
-      if (!mapa.has(key)) {
-        mapa.set(key, {
-          usuario_id: r.usuario_id as number,
-          usuario_nombre: r.usuario_nombre as string,
-          cargo: r.cargo == null ? null : String(r.cargo),
-          total_segundos: 0,
-          facturables_segundos: 0,
-          no_facturables_segundos: 0,
-          pendientes: 0,
-          aprobadas: 0,
-          rechazadas: 0,
-        })
+    return NextResponse.json(filas.map((fila) => {
+      const total = Number(fila.total_segundos)
+      const facturadas = Number(fila.facturadas_segundos)
+      const noFacturadas = Number(fila.no_facturadas_segundos)
+      return {
+        usuario_id: Number(fila.usuario_id),
+        usuario_nombre: String(fila.usuario_nombre),
+        cargo: fila.cargo == null ? null : String(fila.cargo),
+        registros: Number(fila.registros),
+        total_segundos: total,
+        facturadas_segundos: facturadas,
+        no_facturadas_segundos: noFacturadas,
+        por_definir_segundos: Math.max(0, total - facturadas - noFacturadas),
       }
-      const g = mapa.get(key)!
-      const duracionSeg = ((r.duracion_bruta_segundos as number) || 0) - ((r.pausa_segundos as number) || 0)
-      g.total_segundos += duracionSeg
-      if (r.facturable === true || r.facturable === 1) {
-        g.facturables_segundos += duracionSeg
-      } else {
-        g.no_facturables_segundos += duracionSeg
-      }
-      if (r.estado === 'PENDIENTE_APROBACION') g.pendientes++
-      else if (r.estado === 'APROBADA') g.aprobadas++
-      else if (r.estado === 'RECHAZADA') g.rechazadas++
-    }
-
-    return NextResponse.json(Array.from(mapa.values()))
+    }))
   } catch (error) {
     console.error('Error en consolidación:', error)
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
