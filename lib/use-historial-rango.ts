@@ -45,9 +45,15 @@ export type ResultadoRango = {
 export function useHistorialRango(
   desde: string,
   hasta: string,
-  opciones: { usuarioId?: number | null; soloPropias?: boolean; todaEmpresa?: boolean } = {}
+  opciones: {
+    usuarioId?: number | null
+    soloPropias?: boolean
+    todaEmpresa?: boolean
+    /** Permite no pedir nada hasta que la pantalla tenga todo lo necesario. */
+    habilitado?: boolean
+  } = {}
 ): ResultadoRango {
-  const { usuarioId = null, todaEmpresa = false } = opciones
+  const { usuarioId = null, todaEmpresa = false, habilitado = true } = opciones
   const [registros, setRegistros] = useState<Actividad[]>([])
   const [cargando, setCargando] = useState(false)
   const [completo, setCompleto] = useState(true)
@@ -58,6 +64,14 @@ export function useHistorialRango(
   const clave = `${desde}|${hasta}|${usuarioId ?? ''}|${todaEmpresa ? 'todos' : 'propios'}`
 
   const cargar = useCallback(async () => {
+    if (!habilitado) {
+      setRegistros([])
+      setTotal(0)
+      setCompleto(true)
+      setCargando(false)
+      return
+    }
+
     // Un rango SIN fechas puede ser de años, y entonces son decenas de miles de
     // filas. Para quien solo necesita numeros esta es la via equivocada: existe
     // /api/actividades/resumen, que devuelve los agregados ya calculados. Para
@@ -86,6 +100,13 @@ export function useHistorialRango(
       setCargando(false)
       return
     }
+
+    // Al cambiar de usuario no se dejan a la vista las filas del anterior
+    // mientras llega la respuesta: serian datos de otra persona en una pantalla
+    // que se firma como consolidacion.
+    setRegistros([])
+    setTotal(0)
+    setCompleto(true)
 
     // Sin rango indicado la pantalla quiere TODO el historial, que es lo que
     // hacia antes de que existiera la paginacion. Se piden todas las paginas
@@ -142,7 +163,7 @@ export function useHistorialRango(
     } finally {
       if (pedido === pedidoRef.current) setCargando(false)
     }
-  }, [clave, desde, hasta, usuarioId, todaEmpresa])
+  }, [clave, desde, hasta, usuarioId, todaEmpresa, habilitado])
 
   useEffect(() => {
     void cargar()

@@ -5,14 +5,13 @@ import bcrypt from 'bcryptjs'
  *
  * Antes habia cuatro reglas distintas (4 caracteres en el setup, 7 en la
  * importacion, 10 en las de usuario) y ninguna era la misma. Toda ruta que crea
- * o cambia una contrasena debe pasar por aqui.
+ * o cambia una contrasena debe pasar por aqui, salvo la importacion masiva de
+ * personal: ahi la contrasena inicial es el DNI y no cumple esta politica.
  *
  * Requisitos:
- *   - Minimo 10 caracteres.
  *   - Al menos una letra.
  *   - Al menos un numero.
  */
-export const LONGITUD_MINIMA_PASSWORD = 10
 export const COSTO_BCRYPT = 12
 
 export interface ResultadoPassword {
@@ -23,12 +22,6 @@ export interface ResultadoPassword {
 export function validarPassword(password: unknown): ResultadoPassword {
   if (typeof password !== 'string' || password.length === 0) {
     return { ok: false, error: 'La contraseña es obligatoria.' }
-  }
-  if (password.length < LONGITUD_MINIMA_PASSWORD) {
-    return {
-      ok: false,
-      error: `La contraseña debe tener al menos ${LONGITUD_MINIMA_PASSWORD} caracteres.`,
-    }
   }
   if (!/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(password)) {
     return { ok: false, error: 'La contraseña debe incluir al menos una letra.' }

@@ -19,12 +19,11 @@ import { useClientes } from '@/lib/clientes-context'
 import { useAreas } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 import { useNotificaciones } from '@/lib/notificaciones-context'
-import { notifyClientesChange } from '@/lib/events'
 import { CarteraClientes } from './cartera-clientes'
 import { ClienteGestion } from './cliente-gestion'
 import type { ClienteCartera } from './cartera-ui'
 import { SettingsClientePresupuestos } from './settings-cliente-presupuestos'
-import { ImportadorPresupuesto } from './cliente-desde-excel'
+import { ImportarPresupuestosMasivo } from './importar-presupuestos-masivo'
 
 interface FormularioCliente {
   nombre: string
@@ -50,19 +49,18 @@ const TITULO_CARPETA = 'Cartera de clientes'
 const SUBTITULO_CARPETA = 'Presupuestos, bolsas de horas y desviaciones desde una sola vista.'
 
 export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, subtitulo: string) => void }) {
-  const { clientes, cargando, crearCliente, actualizarCliente, eliminarCliente } = useClientes()
+  const { cargando, cargarClientes, actualizarCliente, eliminarCliente } = useClientes()
   const { areas } = useAreas()
   const { usuario } = useAuth()
-  const esJefeArea = usuario?.rol === 'jefe_area'
   const { cargarNotificaciones } = useNotificaciones()
 
-  const [creando, setCreando] = useState(false)
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [formulario, setFormulario] = useState<FormularioCliente>(formularioVacio)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState('')
   const [presupuestosDe, setPresupuestosDe] = useState<{ id: number; nombre: string } | null>(null)
   const [clienteAbierto, setClienteAbierto] = useState<ClienteCartera | null>(null)
+  const [importandoMasivo, setImportandoMasivo] = useState(false)
 
   useEffect(() => {
     if (!cargando && usuario) void cargarNotificaciones(usuario.id)
@@ -80,16 +78,6 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
     onCabecera(clienteAbierto.nombre, `${clienteAbierto.area_nombre} · gestión integral`)
   }, [onCabecera, clienteAbierto])
 
-  const abrirCrear = useCallback(() => {
-    setFormulario({
-      ...formularioVacio,
-      area_id: esJefeArea && usuario?.area_id ? Number(usuario.area_id) : '',
-    })
-    setEditandoId(null)
-    setCreando(true)
-    setError('')
-  }, [esJefeArea, usuario?.area_id])
-
   const iniciarEdicion = useCallback((cliente: ClienteCartera) => {
     setFormulario({
       nombre: cliente.nombre,
@@ -101,13 +89,11 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
       horas_contratadas: cliente.horasContratadas,
     })
     setEditandoId(cliente.id)
-    setCreando(false)
     setError('')
   }, [])
 
   const cancelar = useCallback(() => {
     setFormulario(formularioVacio)
-    setCreando(false)
     setEditandoId(null)
     setError('')
   }, [])
@@ -149,79 +135,11 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
         />
       ) : (
         <CarteraClientes
-          onCrear={abrirCrear}
           onEditar={(c) => { iniciarEdicion(c); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
           onEliminar={(c) => void manejarEliminar(c.id, c.nombre)}
           onImportarPresupuesto={(c) => setPresupuestosDe({ id: c.id, nombre: c.nombre })}
           onAbrirGestion={(c) => { setClienteAbierto(c); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
-        />
-      )}
-
-      {/* "Nuevo cliente" abre directamente el modal de subir el Excel. Antes
-          pasaba por un cartel intermedio con dos botones, y el importador se
-          quedaba pintado debajo de la tabla, que parecía un aviso suelto.
-          El Excel ya trae el cliente y el área, así que el camino natural es
-          subir el archivo. */}
-      {creando && (
-        <ImportadorPresupuesto
-          onCancelar={cancelar}
-          onListo={async (datos) => {
-            // Primero el cliente, porque presupuesto_servicios y el propio
-            // presupuesto cuelgan de él y no pueden existir sin cliente.
-            //
-            // `horas_contratadas` se deja en 0 a propósito. Las horas del Excel
-            // NO son horas contratadas todavía: hay 2 h complementarias sin
-            // confirmar, y ese total se recalcula cuando el Líder active las
-            // bolsas. Además `clientes.horas_contratadas` es un único número para
-            // todo el cliente: escribir ahí el total de un proyecto contaminaría
-            // los saldos de los demás proyectos del mismo cliente.
-            const creado = await crearCliente({
-              nombre: datos.nombre,
-              area_id: datos.areaId,
-              horas_contratadas: 0,
-              // El Excel no trae datos de contacto: se dejan vacíos y el usuario
-              // los rellena después si los necesita.
-              ruc: null,
-              correo: null,
-              telefono: null,
-              direccion: null,
-            })
-
-            if (!creado?.ok) {
-              setError(creado?.error ?? 'No se pudo crear el cliente.')
-              return
-            }
-
-            // El id lo devuelve el alta, no se busca en `clientes`: ese array
-            // todavía no incluye al cliente nuevo, así que buscarlo por nombre
-            // fallaba y el Excel nunca se importaba. El modal se cerraba como si
-            // nada y el cliente quedaba sin una sola hora.
-            if (!creado.id) {
-              setError('El cliente se creó, pero el alta no devolvió su id: no se pudo importar el presupuesto.')
-              return
-            }
-
-            // Y después el presupuesto, reenviando el Excel que ya se había leído.
-            const binario = Uint8Array.from(atob(datos.archivoBase64), (c) => c.charCodeAt(0))
-            const fd = new FormData()
-            fd.append('archivo', new File([binario], datos.nombreArchivo))
-            fd.append('cliente_id', String(creado.id))
-            const r = await fetch('/api/presupuestos', { method: 'POST', body: fd })
-
-            if (!r.ok) {
-              const cuerpo = await r.json().catch(() => ({}))
-              setError(
-                `El cliente se creó, pero el presupuesto no se pudo importar: ${cuerpo.error ?? 'error desconocido'}.`,
-              )
-            }
-            // `crearCliente` ya avisó, pero lo hizo ANTES de importar el Excel:
-              // quien escuchaba podía recargar la cartera con el cliente a cero
-              // horas. Este segundo aviso llega con el presupuesto ya guardado,
-              // que es el estado final que se tiene que ver en pantalla.
-            notifyClientesChange()
-            setCreando(false)
-            setPresupuestosDe({ id: creado.id, nombre: datos.nombre })
-          }}
+          onImportarClientes={() => setImportandoMasivo(true)}
         />
       )}
 
@@ -292,6 +210,13 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
         <SettingsClientePresupuestos
           cliente={presupuestosDe}
           onCerrar={() => setPresupuestosDe(null)}
+        />
+      )}
+
+      {importandoMasivo && (
+        <ImportarPresupuestosMasivo
+          onCerrar={() => setImportandoMasivo(false)}
+          onCompletado={() => void cargarClientes()}
         />
       )}
     </div>

@@ -5,7 +5,7 @@ import { esAdmin } from '@/lib/excepciones'
 import { NOMBRES_DIAS } from '@/lib/dias'
 import { horarioValido } from '@/lib/horarios'
 import { clasificarRolPorCargo, tipoCargo } from '@/lib/cargos'
-import { hashearPassword, validarPassword } from '@/lib/validacion-password'
+import { hashearPassword } from '@/lib/validacion-password'
 
 interface FilaImportacion {
   nombre: string
@@ -154,8 +154,7 @@ export async function POST(request: Request) {
         const cargo = cargoDeFila(f)
 
         if (!nombre || !usuario) { errores.push({ fila: numFila, error: 'Falta el nombre o el usuario.' }); continue }
-        const validacion = validarPassword(contrasena)
-        if (!validacion.ok) { errores.push({ fila: numFila, error: validacion.error || 'La contraseña no cumple la política.' }); continue }
+        if (!contrasena) { errores.push({ fila: numFila, error: 'Falta la contraseña inicial.' }); continue }
 
         const clave = usuario.toLowerCase()
         if (usuariosVistos.has(clave)) { omitidos++; continue }

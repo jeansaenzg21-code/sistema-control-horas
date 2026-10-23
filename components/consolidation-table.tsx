@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Building2, CalendarDays, ChevronLeft, ChevronRight, Clock, TrendingUp, Wallet } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { StatusBadge } from './status-badge'
 import { FacturableBadge } from './facturable-badge'
 import { useHistorialRango } from '@/lib/use-historial-rango'
 import { useAreas } from '@/lib/areas-context'
+import { opcionesApi } from '@/lib/api-cliente'
 import type { Actividad } from '@/lib/types'
 import { cn, esFacturable, esNoFacturable, fechaLocalISO, formatoHoras, nombreCorto } from '@/lib/utils'
 
@@ -16,15 +18,21 @@ const REGISTROS_POR_PAGINA = 10
 
 interface GrupoUsuario {
   key: string
+  usuarioId: number
   nombre: string
   totalHoras: number
-  registros: Actividad[]
 }
 
-function calcSegundos(r: Actividad): number {
-  if (!r.fin || !r.inicio) return 0
-  const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
-  return Math.max(0, diff - (r.pausa_acumulada_segundos || 0))
+/** Totales por persona que devuelve /api/consolidacion (una fila por usuario). */
+interface ResumenUsuario {
+  usuario_id: number
+  usuario_nombre: string
+  cargo: string | null
+  registros: number
+  total_segundos: number
+  facturadas_segundos: number
+  no_facturadas_segundos: number
+  por_definir_segundos: number
 }
 
 function esFacturada(r: Actividad): boolean {
@@ -50,48 +58,70 @@ export function ConsolidationTable() {
   const [desde, setDesde] = useState(() => `${new Date().getFullYear()}-01-01`)
   const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10))
 
-  // La consolidacion necesita las filas del periodo, porque al elegir una
-  // persona se listan sus registros de 10 en 10. El rango arranca en el 1 de
-  // enero del año en curso en vez de "todo el historico": sin fechas, traer
-  // todo son decenas de miles de filas al navegador. Los selectores de fecha
-  // siguen a la vista para ampliar o acotar el periodo, y el aviso de
-  // `rangoCompleto` aparece si aun asi se supera el tope.
-  const { registros: registrosRango, completo: rangoCompleto } = useHistorialRango(desde, hasta)
+  // La division no se elige sola para admin/socio. Antes la pantalla pedia
+  // igualmente TODAS las filas de la empresa al montar, aunque el aviso de
+  // abajo dijera "Selecciona una division": era la causa de que entrar a
+  // Consolidacion tardara decenas de segundos.
+  const resumenQuery = useQuery({
+    queryKey: ['consolidacion', areaId, desde, hasta],
+    enabled: areaId !== '' && Boolean(desde) && Boolean(hasta),
+    staleTime: 60_000,
+    queryFn: async () => {
+      const params = new URLSearchParams({ area_id: areaId, desde, hasta })
+      const res = await fetch(`/api/consolidacion?${params.toString()}`, opcionesApi())
+      if (!res.ok) throw new Error('No se pudo cargar la consolidación.')
+      return (await res.json()) as ResumenUsuario[]
+    },
+  })
+
+  const resumenPorUsuario = resumenQuery.data ?? []
   const [filtro, setFiltro] = useState<FiltroFactura>('todas')
+  const [usuarioSeleccionadoId, setUsuarioSeleccionadoId] = useState<number | null>(null)
 
-  const registros = useMemo(() => {
-    return registrosRango.filter((registro) => {
-      if (areaId && String(registro.area_id ?? '') !== areaId) return false
-      const fecha = fechaLocalISO(registro.inicio)
-      if (desde && fecha < desde) return false
-      if (hasta && fecha > hasta) return false
-      return true
-    })
-  }, [areaId, desde, hasta, registrosRango])
+  // El detalle se pide SOLO de la persona elegida. Antes se bajaban todas las
+  // filas de la division para agruparlas en el navegador y mostrar 10.
+  const {
+    registros: registrosRango,
+    completo: rangoCompleto,
+    cargando: cargandoRegistros,
+  } = useHistorialRango(desde, hasta, {
+    usuarioId: usuarioSeleccionadoId,
+    habilitado: usuarioSeleccionadoId != null,
+  })
 
-  const gruposPorUsuario = useMemo(() => {
-    const grupos = new Map<string, GrupoUsuario>()
-    for (const r of registros) {
-      const key = r.usuario_nombre || 'Sin usuario'
-      const grupo = grupos.get(key) ?? { key, nombre: key, totalHoras: 0, registros: [] }
-      grupo.registros.push(r)
-      grupo.totalHoras += calcSegundos(r) / 3600
-      grupos.set(key, grupo)
+  const gruposPorUsuario = useMemo(
+    () =>
+      resumenPorUsuario.map((fila) => ({
+        key: String(fila.usuario_id),
+        usuarioId: fila.usuario_id,
+        nombre: fila.usuario_nombre,
+        totalHoras: fila.total_segundos / 3600,
+      })),
+    [resumenPorUsuario],
+  )
+
+  useEffect(() => {
+    if (gruposPorUsuario.length === 0) {
+      if (usuarioSeleccionadoId != null) setUsuarioSeleccionadoId(null)
+      return
     }
-    return [...grupos.values()]
-  }, [registros])
+    if (usuarioSeleccionadoId == null || !gruposPorUsuario.some((g) => g.usuarioId === usuarioSeleccionadoId)) {
+      setUsuarioSeleccionadoId(gruposPorUsuario[0].usuarioId)
+    }
+  }, [gruposPorUsuario, usuarioSeleccionadoId])
 
-  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>(() => gruposPorUsuario[0]?.key ?? '')
   const [pagina, setPagina] = useState(1)
 
-  const grupoActual = gruposPorUsuario.find((g) => g.key === usuarioSeleccionado) ?? gruposPorUsuario[0]
+  const grupoActual =
+    gruposPorUsuario.find((g) => g.usuarioId === usuarioSeleccionadoId) ?? gruposPorUsuario[0]
+
+  const registros = registrosRango
 
   const filtradas = useMemo(() => {
-    if (!grupoActual) return []
-    if (filtro === 'facturadas') return grupoActual.registros.filter((r) => esFacturada(r))
-    if (filtro === 'no_facturadas') return grupoActual.registros.filter((r) => esNoFacturada(r))
-    return grupoActual.registros
-  }, [grupoActual, filtro])
+    if (filtro === 'facturadas') return registros.filter((r) => esFacturada(r))
+    if (filtro === 'no_facturadas') return registros.filter((r) => esNoFacturada(r))
+    return registros
+  }, [registros, filtro])
 
   const totalPaginas = Math.max(1, Math.ceil(filtradas.length / REGISTROS_POR_PAGINA))
   const paginaActual = Math.min(pagina, totalPaginas)
@@ -100,19 +130,26 @@ export function ConsolidationTable() {
 
   useEffect(() => {
     setPagina(1)
-  }, [areaId, desde, hasta, filtro, usuarioSeleccionado])
+  }, [areaId, desde, hasta, filtro, usuarioSeleccionadoId])
 
-  const resumen = useMemo(
-    () => ({
-      total: registros.reduce((acc, r) => acc + calcSegundos(r) / 3600, 0),
-      facturadas: registros.filter((r) => esFacturada(r)).reduce((acc, r) => acc + calcSegundos(r) / 3600, 0),
-      noFacturadas: registros.filter((r) => esNoFacturada(r)).reduce((acc, r) => acc + calcSegundos(r) / 3600, 0),
-      porDefinir: registros
-        .filter((r) => !esFacturada(r) && !esNoFacturada(r))
-        .reduce((acc, r) => acc + calcSegundos(r) / 3600, 0),
-    }),
-    [registros],
-  )
+  const resumen = useMemo(() => {
+    let total = 0
+    let facturadas = 0
+    let noFacturadas = 0
+    let porDefinir = 0
+    for (const fila of resumenPorUsuario) {
+      total += fila.total_segundos
+      facturadas += fila.facturadas_segundos
+      noFacturadas += fila.no_facturadas_segundos
+      porDefinir += fila.por_definir_segundos
+    }
+    return {
+      total: total / 3600,
+      facturadas: facturadas / 3600,
+      noFacturadas: noFacturadas / 3600,
+      porDefinir: porDefinir / 3600,
+    }
+  }, [resumenPorUsuario])
 
   const indicadores = [
     { etiqueta: 'Total de horas', valor: formatoHoras(resumen.total), icono: Clock, color: 'text-foreground' },
@@ -149,10 +186,20 @@ export function ConsolidationTable() {
 
   return (
     <div className="space-y-5">
+      {areaId !== '' && resumenQuery.isPending && (
+        <p className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+          Cargando consolidación…
+        </p>
+      )}
+      {areaId !== '' && resumenQuery.isError && (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          No se pudo cargar la consolidación. Intenta de nuevo.
+        </p>
+      )}
       {/* Si el periodo tiene mas registros de los que se pueden traer, los
           totales de abajo NO son los reales. Se dice, en vez de dejar que una
           cifra incompleta parezca la definitiva. */}
-      {!rangoCompleto && (
+      {!rangoCompleto && usuarioSeleccionadoId != null && (
         <p className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
           Este periodo tiene demasiados registros para resumirlos aquí. Acota las
           fechas para ver el total completo.
@@ -195,7 +242,7 @@ export function ConsolidationTable() {
         {gruposPorUsuario.map((grupo) => (
           <button
             key={grupo.key}
-            onClick={() => setUsuarioSeleccionado(grupo.key)}
+            onClick={() => setUsuarioSeleccionadoId(grupo.usuarioId)}
             title={grupo.nombre}
             className={cn(
               'flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors',
@@ -255,7 +302,14 @@ export function ConsolidationTable() {
             </tr>
           </thead>
           <tbody>
-            {filtradasPagina.map((actividad) => (
+            {cargandoRegistros && (
+              <tr>
+                <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  Cargando registros…
+                </td>
+              </tr>
+            )}
+            {!cargandoRegistros && filtradasPagina.map((actividad) => (
               <tr
                 key={actividad.id}
                 className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/30"
@@ -292,7 +346,7 @@ export function ConsolidationTable() {
                 <td className="px-3 py-2 text-muted-foreground">{fechaLocalISO(actividad.inicio)}</td>
               </tr>
             ))}
-            {filtradas.length === 0 && (
+            {!cargandoRegistros && filtradas.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-3 py-8 text-center text-sm text-muted-foreground">
                   No hay registros en esta categoría.

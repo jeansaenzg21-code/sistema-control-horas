@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { RowDataPacket } from 'mysql2'
 import type { EmpresaContext, SessionUser } from '@/lib/auth'
-import { horarioDeHoy, enRangoHorario, minutosAcumuladosHoy, aMinutos } from '@/lib/horarios'
 import { esAdministrador, esJefeDeArea } from '@/lib/permisos'
 import { estructuraProyectosDisponible } from '@/lib/proyectos'
 import {
@@ -13,6 +12,8 @@ import {
 } from '@/lib/operaciones-moviles'
 import { columnaExiste } from '@/lib/esquema'
 import { notifyActivityChange } from '@/lib/events'
+import { notificarRevisoresActividad } from '@/lib/notificaciones'
+import { notificarBolsaHorasPorId } from '@/lib/bolsa-alertas'
 
 async function tieneColumnaProyecto(): Promise<boolean> {
   return (await columnaExiste('actividades', 'proyecto_id')) && (await estructuraProyectosDisponible())
@@ -28,7 +29,7 @@ export async function crearActividad(
   body: Record<string, unknown>
 ): Promise<NextResponse> {
   try {
-    const { usuario_id, tipo_actividad_id, cliente_id, descripcion, facturable, proyecto_id, presupuesto_servicio_id, inicio, id_operacion } = body
+    const { usuario_id, tipo_actividad_id, cliente_id, descripcion, facturable, proyecto_id, presupuesto_servicio_id, inicio, fin, id_operacion } = body
     const usuarioObjetivoId = Number(usuario_id)
     const tipoActividadId = Number(tipo_actividad_id)
     const clienteId = cliente_id == null || cliente_id === '' ? null : Number(cliente_id)
@@ -39,9 +40,34 @@ export async function crearActividad(
     const servicioId = presupuesto_servicio_id == null || presupuesto_servicio_id === '' ? null : Number(presupuesto_servicio_id)
     const idOperacion = normalizarIdOperacion(id_operacion)
     const marcaInicio = validarMarcaTiempoCliente(inicio, 'hora de inicio')
+    const marcaFin = validarMarcaTiempoCliente(fin, 'hora de finalización')
 
     if (marcaInicio !== null && !marcaInicio.ok) {
       return NextResponse.json({ error: marcaInicio.error }, { status: 400 })
+    }
+    if (marcaFin !== null && !marcaFin.ok) {
+      return NextResponse.json({ error: marcaFin.error }, { status: 400 })
+    }
+
+    // Un registro con hora de fin es un bloque ya trabajado (se anota al
+    // terminar la jornada). Nace cerrado y pasa directo a aprobación; no se
+    // convierte en la actividad en curso de nadie. Sin `fin` se mantiene el
+    // comportamiento clásico del cronómetro.
+    const inicioCliente = marcaInicio !== null && marcaInicio.ok ? marcaInicio.fecha : null
+    const finCliente = marcaFin !== null && marcaFin.ok ? marcaFin.fecha : null
+    const esBloqueCerrado = finCliente !== null
+
+    if (esBloqueCerrado && !inicioCliente) {
+      return NextResponse.json(
+        { error: 'Indica la hora de inicio del bloque de trabajo.' },
+        { status: 400 }
+      )
+    }
+    if (inicioCliente && finCliente && finCliente.getTime() <= inicioCliente.getTime()) {
+      return NextResponse.json(
+        { error: 'La hora de fin no puede ser anterior a la hora de inicio.' },
+        { status: 400 }
+      )
     }
 
     if (descripcionTexto === undefined) {
@@ -202,38 +228,6 @@ if (tipoValido.length === 0) {
     // toque) pasarían las dos el control y guardarían dos actividades. Se hace
     // dentro de una transacción con bloqueo de la fila del usuario; ver más abajo.
 
-    // Control de horario de trabajo del usuario (si tiene configurado para hoy).
-
-    const horario = await horarioDeHoy(usuarioObjetivoId)
-    if (horario) {
-      // Si la app móvil enviadas la hora de inicio, el horario se valida contra
-      // ese momento y no contra la hora de sincronización.
-      const ahora = marcaInicio !== null && marcaInicio.ok ? marcaInicio.fecha : new Date()
-      if (!enRangoHorario(horario.hora_inicio, horario.hora_fin, ahora)) {
-        const inicio = horario.hora_inicio.slice(0, 5)
-        const fin = horario.hora_fin.slice(0, 5)
-        return NextResponse.json(
-          {
-            error: `No puede registrar actividades ahora: se encuentra fuera de su horario de trabajo de hoy (${inicio} a ${fin}).`,
-            code: 'FUERA_DE_HORARIO',
-          },
-          { status: 409 }
-        )
-      }
-      const minutosDisponibles = aMinutos(horario.hora_fin) - aMinutos(horario.hora_inicio)
-      const acumulados = await minutosAcumuladosHoy(usuarioObjetivoId)
-      if (acumulados >= minutosDisponibles) {
-        return NextResponse.json(
-          {
-            error: `Ya completó sus horas laborales de hoy (${Math.floor(minutosDisponibles / 60)} h ${minutosDisponibles % 60} min). No puede iniciar nuevas actividades.`,
-            code: 'HORAS_COMPLETADAS',
-          },
-          { status: 409 }
-        )
-      }
-    }
-
-    const inicioCliente = marcaInicio !== null && marcaInicio.ok ? marcaInicio.fecha : null
     const registraOperacion = (await columnaIdOperacionDisponible()) && idOperacion !== null
     const columnas = ['usuario_id', 'cliente_id', 'tipo_actividad_id', 'descripcion', 'facturable']
     const valores: Array<string | number | Date | null> = [
@@ -265,6 +259,10 @@ if (tipoValido.length === 0) {
     // sirve la API.
     columnas.push('inicio')
     valores.push(inicioCliente)
+    if (esBloqueCerrado) {
+      columnas.push('fin')
+      valores.push(finCliente)
+    }
 
     // El proyecto/join solo hace falta para dar forma a la respuesta.
     const proyectoCampos = tieneProyecto ? 'a.proyecto_id, pr.nombre AS proyecto_nombre,' : ''
@@ -305,36 +303,42 @@ if (tipoValido.length === 0) {
         }
       }
 
-      // Dentro de la transacción y con el usuario bloqueado, este SELECT ve la
-      // commits de cualquier alta concurrente de ese mismo usuario.
-      const [activas] = await conexion.query<RowDataPacket[]>(
-        `SELECT id FROM actividades
-         WHERE usuario_id = ? AND estado IN ('EN_CURSO', 'PAUSADA')
-         LIMIT 1`,
-        [usuarioObjetivoId]
-      )
-      if (activas.length > 0) {
-        await conexion.rollback()
-        // No se devuelve el id de la actividad existente. Deliberadamente: si se
-        // devolviera, un movil que reintenta por error podria quedarse con la
-        // actividad de OTRA operacion y dar por sincronizadas horas que no son
-        // las suyas. El movil debe conservar su registro local y resolverlo.
-        return NextResponse.json(
-          {
-            error: 'Ya tienes una actividad activa. Finaliza o pausa la actual antes de crear una nueva.',
-            code: 'ACTIVIDAD_ACTIVA',
-          },
-          { status: 409 }
+      // Un bloque ya cerrado (con `fin`) no compite por el cupo de "actividad
+      // activa": se puede anotar la jornada de hoy aunque el cronómetro esté
+      // andando, y se pueden anotar varios bloques del mismo día.
+      if (!esBloqueCerrado) {
+        // Dentro de la transacción y con el usuario bloqueado, este SELECT ve la
+        // commits de cualquier alta concurrente de ese mismo usuario.
+        const [activas] = await conexion.query<RowDataPacket[]>(
+          `SELECT id FROM actividades
+           WHERE usuario_id = ? AND estado IN ('EN_CURSO', 'PAUSADA')
+           LIMIT 1`,
+          [usuarioObjetivoId]
         )
+        if (activas.length > 0) {
+          await conexion.rollback()
+          // No se devuelve el id de la actividad existente. Deliberadamente: si se
+          // devolviera, un movil que reintenta por error podria quedarse con la
+          // actividad de OTRA operacion y dar por sincronizadas horas que no son
+          // las suyas. El movil debe conservar su registro local y resolverlo.
+          return NextResponse.json(
+            {
+              error: 'Ya tienes una actividad activa. Finaliza o pausa la actual antes de crear una nueva.',
+              code: 'ACTIVIDAD_ACTIVA',
+            },
+            { status: 409 }
+          )
+        }
       }
 
       try {
         // Para `inicio` el marcador es COALESCE(?, NOW()): si el cliente no
         // envio marca de tiempo, entra la hora del servidor.
         const marcadores = columnas.map((c) => (c === 'inicio' ? 'COALESCE(?, NOW())' : '?')).join(', ')
+        const estadoInicial = esBloqueCerrado ? 'PENDIENTE_APROBACION' : 'EN_CURSO'
         const [result] = await conexion.query(
-          `INSERT INTO actividades (${columnas.join(', ')}, estado) VALUES (${marcadores}, 'EN_CURSO')`,
-          valores
+          `INSERT INTO actividades (${columnas.join(', ')}, estado) VALUES (${marcadores}, ?)`,
+          [...valores, estadoInicial]
         )
         const insertId = (result as { insertId: number }).insertId
 
@@ -396,6 +400,24 @@ if (tipoValido.length === 0) {
     }
 
     notifyActivityChange(usuarioObjetivoId)
+
+    // Un bloque cerrado nace pendiente de aprobación, así que se avisa a quien
+    // revisa igual que cuando se finaliza una actividad con el cronómetro.
+    if (esBloqueCerrado && actividadCreada) {
+      const clienteCreado = actividadCreada.cliente_id == null ? null : Number(actividadCreada.cliente_id)
+      if (clienteCreado != null) {
+        await notificarBolsaHorasPorId(clienteCreado, context.activa!.id)
+      }
+      await notificarRevisoresActividad(
+        context.activa!.id,
+        usuarioObjetivoId,
+        'aprobacion',
+        'Registro pendiente de aprobación',
+        'Un registro fue enviado para tu revisión.',
+        `/aprobaciones?actividad=${Number(actividadCreada.id)}&estado=PENDIENTE_APROBACION`,
+        `pendiente-aprobacion:${Number(actividadCreada.id)}`,
+      )
+    }
 
     return NextResponse.json({ ok: true, actividad: actividadCreada })
 

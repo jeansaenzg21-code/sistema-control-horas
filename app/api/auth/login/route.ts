@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import pool from '@/lib/db'
 import { cookiesSesion, createSession, cleanExpiredSessions } from '@/lib/auth'
-import { horarioDeHoy, enRangoHorario } from '@/lib/horarios'
 import { bloqueadoPorIntentos, registrarIntentoFallido, limpiarIntentos, obtenerIp } from '@/lib/intentos-login'
 
 /**
@@ -81,23 +80,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // Control de horario: si el colaborador tiene un horario configurado para
-    // el día de hoy, no se le permite ingresar fuera de su franja laboral.
-    const horario = await horarioDeHoy(u.id as number)
-    if (horario) {
-      const ahora = new Date()
-      if (!enRangoHorario(horario.hora_inicio, horario.hora_fin, ahora)) {
-        const inicio = horario.hora_inicio.slice(0, 5)
-        const fin = horario.hora_fin.slice(0, 5)
-        return NextResponse.json(
-          {
-            error: `Usted se encuentra fuera de servicio. Su horario de trabajo de hoy es de ${inicio} a ${fin}.`,
-            code: 'FUERA_DE_SERVICIO',
-          },
-          { status: 403 }
-        )
-      }
-    }
+    // El horario configurado es informativo: ya no bloquea el inicio de sesión
+    // ni el registro de horas. Un colaborador puede entrar y anotar su jornada
+    // fuera de su franja (por ejemplo, al terminar un turno nocturno).
 
     // El cuerpo lleva el token de acceso, como hasta ahora, para no romper a la
     // app móvil ni a los clientes web ya desplegados. Además se emite un token
