@@ -50,9 +50,38 @@ export async function GET(request: Request) {
       'SELECT id, nombre FROM tipos_actividad WHERE es_general = TRUE AND activo = TRUE ORDER BY nombre'
     )
 
+    const [tiposFilas] = await pool.query(
+      `SELECT ta.id, ta.area_id, ta.nombre,
+              ${hayCodigo ? 'ta.codigo' : 'NULL AS codigo'},
+              ta.activo
+         FROM tipos_actividad ta
+         INNER JOIN areas ar ON ar.id = ta.area_id
+        WHERE ar.empresa_id = ? AND ta.es_general = FALSE
+        ORDER BY ta.nombre`,
+      [context.activa.id]
+    )
+
+    const actividadesPorArea = new Map<number, Array<Record<string, unknown>>>()
+    for (const tipo of tiposFilas as Array<Record<string, unknown>>) {
+      const areaId = Number(tipo.area_id)
+      const lista = actividadesPorArea.get(areaId) ?? []
+      lista.push({
+        id: tipo.id,
+        nombre: tipo.nombre,
+        codigo: tipo.codigo,
+        activo: tipo.activo,
+      })
+      actividadesPorArea.set(areaId, lista)
+    }
+
+    const areas = (areasFilas as Array<Record<string, unknown>>).map((area) => ({
+      ...area,
+      actividades: actividadesPorArea.get(Number(area.id)) ?? [],
+    }))
+
     return NextResponse.json({
       conCodigo: hayCodigo,
-      areas: areasFilas,
+      areas,
       generales: generalesFilas,
     })
   } catch (error) {
