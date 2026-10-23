@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Plus, Search, Settings, Trash2, Upload, UserRound, Users } from 'lucide-react'
+import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Plus, Search, Settings, Trash2, Upload, UserRound, Users } from 'lucide-react'
 import { useAreas } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 import { SettingsUsers } from './settings-users'
@@ -24,9 +24,16 @@ function iniciales(nombre: string): string {
     .toUpperCase() || '?'
 }
 
+function normalizarBusqueda(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('es')
+}
+
 export function SettingsAreas() {
   const { areas, cargando, error: errorAreas, crearArea, actualizarArea, eliminarArea } = useAreas()
-  const { usuarios } = useAuth()
+  const { usuarios, cargarUsuarios } = useAuth()
   const [areaSeleccionada, setAreaSeleccionada] = useState<number | null>(null)
   const [creando, setCreando] = useState(false)
   const [guardandoArea, setGuardandoArea] = useState(false)
@@ -39,6 +46,7 @@ export function SettingsAreas() {
   const [jefeGuardado, setJefeGuardado] = useState<number | null>(null)
   const [jefeAbierto, setJefeAbierto] = useState(false)
   const [importando, setImportando] = useState(false)
+  const [busquedaGeneral, setBusquedaGeneral] = useState('')
 
   const area = areaSeleccionada != null ? areas.find((a) => a.id === areaSeleccionada) : null
   const usuariosArea = useMemo(() => {
@@ -46,6 +54,28 @@ export function SettingsAreas() {
       .filter((u) => u.area_id === areaSeleccionada && u.rol === 'jefe_area' && u.activo)
       .sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [areaSeleccionada, usuarios])
+  const resultadosBusqueda = useMemo(() => {
+    const consulta = normalizarBusqueda(busquedaGeneral.trim())
+    if (!consulta) return []
+    const terminos = consulta.split(/\s+/).filter(Boolean)
+    return usuarios
+      .filter((u) => u.rol === 'personal')
+      .filter((u) => {
+        const areaUsuario = areas.find((a) => a.id === u.area_id)
+        const texto = normalizarBusqueda(
+          [
+            u.nombre,
+            u.usuario,
+            u.correo ?? '',
+            u.cargo ?? '',
+            areaUsuario?.nombre ?? '',
+            u.area_nombre ?? '',
+          ].join(' ')
+        )
+        return terminos.every((termino) => texto.includes(termino))
+      })
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }, [areas, busquedaGeneral, usuarios])
   const candidatosJefe = useMemo(() => {
     const consulta = busquedaJefe.trim().toLocaleLowerCase('es')
     if (!consulta) return usuariosArea
@@ -90,14 +120,17 @@ export function SettingsAreas() {
   }
 
   const manejarEliminar = async (id: number, nombre: string) => {
-    const tieneUsuarios = usuarios.some((u) => u.area_id === id && u.activo)
-    if (tieneUsuarios) {
-      window.alert('No se puede eliminar una división que tiene usuarios asignados.')
+    const confirmado = window.confirm(
+      `¿Eliminar la división "${nombre}" y todos sus registros?\n\nSe eliminarán sus usuarios, actividades, clientes, proyectos y presupuestos. Esta acción no se puede deshacer.`
+    )
+    if (!confirmado) return
+    const resultado = await eliminarArea(id)
+    if (!resultado.ok) {
+      window.alert(resultado.error || 'No se pudo eliminar la división.')
       return
     }
-    if (!window.confirm(`¿Eliminar la división "${nombre}"?`)) return
-    await eliminarArea(id)
     if (areaSeleccionada === id) setAreaSeleccionada(null)
+    await cargarUsuarios()
   }
 
   if (area) {
@@ -313,6 +346,66 @@ export function SettingsAreas() {
         </div>
       </div>
 
+      <div className="rounded-xl border border-border bg-card p-3">
+        <div className="relative">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="search"
+            value={busquedaGeneral}
+            onChange={(e) => setBusquedaGeneral(e.target.value)}
+            placeholder="Buscar personal por nombre, usuario, cargo o división..."
+            className="w-full rounded-lg border border-border bg-background py-2.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
+          />
+        </div>
+
+        {busquedaGeneral.trim() && (
+          <div className="mt-3">
+            <p className="mb-2 text-xs text-muted-foreground">
+              {resultadosBusqueda.length} {resultadosBusqueda.length === 1 ? 'resultado' : 'resultados'}
+            </p>
+            {resultadosBusqueda.length === 0 ? (
+              <p className="rounded-lg border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
+                No se encontró personal con ese criterio.
+              </p>
+            ) : (
+              <ul className="max-h-80 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border bg-background">
+                {resultadosBusqueda.map((u) => {
+                  const areaUsuario = areas.find((a) => a.id === u.area_id)
+                  return (
+                    <li key={u.id}>
+                      <button
+                        type="button"
+                        onClick={() => areaUsuario && setAreaSeleccionada(areaUsuario.id)}
+                        disabled={!areaUsuario}
+                        className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/50 disabled:cursor-default disabled:hover:bg-transparent"
+                      >
+                        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#7c3aed]/15 text-xs font-bold uppercase text-[#c4b5fd]">
+                          {iniciales(u.nombre)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <span className="truncate text-sm font-medium text-foreground">{u.nombre}</span>
+                            {!u.activo && (
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                Inactivo
+                              </span>
+                            )}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            @{u.usuario} · {u.cargo || 'Sin cargo'} · {areaUsuario?.nombre ?? u.area_nombre ?? 'División no disponible'}
+                          </span>
+                        </span>
+                        {areaUsuario && <ChevronRight size={16} className="flex-none text-muted-foreground" />}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
       {creando && (
         <form
           onSubmit={async (e) => {
@@ -377,7 +470,8 @@ export function SettingsAreas() {
         </form>
       )}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {!busquedaGeneral.trim() && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
          {areas.map((area) => {
            const countUsuarios = usuarios.filter((u) => u.area_id === area.id && u.rol === 'personal').length
            return (
@@ -420,7 +514,8 @@ export function SettingsAreas() {
             </div>
           )
         })}
-      </div>
+        </div>
+      )}
 
       {importando && (
         <SettingsImportarPersonal
