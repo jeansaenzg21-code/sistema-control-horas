@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
+import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea, esPersonal } from '@/lib/permisos'
 import { columnaExiste } from '@/lib/esquema'
+import { claveTexto } from '@/lib/actividades/catalogo-excel'
 
 export async function GET(request: Request) {
   try {
@@ -59,6 +61,121 @@ export async function GET(request: Request) {
     return NextResponse.json(rows)
   } catch (error) {
     console.error('Error al obtener tipos de actividad:', error)
+    return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const user = await getUserFromRequest(request)
+    if (!user || !esAdmin(user)) return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
+    const context = await getEmpresaContext(user)
+    if (!context.activa) return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
+
+    const body = (await request.json().catch(() => ({}))) as {
+      area_id?: unknown
+      nombre?: unknown
+      codigo?: unknown
+    }
+    const areaId = Number(body.area_id)
+    if (!Number.isInteger(areaId) || areaId <= 0) {
+      return NextResponse.json({ error: 'Selecciona una división.' }, { status: 400 })
+    }
+
+    const nombre = String(body.nombre ?? '').trim()
+    if (!nombre) {
+      return NextResponse.json({ error: 'El nombre de la actividad es obligatorio.' }, { status: 400 })
+    }
+    if (nombre.length > 255) {
+      return NextResponse.json({ error: 'El nombre no puede superar 255 caracteres.' }, { status: 400 })
+    }
+
+    const codigo = String(body.codigo ?? '').trim().toUpperCase().slice(0, 32) || null
+
+    const [areas] = await pool.query(
+      'SELECT id FROM areas WHERE id = ? AND empresa_id = ? LIMIT 1',
+      [areaId, context.activa.id]
+    )
+    if ((areas as unknown[]).length === 0) {
+      return NextResponse.json({ error: 'División no encontrada.' }, { status: 404 })
+    }
+
+    const hayCodigo = await columnaExiste('tipos_actividad', 'codigo')
+    if (codigo && !hayCodigo) {
+      return NextResponse.json(
+        { error: 'Falta preparar la base de datos. Ejecuta sql/actividades_codigo.sql.' },
+        { status: 503 }
+      )
+    }
+
+    const [tipos] = await pool.query(
+      `SELECT id, nombre, ${hayCodigo ? 'codigo' : 'NULL AS codigo'}, activo
+         FROM tipos_actividad
+        WHERE area_id = ? AND es_general = FALSE`,
+      [areaId]
+    )
+    const existentes = tipos as Array<{
+      id: number
+      nombre: string
+      codigo: string | null
+      activo: number
+    }>
+
+    const porNombre = new Map<string, (typeof existentes)[number]>()
+    const porCodigo = new Map<string, (typeof existentes)[number]>()
+    for (const tipo of existentes) {
+      porNombre.set(claveTexto(tipo.nombre), tipo)
+      if (tipo.codigo) porCodigo.set(claveTexto(tipo.codigo), tipo)
+    }
+
+    const porNombreMatch = porNombre.get(claveTexto(nombre))
+    const porCodigoMatch = codigo ? porCodigo.get(claveTexto(codigo)) : undefined
+    if (porNombreMatch && porCodigoMatch && porNombreMatch.id !== porCodigoMatch.id) {
+      return NextResponse.json(
+        { error: 'El nombre y el código pertenecen a actividades distintas.' },
+        { status: 409 }
+      )
+    }
+
+    const existente = porCodigoMatch ?? porNombreMatch
+
+    if (existente) {
+      if (existente.activo) {
+        return NextResponse.json(
+          { error: 'Ya existe una actividad con ese nombre o código en la división.' },
+          { status: 409 }
+        )
+      }
+      if (hayCodigo) {
+        await pool.query(
+          'UPDATE tipos_actividad SET nombre = ?, codigo = ?, activo = TRUE, es_general = FALSE WHERE id = ?',
+          [nombre, codigo, existente.id]
+        )
+      } else {
+        await pool.query(
+          'UPDATE tipos_actividad SET nombre = ?, activo = TRUE, es_general = FALSE WHERE id = ?',
+          [nombre, existente.id]
+        )
+      }
+      return NextResponse.json({ ok: true, id: existente.id, reactivada: true })
+    }
+
+    const [resultado] = hayCodigo
+      ? await pool.query(
+          'INSERT INTO tipos_actividad (nombre, codigo, area_id, es_general, activo) VALUES (?, ?, ?, FALSE, TRUE)',
+          [nombre, codigo, areaId]
+        )
+      : await pool.query(
+          'INSERT INTO tipos_actividad (nombre, area_id, es_general, activo) VALUES (?, ?, FALSE, TRUE)',
+          [nombre, areaId]
+        )
+
+    return NextResponse.json({
+      ok: true,
+      id: Number((resultado as { insertId: number }).insertId),
+    })
+  } catch (error) {
+    console.error('Error al crear tipo de actividad:', error)
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
   }
 }

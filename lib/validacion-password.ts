@@ -9,11 +9,9 @@ import bcrypt from 'bcryptjs'
  * personal: ahi la contrasena inicial es el DNI y no cumple esta politica.
  *
  * Requisitos:
- *   - Minimo 10 caracteres.
  *   - Al menos una letra.
  *   - Al menos un numero.
  */
-export const LONGITUD_MINIMA_PASSWORD = 10
 export const COSTO_BCRYPT = 12
 
 export interface ResultadoPassword {
@@ -24,12 +22,6 @@ export interface ResultadoPassword {
 export function validarPassword(password: unknown): ResultadoPassword {
   if (typeof password !== 'string' || password.length === 0) {
     return { ok: false, error: 'La contraseña es obligatoria.' }
-  }
-  if (password.length < LONGITUD_MINIMA_PASSWORD) {
-    return {
-      ok: false,
-      error: `La contraseña debe tener al menos ${LONGITUD_MINIMA_PASSWORD} caracteres.`,
-    }
   }
   if (!/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(password)) {
     return { ok: false, error: 'La contraseña debe incluir al menos una letra.' }
