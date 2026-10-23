@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
+import { eliminarAreaCompleta } from '@/lib/eliminacion-registros'
 
 async function getContextoActivo(request: Request) {
   const user = await getUserFromRequest(request)
@@ -218,6 +220,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  let conexion: PoolConnection | null = null
   try {
     const context = await getContextoActivo(request)
     if ('error' in context) {
@@ -227,20 +230,52 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
 
-    const { id } = await request.json()
-    if (!id) {
+    const body = await request.json().catch(() => ({})) as { id?: unknown }
+    const areaId = Number(body.id)
+    if (!Number.isInteger(areaId) || areaId <= 0) {
       return NextResponse.json({ error: 'ID requerido.' }, { status: 400 })
     }
-    const [result] = await pool.query(
-      'UPDATE areas SET activo = FALSE WHERE id = ? AND empresa_id = ?',
-      [id, context.empresaId]
+
+    const [areas] = await pool.query(
+      'SELECT id FROM areas WHERE id = ? AND empresa_id = ? AND activo = TRUE LIMIT 1',
+      [areaId, context.empresaId]
     )
-    if ((result as { affectedRows: number }).affectedRows === 0) {
+    if ((areas as unknown[]).length === 0) {
       return NextResponse.json({ error: 'División no encontrada.' }, { status: 404 })
     }
-    return NextResponse.json({ ok: true })
+
+    if (Number(context.user.area_id) === areaId) {
+      return NextResponse.json(
+        { error: 'No puedes eliminar la división a la que perteneces.' },
+        { status: 409 }
+      )
+    }
+
+    const [totales] = await pool.query<RowDataPacket[]>(
+      'SELECT COUNT(*) AS total FROM areas WHERE empresa_id = ? AND activo = TRUE',
+      [context.empresaId]
+    )
+    if (Number(totales[0]?.total ?? 0) <= 1) {
+      return NextResponse.json(
+        { error: 'No puedes eliminar la única división activa de la empresa.' },
+        { status: 409 }
+      )
+    }
+
+    conexion = await pool.getConnection()
+    await conexion.beginTransaction()
+    await eliminarAreaCompleta(conexion, areaId, context.empresaId, context.user.id)
+    await conexion.commit()
+    conexion.release()
+    conexion = null
+    return NextResponse.json({ ok: true, eliminada: true })
   } catch (error) {
+    if (conexion) {
+      await conexion.rollback().catch(() => undefined)
+    }
     console.error('Error al eliminar división:', error)
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
+  } finally {
+    if (conexion) conexion.release()
   }
 }
