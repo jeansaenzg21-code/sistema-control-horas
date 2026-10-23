@@ -21,6 +21,7 @@ interface FormularioUsuario {
 export function SettingsUsers({ areaId }: SettingsUsersProps) {
   const { usuarios, usuario: actual, cargarUsuarios } = useAuth()
   const esJefeArea = actual?.rol === 'jefe_area'
+  const esAdmin = actual?.rol === 'admin'
   const [formularioAbierto, setFormularioAbierto] = useState(false)
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [formulario, setFormulario] = useState<FormularioUsuario>({
@@ -138,7 +139,12 @@ export function SettingsUsers({ areaId }: SettingsUsersProps) {
       setError('No puedes eliminar tu propio usuario.')
       return
     }
-    if (!window.confirm(`¿Eliminar al usuario "${nombre}"?`)) return
+    const confirmado = window.confirm(
+      esAdmin
+        ? `¿Eliminar definitivamente al usuario "${nombre}" y todos sus registros (horas, horarios, excepciones, observaciones)? Esta acción no se puede deshacer.`
+        : `¿Eliminar al usuario "${nombre}"?`
+    )
+    if (!confirmado) return
     try {
       setError('')
       setExito('')
@@ -154,7 +160,13 @@ export function SettingsUsers({ areaId }: SettingsUsersProps) {
         setEditandoId(null)
         setFormulario({ nombre: '', correo: '', usuario: '', password: '', cargo: '' })
       }
-      setExito(data.desactivado ? data.message : 'Usuario eliminado correctamente.')
+      setExito(
+        data.desactivado
+          ? data.message
+          : data.eliminado
+            ? 'Usuario y todos sus registros fueron eliminados.'
+            : 'Usuario eliminado correctamente.'
+      )
     } catch {
       setError('No se pudo eliminar.')
     }
