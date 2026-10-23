@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { opcionesApi } from '@/lib/api-cliente'
-import { CheckCircle2, Loader2, Plus } from 'lucide-react'
+import { CheckCircle2, Loader2, Plus, Trash2 } from 'lucide-react'
 
 interface ActividadCatalogo {
   id: number
@@ -33,6 +33,28 @@ interface Catalogo {
   generales: GeneralCatalogo[]
 }
 
+interface FilaActividad {
+  area: AreaCatalogo
+  actividad: ActividadCatalogo
+}
+
+interface Mensaje {
+  tipo: 'ok' | 'error'
+  texto: string
+}
+
+function ordenarFilas(filas: FilaActividad[]): FilaActividad[] {
+  return [...filas].sort((a, b) => {
+    const area = a.area.nombre.localeCompare(b.area.nombre, 'es')
+    if (area !== 0) return area
+    const codigo = (a.actividad.codigo ?? '').localeCompare(b.actividad.codigo ?? '', 'es', {
+      numeric: true,
+    })
+    if (codigo !== 0) return codigo
+    return a.actividad.nombre.localeCompare(b.actividad.nombre, 'es')
+  })
+}
+
 export function SettingsActividades() {
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null)
   const [cargando, setCargando] = useState(true)
@@ -42,7 +64,12 @@ export function SettingsActividades() {
   const [nombre, setNombre] = useState('')
   const [codigo, setCodigo] = useState('')
   const [guardando, setGuardando] = useState(false)
-  const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
+  const [mensaje, setMensaje] = useState<Mensaje | null>(null)
+
+  const [filtroArea, setFiltroArea] = useState('todas')
+  const [mostrarInactivas, setMostrarInactivas] = useState(false)
+  const [eliminandoId, setEliminandoId] = useState<number | null>(null)
+  const [mensajeLista, setMensajeLista] = useState<Mensaje | null>(null)
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -71,11 +98,20 @@ export function SettingsActividades() {
     setAreaId(String(catalogo.areas[0].id))
   }, [catalogo, areaId])
 
-  const areaActual = catalogo?.areas.find((area) => String(area.id) === areaId) ?? null
-  const actividadesArea = (areaActual?.actividades ?? []).filter((actividad) => actividad.activo)
+  const areas = catalogo?.areas ?? []
+  const generales = catalogo?.generales ?? []
 
-  const conCatalogo = catalogo?.areas.filter((area) => area.activas > 0) ?? []
-  const sinCatalogo = catalogo?.areas.filter((area) => area.activas === 0) ?? []
+  const areaActual = areas.find((area) => String(area.id) === areaId) ?? null
+
+  const filas = ordenarFilas(
+    areas
+      .filter((area) => filtroArea === 'todas' || String(area.id) === filtroArea)
+      .flatMap((area) =>
+        area.actividades
+          .filter((actividad) => mostrarInactivas || actividad.activo)
+          .map((actividad) => ({ area, actividad }))
+      )
+  )
 
   const agregar = async (evento: React.FormEvent<HTMLFormElement>) => {
     evento.preventDefault()
@@ -119,13 +155,45 @@ export function SettingsActividades() {
     }
   }
 
+  const eliminar = async (fila: FilaActividad) => {
+    const confirmado = window.confirm(
+      `¿Eliminar la actividad "${fila.actividad.nombre}" de ${fila.area.nombre}?`
+    )
+    if (!confirmado) return
+
+    setEliminandoId(fila.actividad.id)
+    setMensajeLista(null)
+    try {
+      const res = await fetch(
+        `/api/tipos-actividad/${fila.actividad.id}`,
+        opcionesApi({ method: 'DELETE' })
+      )
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setMensajeLista({ tipo: 'error', texto: data.error || 'No se pudo eliminar la actividad.' })
+        return
+      }
+      setMensajeLista({
+        tipo: 'ok',
+        texto: data.desactivada
+          ? 'La actividad tiene horas registradas, así que se desactivó.'
+          : 'Actividad eliminada.',
+      })
+      await cargar()
+    } catch {
+      setMensajeLista({ tipo: 'error', texto: 'Error de conexión al eliminar la actividad.' })
+    } finally {
+      setEliminandoId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-sm font-semibold text-foreground">Catálogo de actividades</h2>
         <p className="text-sm text-muted-foreground">
-          Las {catalogo?.generales.length ?? 5} actividades generales están disponibles para todas las
-          divisiones. Cada división puede además tener las suyas propias.
+          Las {generales.length} actividades generales están disponibles para todas las divisiones.
+          Cada división puede además tener las suyas propias.
         </p>
       </div>
 
@@ -147,13 +215,13 @@ export function SettingsActividades() {
         </p>
       )}
 
-      {catalogo && catalogo.areas.length === 0 && (
+      {catalogo && areas.length === 0 && (
         <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
           Primero crea una división en la pestaña Divisiones.
         </p>
       )}
 
-      {catalogo && catalogo.areas.length > 0 && (
+      {catalogo && areas.length > 0 && (
         <form
           onSubmit={agregar}
           className="space-y-3 rounded-xl border border-border bg-card p-4"
@@ -173,7 +241,7 @@ export function SettingsActividades() {
                 onChange={(evento) => setAreaId(evento.target.value)}
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
               >
-                {catalogo.areas.map((area) => (
+                {areas.map((area) => (
                   <option key={area.id} value={area.id}>
                     {area.nombre}
                     {area.activo ? '' : ' (desactivada)'}
@@ -232,84 +300,148 @@ export function SettingsActividades() {
         </form>
       )}
 
-      {catalogo && catalogo.conCodigo && (
-        <div className="overflow-hidden rounded-xl border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">División</th>
-                <th className="px-3 py-2 text-right font-medium">Actividades</th>
-                <th className="px-3 py-2 text-right font-medium">Con código</th>
-                <th className="px-3 py-2 text-right font-medium">Inactivas</th>
-                <th className="px-3 py-2 text-right font-medium">Con horas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {conCatalogo.map((area) => (
-                <tr key={area.id} className="border-b border-border/60 last:border-0">
-                  <td className="px-3 py-2 text-foreground">
-                    {area.nombre}
-                    {!area.activo && (
-                      <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        desactivada
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right text-foreground">{area.activas}</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">{area.con_codigo}</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">{area.inactivas}</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">{area.en_uso}</td>
-                </tr>
-              ))}
-              {sinCatalogo.map((area) => (
-                <tr key={area.id} className="border-b border-border/60 last:border-0">
-                  <td className="px-3 py-2 text-muted-foreground">
-                    {area.nombre}
-                    {!area.activo && (
-                      <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        desactivada
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">0</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">—</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">{area.inactivas}</td>
-                  <td className="px-3 py-2 text-right text-muted-foreground">{area.en_uso}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {catalogo && areas.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Actividades registradas</h3>
+              <p className="text-xs text-muted-foreground">
+                {filtroArea === 'todas' ? 'Todas las divisiones' : areaActual?.nombre} ·{' '}
+                {filas.length} {filas.length === 1 ? 'actividad' : 'actividades'}
+              </p>
+            </div>
 
-      {areaActual && (
-        <div className="rounded-xl border border-border bg-muted/10 p-4">
-          <h3 className="text-sm font-semibold text-foreground">
-            Actividades de {areaActual.nombre}
-          </h3>
-          {actividadesArea.length === 0 ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Esta división aún no tiene actividades propias; su personal usa las generales.
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="space-y-1 text-xs font-medium text-muted-foreground">
+                División
+                <select
+                  value={filtroArea}
+                  onChange={(evento) => setFiltroArea(evento.target.value)}
+                  className="block w-full min-w-44 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
+                >
+                  <option value="todas">Todas las divisiones</option>
+                  {areas.map((area) => (
+                    <option key={area.id} value={area.id}>
+                      {area.nombre}
+                      {area.activo ? '' : ' (desactivada)'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex items-center gap-2 pb-2 text-xs font-medium text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={mostrarInactivas}
+                  onChange={(evento) => setMostrarInactivas(evento.target.checked)}
+                  className="size-4 rounded border-border accent-[#7c3aed]"
+                />
+                Mostrar inactivas
+              </label>
+            </div>
+          </div>
+
+          {mensajeLista && (
+            <p
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs ${
+                mensajeLista.tipo === 'ok'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                  : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+              }`}
+            >
+              {mensajeLista.tipo === 'ok' && <CheckCircle2 size={14} />}
+              {mensajeLista.texto}
+            </p>
+          )}
+
+          {filas.length === 0 ? (
+            <p className="rounded-xl border border-border bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
+              {mostrarInactivas
+                ? 'No hay actividades registradas para esta selección.'
+                : 'No hay actividades activas para esta selección. Marca "Mostrar inactivas" para ver las desactivadas.'}
             </p>
           ) : (
-            <ul className="mt-2 max-h-72 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border bg-background">
-              {actividadesArea.map((actividad) => (
-                <li key={actividad.id} className="flex items-start gap-3 px-3 py-2 text-sm">
-                  <span className="w-20 shrink-0 font-mono text-xs text-muted-foreground">
-                    {actividad.codigo || '—'}
-                  </span>
-                  <span className="text-foreground">{actividad.nombre}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full min-w-[600px] text-left text-sm">
+                <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">División</th>
+                    <th className="px-3 py-2 font-medium">Código</th>
+                    <th className="px-3 py-2 font-medium">Actividad</th>
+                    <th className="px-3 py-2 font-medium">Estado</th>
+                    <th className="px-3 py-2 text-right font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filas.map((fila) => (
+                    <tr
+                      key={fila.actividad.id}
+                      className="border-b border-border/60 last:border-0"
+                    >
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {fila.area.nombre}
+                        {!fila.area.activo && (
+                          <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            desactivada
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                        {fila.actividad.codigo || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-foreground">{fila.actividad.nombre}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                            fila.actividad.activo
+                              ? 'bg-emerald-500/10 text-emerald-400'
+                              : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {fila.actividad.activo ? 'Activa' : 'Inactiva'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => void eliminar(fila)}
+                          disabled={eliminandoId === fila.actividad.id}
+                          className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 px-2 py-1 text-xs text-rose-400 transition-colors hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {eliminandoId === fila.actividad.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={12} />
+                          )}
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
 
-      {catalogo && (
-        <p className="text-xs text-muted-foreground">
-          Las divisiones con 0 actividades solo pueden registrar las {catalogo.generales.length} generales.
-        </p>
+      {catalogo && generales.length > 0 && (
+        <div className="rounded-xl border border-border bg-muted/10 p-4">
+          <h3 className="text-sm font-semibold text-foreground">Actividades generales</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Disponibles para todas las divisiones. No se eliminan desde aquí.
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {generales.map((general) => (
+              <li
+                key={general.id}
+                className="rounded-lg border border-border bg-background px-2.5 py-1 text-xs text-foreground"
+              >
+                {general.nombre}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )
