@@ -5,6 +5,7 @@ import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
 import { hashearPassword, validarPassword } from '@/lib/validacion-password'
+import { eliminarUsuarioCompleto } from '@/lib/eliminacion-registros'
 
 const SELECT_USUARIO = `
   SELECT u.id, u.nombre, COALESCE(u.correo, '') AS correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad,
@@ -327,6 +328,15 @@ export async function DELETE(
 
     conexion = await pool.getConnection()
     await conexion.beginTransaction()
+
+    if (adminUsuario) {
+      await eliminarUsuarioCompleto(conexion, id, context.user.id)
+      await conexion.commit()
+      conexion.release()
+      conexion = null
+      return NextResponse.json({ ok: true, eliminado: true })
+    }
+
     const tieneProyectos = await tieneTablaProyectos()
     const proyectosConsulta = tieneProyectos
       ? `((SELECT COUNT(*) FROM proyectos WHERE jefe_id = ? AND activo = TRUE) + (SELECT COUNT(*) FROM proyecto_participantes WHERE usuario_id = ?)) AS proyectos`
