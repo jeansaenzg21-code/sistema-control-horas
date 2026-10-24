@@ -64,8 +64,6 @@ function colorDeEstado(estado: string, valor: number): string {
   return COLOR_ESTADO_EN_CERO
 }
 
-const MAX_COLABORADORES = 10
-
 export function DashboardJefeArea() {
   const { usuario, usuarios, cargarUsuarios } = useAuth()
   const { areas } = useAreas()
@@ -484,9 +482,10 @@ return (
  * información: no incluía a quien no había registrado nada, que es justo lo que
  * un jefe necesita ver. Aquí todos aparecen, tengan horas o no.
  *
- * Escala con áreas grandes: se listan MAX_COLABORADORES y el resto se cuenta, con
- * `max-h` y scroll para que la tabla no empuje el resto del panel fuera de
- * pantalla. El orden pone arriba a quien peor cumple, no a quien más horas hace:
+ * Escala con áreas grandes: se muestran seis filas y el resto se alcanza con
+ * la barra de desplazamiento, con `max-h` para que la tabla no empuje el resto
+ * del panel fuera de pantalla. El orden pone arriba a quien peor cumple, no a
+ * quien más horas hace:
  * en una división con mucha gente, el primero que hay que mirar es el que se
  * está quedando sin horas o sin registrar.
  */
@@ -502,9 +501,6 @@ function PanelEquipo({ modelo }: { modelo: Modelo }) {
     if (ca !== cb) return ca - cb
     return b.horas - a.horas
   })
-  const visibles = colaboradores.slice(0, MAX_COLABORADORES)
-  const resto = colaboradores.slice(MAX_COLABORADORES)
-  const horasResto = resto.reduce((t, c) => t + c.horas, 0)
 
   return (
     <section className={`${PANEL} min-w-0 overflow-hidden`}>
@@ -521,7 +517,7 @@ function PanelEquipo({ modelo }: { modelo: Modelo }) {
           </Link>
         }
       />
-      <div className="overflow-x-auto">
+      <div className="max-h-[357px] overflow-y-auto overflow-x-auto">
         <table className="w-full table-fixed border-collapse text-left text-[11px]">
           <colgroup>
             <col style={{ width: '38%' }} />
@@ -530,7 +526,7 @@ function PanelEquipo({ modelo }: { modelo: Modelo }) {
             <col style={{ width: '12%' }} />
             <col style={{ width: '14%' }} />
           </colgroup>
-          <thead className="bg-muted text-muted-foreground">
+          <thead className="sticky top-0 z-10 bg-muted text-muted-foreground">
             <tr>
               <th className="px-3 py-2.5 font-medium">Colaborador</th>
               <th className="px-2 py-2.5 text-center font-medium">Horas</th>
@@ -539,18 +535,18 @@ function PanelEquipo({ modelo }: { modelo: Modelo }) {
               <th className="px-2 py-2.5 text-center font-medium">Hoy</th>
             </tr>
           </thead>
-          {/* `flex-1` + scroll: la tabla ocupa el alto que le da la fila y, si hay más
-              gente de la que cabe, hace scroll dentro. Sin el `flex-1` el fondo
-              de la card quedaría vacío debajo de la última fila. */}
-          <tbody className="block max-h-[300px] overflow-y-auto sm:table-row-group">
-            {visibles.length === 0 && (
+          {/* El scroll lo lleva el contenedor de la tabla, con la cabecera
+              fija: así se ven seis filas y el resto queda a un giro de
+              rueda, sin empujar el resto del panel. */}
+          <tbody>
+            {colaboradores.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-3 py-4 text-center text-muted-foreground">
                   Sin colaboradores con actividad. Todas las cifras a 0.
                 </td>
               </tr>
             )}
-            {visibles.map((c) => {
+            {colaboradores.map((c) => {
               const sinHoy = modelo.sinRegistroHoyIds.has(c.id)
               const cob = c.cumplimiento
               return (
@@ -620,18 +616,6 @@ function PanelEquipo({ modelo }: { modelo: Modelo }) {
                 </tr>
               )
             })}
-            {/* Los que no caben se cuentan, no desaparecen. */}
-            {resto.length > 0 && (
-              <tr className="border-t border-border/60 bg-muted/30">
-                <td className="px-3 py-2 text-muted-foreground">{resto.length} personas más</td>
-                <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{horas(horasResto)}</td>
-                <td colSpan={3} className="px-2 py-2 text-center text-[10px] text-muted-foreground">
-                  <Link href="/cumplimiento" className="hover:text-foreground hover:underline">
-                    ver el equipo completo
-                  </Link>
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
