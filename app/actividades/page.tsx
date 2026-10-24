@@ -50,7 +50,6 @@ type ResumenDia = {
 export default function Actividades() {
   const { actividadActual, cargandoActividad, historial, totalHistorial } = useActividad()
   const { usuario, empresaActiva, cargando } = useAuth()
-  const esJefeArea = usuario?.rol === 'jefe_area'
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('registrar')
   const [modoRegistro, setModoRegistro] = useState<ModoRegistro>('tiempo-real')
@@ -144,7 +143,7 @@ export default function Actividades() {
     { id: 'registrar', etiqueta: 'Registrar', icono: <Play size={16} /> },
     {
       id: 'registros',
-      etiqueta: `${esJefeArea ? 'Registros del área' : 'Mis registros'}${totalHistorial > 0 ? ` (${totalHistorial})` : ''}`,
+      etiqueta: `Mis registros${totalHistorial > 0 ? ` (${totalHistorial})` : ''}`,
       icono: <ListChecks size={16} />,
     },
     {
@@ -163,7 +162,7 @@ export default function Actividades() {
   return (
     <MainLayout
       title="Actividades"
-      subtitle={esJefeArea ? 'Registra tu tiempo y consulta los registros de tu área' : 'Registra tu tiempo y consulta tus registros'}
+      subtitle="Registra tu tiempo y consulta tus registros"
     >
       <div className="space-y-5">
         <div className="flex gap-1 border-b border-border">

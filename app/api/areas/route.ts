@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea } from '@/lib/permisos'
@@ -139,7 +139,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'División no encontrada.' }, { status: 404 })
     }
 
-    if (body.jefe_id !== undefined && !(await tieneColumnaJefeArea())) {
+    const tieneJefeArea = await tieneColumnaJefeArea()
+    if (body.jefe_id !== undefined && !tieneJefeArea) {
       return NextResponse.json(
         { error: 'Falta aplicar la migración de jefe de área. Ejecuta sql/areas_jefe.sql.' },
         { status: 503 }
@@ -148,6 +149,7 @@ export async function PUT(request: Request) {
 
     const campos: string[] = []
     const valores: unknown[] = []
+    let jefeNuevo: number | null = null
 
     if (body.nombre !== undefined) {
       const nombreLimpio = String(body.nombre ?? '').trim()
@@ -166,10 +168,9 @@ export async function PUT(request: Request) {
     }
 
     if (body.jefe_id !== undefined) {
-      let jefeId: number | null = null
       if (body.jefe_id !== null && body.jefe_id !== '') {
-        jefeId = Number(body.jefe_id)
-        if (!Number.isInteger(jefeId) || jefeId <= 0) {
+        jefeNuevo = Number(body.jefe_id)
+        if (!Number.isInteger(jefeNuevo) || jefeNuevo <= 0) {
           return NextResponse.json({ error: 'El jefe de la división no es válido.' }, { status: 400 })
         }
 
@@ -179,7 +180,7 @@ export async function PUT(request: Request) {
            INNER JOIN areas a ON a.id = u.area_id
            WHERE u.id = ?
              AND u.area_id = ?
-             AND u.rol = 'JEFE_AREA'
+             AND u.rol IN ('PERSONAL', 'SUPERVISOR', 'JEFE_AREA')
              AND u.activo = TRUE
              AND a.empresa_id = ?
              AND NOT EXISTS (
@@ -187,17 +188,17 @@ export async function PUT(request: Request) {
                WHERE otra.jefe_id = u.id AND otra.id <> a.id
              )
            LIMIT 1`,
-          [jefeId, areaId, context.empresaId]
+          [jefeNuevo, areaId, context.empresaId]
         )
         if ((candidatos as unknown[]).length === 0) {
           return NextResponse.json(
-            { error: 'El jefe debe ser un perfil Jefe de área activo de esta división.' },
+            { error: 'El jefe debe ser un usuario activo de esta división.' },
             { status: 400 }
           )
         }
       }
       campos.push('jefe_id = ?')
-      valores.push(jefeId)
+      valores.push(jefeNuevo)
     }
 
     if (campos.length === 0) {
@@ -205,12 +206,50 @@ export async function PUT(request: Request) {
     }
 
     valores.push(areaId, context.empresaId)
-    const [result] = await pool.query(
-      `UPDATE areas SET ${campos.join(', ')} WHERE id = ? AND empresa_id = ?`,
-      valores
-    )
-    if ((result as { affectedRows: number }).affectedRows === 0) {
-      return NextResponse.json({ error: 'División no encontrada.' }, { status: 404 })
+    const conexion = await pool.getConnection()
+    try {
+      await conexion.beginTransaction()
+
+      // Quién era el jefe antes del cambio. Si se quita o se sustituye, deja de
+      // ser jefe de área y vuelve a ser un colaborador normal de la división.
+      let jefeAnterior: number | null = null
+      if (body.jefe_id !== undefined) {
+        const [filaArea] = await conexion.query<RowDataPacket[]>(
+          'SELECT jefe_id FROM areas WHERE id = ? AND empresa_id = ? AND activo = TRUE FOR UPDATE',
+          [areaId, context.empresaId]
+        )
+        jefeAnterior = filaArea[0]?.jefe_id == null ? null : Number(filaArea[0].jefe_id)
+      }
+
+      const [result] = await conexion.query<ResultSetHeader>(
+        `UPDATE areas SET ${campos.join(', ')} WHERE id = ? AND empresa_id = ?`,
+        valores
+      )
+      if (result.affectedRows === 0) {
+        await conexion.rollback()
+        return NextResponse.json({ error: 'División no encontrada.' }, { status: 404 })
+      }
+
+      if (body.jefe_id !== undefined && jefeNuevo != null) {
+        await conexion.query(
+          "UPDATE usuarios SET rol = 'JEFE_AREA', supervisor_id = NULL WHERE id = ? AND area_id = ?",
+          [jefeNuevo, areaId]
+        )
+      }
+
+      if (body.jefe_id !== undefined && jefeAnterior != null && jefeAnterior !== jefeNuevo) {
+        await conexion.query(
+          "UPDATE usuarios SET rol = 'PERSONAL' WHERE id = ? AND area_id = ? AND rol = 'JEFE_AREA'",
+          [jefeAnterior, areaId]
+        )
+      }
+
+      await conexion.commit()
+    } catch (error) {
+      await conexion.rollback()
+      throw error
+    } finally {
+      conexion.release()
     }
     return NextResponse.json({ ok: true })
   } catch (error) {

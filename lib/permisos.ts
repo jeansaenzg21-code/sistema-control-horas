@@ -2,6 +2,8 @@ export interface UsuarioConPermisos {
   id: number
   rol: string
   area_id: number | null
+  correo?: string | null
+  usuario?: string | null
 }
 
 export function esAdministrador(usuario: UsuarioConPermisos | null | undefined): boolean {
@@ -93,4 +95,30 @@ export function areaForzada(usuario: UsuarioConPermisos | null | undefined, area
   if (esJefeDeArea(usuario)) return usuario.area_id
   if (areaSolicitada == null) return null
   return Number.isInteger(areaSolicitada) && areaSolicitada > 0 ? areaSolicitada : null
+}
+
+/**
+ * Acceso al módulo demostrativo de Inventario de Laptops.
+ *
+ * Es una excepción puntual y deliberada: el módulo es para Fran Laureano y para
+ * nadie más, ni siquiera el administrador. Mientras no exista un rol de TI, se
+ * identifica por correo y usuario (no por nombre, que puede repetirse). El día
+ * que TI sea un rol real, esta comprobación se sustituye por `esTI(usuario)`.
+ */
+export function puedeVerInventarioLaptops(usuario: UsuarioConPermisos | null | undefined): boolean {
+  if (!usuario) return false
+  const correo = String(usuario.correo || '').trim().toLowerCase()
+  const nombreUsuario = String(usuario.usuario || '').trim().toLowerCase()
+  return correo === 'sistemas@paredescano.com' || nombreUsuario === '47116038'
+}
+
+/**
+ * Acceso al módulo de Gestión de Laptops.
+ *
+ * Comparte exactamente el mismo perfil que Inventario: Fran Laureano y nadie
+ * más. Se mantiene una función propia para que la ruta y el menú TI no dependan
+ * del nombre de otro módulo cuando el backend se conecte.
+ */
+export function puedeVerGestionLaptops(usuario: UsuarioConPermisos | null | undefined): boolean {
+  return puedeVerInventarioLaptops(usuario)
 }

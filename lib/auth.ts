@@ -33,6 +33,7 @@ export interface EmpresaSesion {
 export interface SessionUser {
   id: number
   nombre: string
+  correo: string
   usuario: string
   rol: string
   area_id: number | null
@@ -128,7 +129,7 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
   if (!token || token.length < 10) return null
 
   const [rows] = await pool.query(
-    `SELECT s.usuario_id, s.empresa_id, u.nombre, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad, u.activo
+    `SELECT s.usuario_id, s.empresa_id, u.nombre, u.correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad, u.activo
      FROM sesiones s
      INNER JOIN usuarios u ON u.id = s.usuario_id
      WHERE s.token = ? AND s.expira_en > NOW()`,
@@ -144,6 +145,7 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
   const usuario: SessionUser = {
     id: Number(s.usuario_id),
     nombre: String(s.nombre),
+    correo: String(s.correo),
     usuario: String(s.usuario),
     rol: String(s.rol),
     area_id: s.area_id == null ? null : Number(s.area_id),
