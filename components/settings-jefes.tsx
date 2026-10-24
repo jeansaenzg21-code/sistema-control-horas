@@ -26,7 +26,7 @@ const formularioVacio: FormularioJefe = {
 
 export function SettingsJefes() {
   const { usuarios, cargarUsuarios } = useAuth()
-  const { areas } = useAreas()
+  const { areas, cargarAreas } = useAreas()
   const [formularioAbierto, setFormularioAbierto] = useState(false)
   const [formulario, setFormulario] = useState<FormularioJefe>(formularioVacio)
   const [guardando, setGuardando] = useState(false)
@@ -92,6 +92,7 @@ export function SettingsJefes() {
         return
       }
       await cargarUsuarios()
+      await cargarAreas()
       setFormularioAbierto(false)
       setFormulario(formularioVacio)
       setExito('Jefe de área creado correctamente.')
@@ -118,6 +119,7 @@ export function SettingsJefes() {
         return
       }
       await cargarUsuarios()
+      await cargarAreas()
       setExito('El perfil fue revocado correctamente.')
     } catch {
       setError('No se pudo conectar al servidor.')
@@ -143,6 +145,7 @@ export function SettingsJefes() {
         return
       }
       await cargarUsuarios()
+      await cargarAreas()
       setSeleccionPromover('')
       setExito('El colaborador fue asignado como jefe de área.')
     } catch {

@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from './auth-context'
-import { veActividadDeTodaLaEmpresa } from './permisos'
+import { veTodaLaEmpresa } from './permisos'
 import { ControlStream, crearStreamSse } from './sse'
 import { opcionesApi } from '@/lib/api-cliente'
 
@@ -228,17 +228,21 @@ const streamRef = useRef<ControlStream | null>(null)
   /** Trae la siguiente pagina. Lo usa el botón "Cargar más registros". */
   const cargarMasHistorial = useCallback(async () => {
     if (!usuario || !empresaId || !hayMasHistorial) return
-    const esAdminOSupervisor = veActividadDeTodaLaEmpresa(usuario)
-    await cargarHistorial(usuario.id, !esAdminOSupervisor, { append: true })
+    const esAdminOSocio = veTodaLaEmpresa(usuario)
+    await cargarHistorial(usuario.id, !esAdminOSocio, { append: true })
   }, [usuario, empresaId, hayMasHistorial, cargarHistorial])
 
+  // El historial de este contexto alimenta "Mis registros": se pide acotado al
+  // usuario. Solo admin y socio conservan la lectura completa; el equipo se
+  // consulta en sus propios módulos (/aprobaciones, /reportes, /consolidación),
+  // no en la pestaña personal.
   useEffect(() => {
     if (usuario && empresaId) {
       cargaInicialRef.current = false
-      const esAdminOSupervisor = veActividadDeTodaLaEmpresa(usuario)
+      const esAdminOSocio = veTodaLaEmpresa(usuario)
       Promise.all([
         cargarActividadActual(usuario.id),
-        cargarHistorial(usuario.id, !esAdminOSupervisor),
+        cargarHistorial(usuario.id, !esAdminOSocio),
       ])
     } else {
       setActividadActual(null)
@@ -249,11 +253,11 @@ const streamRef = useRef<ControlStream | null>(null)
 
   useEffect(() => {
     if (!usuario || !empresaId) return
-    const esAdminOSupervisor = veActividadDeTodaLaEmpresa(usuario)
+    const esAdminOSocio = veTodaLaEmpresa(usuario)
 
     const alCambiar = () => {
       void cargarActividadActual(usuario.id)
-      void cargarHistorial(usuario.id, !esAdminOSupervisor)
+      void cargarHistorial(usuario.id, !esAdminOSocio)
     }
 
     // Sin token en la URL. La cookie HttpOnly la envia el navegador sola en las
@@ -306,7 +310,7 @@ const streamRef = useRef<ControlStream | null>(null)
       // actividad en curso. Se refresca el historial para que aparezca en
       // "Mis registros" de inmediato.
       if (datos.fin) {
-        if (usuario) await cargarHistorial(usuario.id, !veActividadDeTodaLaEmpresa(usuario))
+        if (usuario) await cargarHistorial(usuario.id, !veTodaLaEmpresa(usuario))
       } else {
         setActividadActual(data.actividad)
       }
@@ -381,8 +385,8 @@ const streamRef = useRef<ControlStream | null>(null)
       setTiempoPausaMs(null)
       setActividadActual(null)
       setAlertaVisible(false)
-       const esAdminOSupervisor = veActividadDeTodaLaEmpresa(usuario)
-       await cargarHistorial(usuario.id, !esAdminOSupervisor)
+       const esAdminOSocio = veTodaLaEmpresa(usuario)
+       await cargarHistorial(usuario.id, !esAdminOSocio)
     } catch {
       console.warn('[actividad] Sin conexión al finalizar')
     }
