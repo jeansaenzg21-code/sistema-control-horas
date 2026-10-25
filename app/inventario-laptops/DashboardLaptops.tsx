@@ -1,23 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Activity, AlertTriangle, Building2, CheckCircle2, ChevronRight, Home, Info,
+  Activity, AlertTriangle, Building2, CheckCircle2, ChevronRight, Copy, Home, Info,
   Laptop, Lightbulb, Trash2, Users, Wrench, X, type LucideIcon,
 } from 'lucide-react';
+import { useLaptops } from '@/lib/laptops/cliente';
 import styles from './DashboardLaptops.module.css';
-
-type Equipo = {
-  codigo: string;
-  usuario: string;
-  propiedad: 'Propia' | 'Smart Service' | 'Valrex';
-  estado: string;
-  area: string;
-  marca: string;
-  ram: string;
-  serie: string;
-};
 
 type Kpi = { label: string; value: number; hint: string; color: string; Icon: LucideIcon };
 type Segmento = { label: string; value: number; color: string };
@@ -39,7 +29,7 @@ function plural(cantidad: number, singular: string, plural: string): string {
 }
 
 function EstadoTag({ estado }: { estado: string }) {
-  const color = estado === 'Disponible' || estado === 'Asignado'
+  const color = estado === 'Disponible'
     ? 'ok'
     : estado === 'En reparación'
       ? 'warning'
@@ -51,39 +41,12 @@ function EstadoTag({ estado }: { estado: string }) {
 
 export default function DashboardLaptops() {
   const router = useRouter();
-  const [equipos, setEquipos] = useState<Equipo[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let activo = true;
-
-    async function cargar() {
-      try {
-        const res = await fetch('/api/laptops', { cache: 'no-store', signal: controller.signal });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(String(data.error || 'No se pudo cargar el inventario.'));
-        if (activo) setEquipos(Array.isArray(data.equipos) ? data.equipos as Equipo[] : []);
-      } catch (e) {
-        if (!activo || (e as Error).name === 'AbortError') return;
-        setError(e instanceof Error ? e.message : 'No se pudo cargar el inventario.');
-      } finally {
-        if (activo) setCargando(false);
-      }
-    }
-
-    void cargar();
-    return () => {
-      activo = false;
-      controller.abort();
-    };
-  }, []);
+  const { equipos, duplicados, cargando, error } = useLaptops();
 
   const total = equipos.length;
   const porcentaje = (n: number) => total > 0 ? `${((n / total) * 100).toFixed(1)}% del total` : 'Sin datos';
 
-  const asignados = equipos.filter((e) => e.estado === 'Asignado' || e.estado === 'Asignado / Reservado').length;
+  const asignados = equipos.filter((e) => e.estado === 'Asignado / Reservado').length;
   const disponibles = equipos.filter((e) => e.estado === 'Disponible').length;
   const propias = equipos.filter((e) => e.propiedad === 'Propia').length;
   const alquiladas = equipos.filter((e) => e.propiedad !== 'Propia').length;
@@ -93,7 +56,7 @@ export default function DashboardLaptops() {
     { label: 'Asignados / Reservados', value: asignados, hint: porcentaje(asignados), color: 'green', Icon: Users },
     { label: 'Disponibles', value: disponibles, hint: porcentaje(disponibles), color: 'teal', Icon: CheckCircle2 },
     { label: 'En reparación', value: reparacion, hint: porcentaje(reparacion), color: 'amber', Icon: Wrench },
-    { label: 'Propias', value: propias, hint: porcentaje(propias), color: 'blue', Icon: Home },
+    { label: 'Propias', value: propias, hint: plural(propias, 'equipo', 'equipos'), color: 'blue', Icon: Home },
     { label: 'Alquiladas', value: alquiladas, hint: porcentaje(alquiladas), color: 'purple', Icon: Building2 },
   ];
 
@@ -215,7 +178,7 @@ export default function DashboardLaptops() {
           <div className={styles.tableScroll}>
             <table>
               <thead><tr><th>Código</th><th>Usuario / Responsable</th><th>Propiedad</th><th>Estado</th><th>Área</th><th>Marca</th><th>RAM</th><th>N° de serie</th></tr></thead>
-              <tbody>{equipos.slice(0, 7).map((e) => <tr key={e.codigo}><td><b>{e.codigo}</b></td><td>{e.usuario || '—'}</td><td><span className={`${styles.tag} ${e.propiedad === 'Propia' ? styles.own : e.propiedad === 'Valrex' ? styles.valrex : styles.smart}`}>{e.propiedad}</span></td><td><EstadoTag estado={e.estado} /></td><td>{e.area || '—'}</td><td>{e.marca || '—'}</td><td>{e.ram || '—'}</td><td>{e.serie || '—'}</td></tr>)}</tbody>
+              <tbody>{equipos.slice(0, 7).map((e) => <tr key={e.id ?? `${e.codigo}-${e.serie}`} className={(e.duplicado || e.duplicadoSerie) ? styles.dupRow : ''}><td><b>{e.codigo}</b>{(e.duplicado || e.duplicadoSerie) && <span className={styles.dupTag} title={`${e.duplicado ? 'Código repetido' : ''}${e.duplicado && e.duplicadoSerie ? ' · ' : ''}${e.duplicadoSerie ? 'Serie repetida' : ''}`}>Dup</span>}</td><td>{e.usuario || '—'}</td><td><span className={`${styles.tag} ${e.propiedad === 'Propia' ? styles.own : e.propiedad === 'Valrex' ? styles.valrex : styles.smart}`}>{e.propiedad}</span></td><td><EstadoTag estado={e.estado} /></td><td>{e.area || '—'}</td><td>{e.marca || '—'}</td><td>{e.ram || '—'}</td><td>{e.serie || '—'}</td></tr>)}</tbody>
             </table>
             {cargando && <p className={styles.noResults}>Cargando inventario...</p>}
             {!cargando && error && <p className={styles.noResults}>{error}</p>}
@@ -225,6 +188,11 @@ export default function DashboardLaptops() {
 
         <article className={`${styles.panel} ${styles.insights}`}>
           <h2><Lightbulb size={19} /> Hallazgos y alertas</h2>
+          <button type="button" className={`${styles.insight} ${duplicados.equipos > 0 ? styles.dupInsight : ''}`} onClick={() => router.push('/gestion-laptops?duplicado=1')} disabled={duplicados.equipos === 0} aria-label="Ver en Gestión de Laptops los equipos con código o serie duplicados">
+            <div className={styles.insightIcon}><Copy size={21} /></div>
+            <div><b>{duplicados.equipos === 0 ? 'Sin duplicados en el inventario' : `${plural(duplicados.equipos, 'equipo', 'equipos')} con datos duplicados`}</b><p>{duplicados.equipos === 0 ? 'No hay códigos ni series repetidas' : `${plural(duplicados.codigos, 'código repetido', 'códigos repetidos')} · ${plural(duplicados.series, 'serie repetida', 'series repetidas')}`}</p></div>
+            <ChevronRight size={16} />
+          </button>
           <button type="button" className={styles.insight} onClick={() => topMarca && router.push(`/gestion-laptops?marca=${encodeURIComponent(topMarca.raw)}`)} disabled={!topMarca} aria-label="Ver en Gestión de Laptops los equipos de la marca principal">
             <div className={styles.insightIcon}><Activity size={21} /></div>
             <div><b>{topMarca ? `${topMarca.label} domina el inventario` : 'Sin datos de marcas'}</b><p>{topMarca ? `${plural(topMarca.value, 'equipo', 'equipos')} (${porcentaje(topMarca.value)})` : 'Importa el inventario para ver hallazgos'}</p></div>
