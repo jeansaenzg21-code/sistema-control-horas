@@ -297,7 +297,7 @@ export async function createSession(usuarioId: number, dispositivo?: string | nu
     return { token, refreshToken, expiraAcceso, expiraRenovacion }
   }
 
-  // La migraci�n todav�a no est� aplicada: sesi�n antigua, sin renovaci�n.
+  // La migración todavía no está aplicada: sesión antigua, sin renovación.
   await pool.query(
     `INSERT INTO sesiones (usuario_id, empresa_id, token, expira_en) VALUES (?, ?, ?, ?)`,
     [usuarioId, empresaId, tokenHash, expiraAcceso]

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { CalendarCheck, Clock, ListChecks, MessageSquare, Play } from 'lucide-react'
@@ -9,11 +10,15 @@ import { ActivityCard } from '@/components/activity-card'
 import { ActivityForm } from '@/components/activity-form'
 import { RegistroDiaForm } from '@/components/registro-dia-form'
 import { MisRegistros } from '@/components/mis-registros'
-import { MisObservaciones } from '@/components/mis-observaciones'
 import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { opcionesApi } from '@/lib/api-cliente'
 import { cn, fechaLocalISO, nombreCorto } from '@/lib/utils'
+
+const MisObservaciones = dynamic(
+  () => import('@/components/mis-observaciones').then((modulo) => modulo.MisObservaciones),
+  { loading: () => <div role="status" className="space-y-2.5"><div className="h-16 animate-pulse rounded-xl bg-muted/60" /><div className="h-24 animate-pulse rounded-xl bg-muted/60" /></div> },
+)
 
 type Pestana = 'registrar' | 'registros' | 'observaciones'
 

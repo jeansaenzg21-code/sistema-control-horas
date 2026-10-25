@@ -36,7 +36,7 @@ export default function ClienteDetallePage() {
       ])
       if (!ficha.ok) throw new Error('No se pudo cargar el cliente.')
       const cuerpoFicha = await ficha.json()
-      const basico: { id: number; nombre: string; area_nombre: string; area_id: number } = cuerpoFicha.cliente ?? cuerpoFicha
+      const basico: { id: number; nombre: string; area_nombre: string; area_id: number; es_outsourcing?: boolean | number; encargado?: string | null; asistente?: string | null; encargado_usuario_id?: number | null } = cuerpoFicha.cliente ?? cuerpoFicha
       // La cartera trae los agregados reales; la ficha minima solo el contacto.
       const completo = (await cartera.json()).clientes?.find((c: ClienteCartera) => c.id === clienteId) ?? null
       setCliente(
@@ -49,6 +49,11 @@ export default function ClienteDetallePage() {
           correo: null,
           telefono: null,
           direccion: null,
+          encargado: basico.encargado ?? null,
+          asistente: basico.asistente ?? null,
+          es_outsourcing: basico.es_outsourcing === true || Number(basico.es_outsourcing) === 1,
+          mi_funcion: null,
+          encargado_usuario_id: basico.encargado_usuario_id ?? null,
           horasContratadas: 0,
           horasConsumidas: 0,
           horasPorAprobar: 0,
@@ -73,8 +78,12 @@ export default function ClienteDetallePage() {
 
   useEffect(() => {
     if (cargando || !usuario || !Number.isInteger(clienteId) || clienteId <= 0) return
+    if (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area' && usuario.rol !== 'socio') {
+      router.replace('/')
+      return
+    }
     void cargar()
-  }, [cargando, usuario, clienteId, cargar])
+  }, [cargando, usuario, clienteId, cargar, router])
 
   if (cargando || cargandoCliente) {
     return (
@@ -85,6 +94,8 @@ export default function ClienteDetallePage() {
       </MainLayout>
     )
   }
+
+  if (!usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area' && usuario.rol !== 'socio')) return null
 
   if (!cliente) {
     return (

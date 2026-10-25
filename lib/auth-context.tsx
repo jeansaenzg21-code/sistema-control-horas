@@ -111,22 +111,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [requiereEmpresa, setRequiereEmpresa] = useState(false)
   const [cargando, setCargando] = useState(true)
   const temporizadorRenovacionRef = useRef<number | null>(null)
+  const peticionUsuariosRef = useRef<Promise<void> | null>(null)
 
   // La sesion vive en una cookie HttpOnly: el navegador la envia sola en cada
   // peticion, sin que el JavaScript la toque. Por eso estas funciones ya no
   // necesitan leer ningun token del localStorage.
   const cargarUsuarios = useCallback(async () => {
-    try {
-      const data = await fetch('/api/usuarios', opcionesApi())
-      if (!data.ok) {
+    if (peticionUsuariosRef.current) return peticionUsuariosRef.current
+    const peticion = (async () => {
+      try {
+        const data = await fetch('/api/usuarios', opcionesApi())
+        if (!data.ok) {
+          setUsuarios([])
+          return
+        }
+        const filas = (await data.json()) as Array<Record<string, unknown>>
+        setUsuarios(filas.map((item) => normalizeUsuario(item)))
+      } catch {
         setUsuarios([])
-        return
       }
-      const filas = (await data.json()) as Array<Record<string, unknown>>
-      setUsuarios(filas.map((item) => normalizeUsuario(item)))
-    } catch {
-      setUsuarios([])
-    }
+    })()
+    peticionUsuariosRef.current = peticion.finally(() => { peticionUsuariosRef.current = null })
+    return peticionUsuariosRef.current
   }, [])
 
   const cargarContextoEmpresa = useCallback(async (): Promise<boolean> => {
@@ -226,13 +232,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let vigente = true
 
-    // Ya no se puede saber "de entrada" si hay sesion mirando un token: la
-    // cookie es invisible al JavaScript. La sesion y los usuarios se piden en
-    // paralelo: la pantalla deja de esperar a la lista completa de usuarios,
-    // que solo necesitan algunos modulos. Si no hay sesion, la peticion de
-    // usuarios falla en silencio.
-    void cargarUsuarios()
+    // La lista de usuarios es pesada y la mayoría de rutas no la necesita al
+    // inicio. Primero valida sesión; luego se solicita en segundo plano solo
+    // cuando hay una sesión real. Las páginas que la requieran pueden pedirla
+    // también: cargarUsuarios comparte la petición en curso.
     cargarContextoEmpresa()
+      .then((haySesion) => { if (haySesion) void cargarUsuarios() })
       .finally(() => {
         if (vigente) setCargando(false)
       })

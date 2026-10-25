@@ -32,6 +32,11 @@ type FilaCliente = RowDataPacket & {
   correo: string | null
   telefono: string | null
   direccion: string | null
+  encargado: string | null
+  asistente: string | null
+  es_outsourcing: number
+  encargado_usuario_id: number | null
+  mi_funcion?: string | null
   horas_contratadas: string
   horas_bolsas_activas: string
   horas_propuestas: string
@@ -51,6 +56,11 @@ type ClienteCartera = {
   correo: string | null
   telefono: string | null
   direccion: string | null
+  encargado: string | null
+  asistente: string | null
+  es_outsourcing: boolean
+  mi_funcion: string | null
+  encargado_usuario_id: number | null
   horasContratadas: number
   /** Horas del Excel pendientes de aprobar. No son contrato. */
   horasPropuestas: number
@@ -105,26 +115,30 @@ export async function GET(request: Request) {
     if (!context.activa) {
       return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
     }
-    // La cartera la consultan los tres roles que administran clientes: el admin
-    // de la empresa, el jefe de su área (que ve la suya) y el socio, que la ve
-    // entera sin poder tocarla. El filtro por área se aplica más abajo, solo al
-    // jefe: por eso no basta con pedir `veTodaLaEmpresa`.
-    if (!esAdministrador(user) && !esJefeDeArea(user) && !esSocio(user)) {
-      return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
-    }
+    const puedeVerTodaCartera = esAdministrador(user) || esJefeDeArea(user) || esSocio(user)
+    if (!puedeVerTodaCartera) return NextResponse.json({ error: 'La cartera de clientes solo está disponible para quienes administran el área.' }, { status: 403 })
 
-    const params: (string | number)[] = [context.activa.id]
+    const params: (string | number)[] = [user.id, context.activa.id]
     let filtroArea = ''
     if (esJefeDeArea(user) && user.area_id) {
       filtroArea = ' AND c.area_id = ?'
       params.push(user.area_id)
+    }
+    if (!puedeVerTodaCartera) {
+      filtroArea += ` AND c.es_outsourcing = TRUE AND EXISTS (
+        SELECT 1 FROM clientes_asignaciones ca
+         WHERE ca.cliente_id = c.id AND ca.usuario_id = ? AND ca.activo = TRUE
+      )`
+      params.push(user.id)
     }
 
     // Una consulta por cliente, con los agregados ya resueltos. Se evita el N+1
     // de la versión anterior: el jefe de área con 40 clientes hacía 40 viajes.
     const [filas] = await pool.query<FilaCliente[]>(
       `SELECT c.id, c.nombre, c.area_id, a.nombre AS area_nombre,
-              c.ruc, c.correo, c.telefono, c.direccion,
+              c.ruc, c.correo, c.telefono, c.direccion, c.encargado, c.asistente,
+              c.es_outsourcing, c.encargado_usuario_id,
+              (SELECT ca.funcion FROM clientes_asignaciones ca WHERE ca.cliente_id = c.id AND ca.usuario_id = ? AND ca.activo = TRUE LIMIT 1) AS mi_funcion,
               c.horas_contratadas,
               -- Fuente de verdad: las bolsas ACTIVAS. La columna
               -- clientes.horas_contratadas es un campo desnormalizado que ademas
@@ -234,6 +248,11 @@ export async function GET(request: Request) {
         correo: f.correo,
         telefono: f.telefono,
         direccion: f.direccion,
+        encargado: f.encargado,
+        asistente: f.asistente,
+        es_outsourcing: Number(f.es_outsourcing) === 1,
+        mi_funcion: f.mi_funcion ?? null,
+        encargado_usuario_id: f.encargado_usuario_id ?? null,
         horasContratadas: contratadas,
         horasPropuestas: n(f.horas_propuestas),
         horasConsumidas: consumidas,
@@ -287,7 +306,7 @@ export async function GET(request: Request) {
           clienteNombre: c.nombre,
           tipo: 'informativa',
           titulo: 'Cliente sin presupuesto',
-          descripcion: 'No tiene ningún presupuesto importado, así que no hay horas que gestionar.',
+          descripcion: 'Falta agregar el presupuesto de horas.',
           dato: '0 h',
           cuando: null,
         })
@@ -300,6 +319,18 @@ export async function GET(request: Request) {
           titulo: 'Presupuesto sin aprobar',
           descripcion: `Hay ${c.serviciosConteo} servicios cargados que todavía no cuentan como horas contratadas.`,
           dato: fmt(c.horasContratadas),
+          cuando: null,
+        })
+      }
+      if (c.es_outsourcing && !c.encargado?.trim()) {
+        alertas.push({
+          id: `outsourcing-sin-encargado-${c.id}`,
+          clienteId: c.id,
+          clienteNombre: c.nombre,
+          tipo: 'informativa',
+          titulo: 'Cliente de outsourcing sin encargado asignado',
+          descripcion: 'El jefe de área debe asignar un encargado a este cliente.',
+          dato: '',
           cuando: null,
         })
       }

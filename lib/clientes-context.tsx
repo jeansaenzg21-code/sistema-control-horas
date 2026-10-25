@@ -12,6 +12,10 @@ export interface Cliente {
   correo: string | null
   telefono: string | null
   direccion: string | null
+  encargado: string | null
+  asistente: string | null
+  es_outsourcing: boolean
+  encargado_usuario_id: number | null
   area_id: number
   area_nombre: string
   horas_contratadas: number
