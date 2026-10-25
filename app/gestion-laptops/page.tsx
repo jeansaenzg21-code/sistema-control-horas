@@ -20,7 +20,7 @@ export default function GestionLaptopsPage() {
     }
   }, [cargando, usuario, router])
 
-  if (cargando || !usuario || !puedeVerGestionLaptops(usuario)) return null
+  if (!cargando && (!usuario || !puedeVerGestionLaptops(usuario))) return null
 
   return (
     <MainLayout
