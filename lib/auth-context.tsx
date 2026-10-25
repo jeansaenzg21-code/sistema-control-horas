@@ -257,8 +257,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const normalized = normalizeUsuario(data.usuario ?? {})
       setUsuario(normalized)
-      await cargarContextoEmpresa()
-      await cargarUsuarios()
+      // La sesión ya quedó creada por el servidor. No retener la navegación al
+      // login mientras se cargan los datos secundarios del contexto.
+      void cargarContextoEmpresa()
+      void cargarUsuarios()
       return { ok: true }
     } catch {
       return { ok: false, error: 'No se pudo conectar al servidor.' }

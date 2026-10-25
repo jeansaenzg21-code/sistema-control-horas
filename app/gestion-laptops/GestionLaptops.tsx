@@ -170,35 +170,51 @@ export default function GestionLaptops({ showHeading = false }: { showHeading?: 
     }
   }
 
-  function save() {
+  async function save() {
     if (!active) return;
     if (!draft.codigo.trim() || !draft.serie.trim()) return message('Completa el código y el número de serie.');
-    const nuevaClave = active.id != null ? `id:${active.id}` : `cod:${draft.codigo.trim()}`;
-    setItems(prev=>prev.map(e=>claveFila(e)===selected?{...draft,id:e.id,codigo:draft.codigo.trim()}:e));
+    if (active.id == null) return message('No se puede actualizar un equipo sin identificador de base de datos.');
+    const response = await fetch('/api/laptops', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...draft, id: active.id }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) return message(String(result.error || 'No se pudieron guardar los cambios.'));
+    const nuevaClave = `id:${active.id}`;
+    setItems(prev=>prev.map(e=>claveFila(e)===selected?{...draft,id:active.id,codigo:draft.codigo.trim()}:e));
     addLog(nuevaClave,'Ficha actualizada');
     setSelected(nuevaClave);
-    message('Cambios guardados localmente (no en base de datos).');
+    invalidarLaptops(); await recargar(true);
+    message('Cambios guardados en la base de datos.');
   }
   function openNew(){ setModalDraft({...VACIO});setModal('nuevo'); }
-  function saveNew(){
-    const e={...modalDraft,id:-Date.now(),codigo:modalDraft.codigo.trim(),serie:modalDraft.serie.trim()};
+  async function saveNew(){
+    const e={...modalDraft,codigo:modalDraft.codigo.trim(),serie:modalDraft.serie.trim()};
     if(!e.codigo || !e.serie || !e.marca) return message('Código, serie y marca son obligatorios.');
-    setItems(prev=>[e,...prev]);setSelected(claveFila(e));setDraft({...e});setModal(null);setTab('Información');
-    addLog(claveFila(e),'Equipo creado');message('Equipo agregado en esta sesión (sin persistencia).');setFilters(initialFilters);
+    const response = await fetch('/api/laptops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(e) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) return message(String(result.error || 'No se pudo crear el equipo.'));
+    const creado={...e,id:Number(result.id)};
+    setModal(null);setTab('Información');setFilters(initialFilters);
+    invalidarLaptops(); const data = await recargar(true);
+    const equipo = data?.equipos.find(item => item.id === creado.id) ?? creado;
+    setSelected(claveFila(equipo));setDraft({...equipo});
+    addLog(claveFila(equipo),'Equipo creado');message('Equipo guardado en la base de datos.');
   }
   function openAction(kind:'asignar'|'devolver') {
     if(!active) return message('Primero selecciona un equipo.');
     setModalDraft({...active});setModal(kind);
   }
-  function confirmAction(){
+  async function confirmAction(){
     if(!active || !modal) return;
     if(modal==='asignar' && !modalDraft.usuario.trim()) return message('Escribe el usuario responsable.');
     const next:Equipo=modal==='asignar'
       ? {...active,usuario:modalDraft.usuario,area:modalDraft.area,estado:'Asignado / Reservado'}
       : {...active,usuario:'TI Almacén',area:'TI / Reserva',estado:'Disponible'};
+    if (active.id == null) return message('El equipo no tiene un identificador de base de datos.');
+    const response = await fetch('/api/laptops', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...next, id: active.id }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) return message(String(result.error || 'No se pudo registrar el movimiento.'));
     setItems(prev=>prev.map(e=>claveFila(e)===selected?next:e));setDraft(next);
     addLog(selected,modal==='asignar'?`Asignado a ${next.usuario}`:'Devolución registrada a TI Almacén');
-    setModal(null);message('Movimiento registrado en memoria.');
+    setModal(null);invalidarLaptops();await recargar(true);message('Movimiento guardado en la base de datos.');
   }
   function exportCsv(){
     const cols=(['codigo','tipoActivo','usuario','estado','propiedad','area','areaDestino','procesador','marca','modelo','ram','disco','serie','proveedor','mantenimiento','observacion','origenHoja','origenFila','duplicado','duplicadoSerie'] as const);
@@ -305,7 +321,7 @@ export default function GestionLaptops({ showHeading = false }: { showHeading?: 
       )}
     </div>
 
-    <p className={styles.footnote}>Inventario leído desde MySQL. La importación reemplaza las hojas del Excel y guarda todas las filas, incluidos los códigos y series duplicados. Hoja1 (ALMACEN P100) se reporta sin persistirla en una tabla aparte. Guardar, asignar, devolver y crear aún se aplican solo en memoria y se pierden al recargar.</p>
+    <p className={styles.footnote}>Las altas, ediciones, asignaciones y devoluciones se guardan en MySQL. La importación reemplaza las hojas del Excel y conserva las filas duplicadas.</p>
 
     {modal&&<div className={styles.overlay} onClick={()=>setModal(null)}><div className={styles.dialog} onClick={e=>e.stopPropagation()}><div className={styles.modalHead}><h2>{modal==='nuevo'?'Registrar nueva laptop':modal==='asignar'?'Asignar laptop':'Registrar devolución'}</h2><button onClick={()=>setModal(null)} aria-label="Cerrar"><X size={18}/></button></div>
       {modal==='nuevo'?<><div className={styles.modalGrid}>{modalField('codigo','Código')}{modalField('tipoActivo','Tipo')}{modalField('serie','Número de serie')}{modalField('marca','Marca')}{modalField('modelo','Modelo')}{modalField('usuario','Responsable')}{modalField('area','Área')}{modalField('areaDestino','Área destino')}{modalField('procesador','Procesador')}{modalField('ram','RAM')}{modalField('disco','Disco')}{modalField('proveedor','Proveedor')}{modalField('mantenimiento','Últ. mantenimiento')}<label className={styles.field}><span>Propiedad</span><select value={modalDraft.propiedad} onChange={e=>setModalDraft(p=>({...p,propiedad:e.target.value as Propiedad}))}>{PROPIEDADES.map(p=><option key={p}>{p}</option>)}</select></label><label className={styles.field}><span>Estado</span><select value={esAsignadoReservado(modalDraft.estado) ? 'Asignado / Reservado' : modalDraft.estado} onChange={e=>setModalDraft(p=>({...p,estado:e.target.value as Estado}))}>{ESTADOS.map(p=><option key={p}>{p}</option>)}</select></label>{modalField('observacion','Observación')}</div><div className={styles.modalActions}><button className={styles.secondary} onClick={()=>setModal(null)}>Cancelar</button><button className={styles.primary} onClick={saveNew}><Plus size={15}/>Registrar</button></div></>:
