@@ -37,7 +37,6 @@ export default function LoginPage() {
     const resultado = await login({ usuario: usuario.trim(), password })
     if (resultado.ok) {
       router.replace('/')
-      router.refresh()
     } else {
       setError(resultado.error || 'Error al iniciar sesión.')
       setCargandoLogin(false)
