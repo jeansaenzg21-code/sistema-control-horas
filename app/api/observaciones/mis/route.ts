@@ -45,7 +45,32 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
     }
 
-    const [rows] = await pool.query<RowDataPacket[]>(
+    const { searchParams } = new URL(request.url)
+    const estado = searchParams.get('estado')
+    const modulo = searchParams.get('modulo')
+    if (estado && !['ABIERTA', 'ATENDIDAS', 'TODAS'].includes(estado)) {
+      return NextResponse.json({ error: 'El filtro de estado no es válido.' }, { status: 400 })
+    }
+    if (modulo && !['APROBACIONES', 'CUMPLIMIENTO', 'TODOS'].includes(modulo)) {
+      return NextResponse.json({ error: 'El filtro de módulo no es válido.' }, { status: 400 })
+    }
+
+    const condiciones: string[] = [
+      'o.empresa_id = ?',
+      'o.usuario_destino_id = ?',
+      "o.visibilidad = 'TRABAJADOR'",
+      "o.modulo IN ('APROBACIONES', 'CUMPLIMIENTO')",
+    ]
+    const parametros: (number | string)[] = [context.activa.id, user.id]
+    if (estado === 'ABIERTA') condiciones.push("o.estado_atencion = 'ABIERTA'")
+    if (estado === 'ATENDIDAS') condiciones.push("o.estado_atencion <> 'ABIERTA'")
+    if (modulo && modulo !== 'TODOS') {
+      condiciones.push('o.modulo = ?')
+      parametros.push(modulo)
+    }
+    const where = condiciones.join(' AND ')
+    const [rows, [conteos]] = await Promise.all([
+      pool.query<RowDataPacket[]>(
       `SELECT
         o.id,
         o.modulo,
@@ -64,27 +89,30 @@ export async function GET(request: Request) {
         a.inicio AS actividad_inicio,
         ta.nombre AS tipo_actividad,
         c.nombre AS cliente,
-        EXISTS(
-          SELECT 1
-          FROM observaciones respuesta
-          WHERE respuesta.parent_id = o.id
-            AND respuesta.empresa_id = o.empresa_id
-            AND respuesta.tipo = 'RESPUESTA'
-            AND respuesta.visibilidad = 'TRABAJADOR'
-        ) AS tiene_respuesta
-      FROM observaciones o
+        CASE WHEN o.estado_atencion = 'ABIERTA' AND o.tipo = 'OBSERVACION' THEN EXISTS(
+          SELECT 1 FROM observaciones respuesta
+           WHERE respuesta.parent_id = o.id
+             AND respuesta.empresa_id = o.empresa_id
+             AND respuesta.tipo = 'RESPUESTA'
+             AND respuesta.visibilidad = 'TRABAJADOR'
+        ) ELSE 0 END AS tiene_respuesta
+       FROM observaciones o
       LEFT JOIN usuarios autor ON autor.id = o.autor_id
       LEFT JOIN actividades a ON a.id = o.actividad_id
       LEFT JOIN tipos_actividad ta ON ta.id = a.tipo_actividad_id
       LEFT JOIN clientes c ON c.id = a.cliente_id
-      WHERE o.empresa_id = ?
-        AND o.usuario_destino_id = ?
-        AND o.visibilidad = 'TRABAJADOR'
-        AND o.modulo IN ('APROBACIONES', 'CUMPLIMIENTO')
+      WHERE ${where}
       ORDER BY o.created_at DESC, o.id DESC
       LIMIT 200`,
-      [context.activa.id, user.id],
-    )
+      parametros,
+      ),
+      pool.query<RowDataPacket[]>(
+        `SELECT COUNT(*) AS total,
+                COALESCE(SUM(o.estado_atencion = 'ABIERTA'), 0) AS pendientes
+           FROM observaciones o WHERE ${condiciones.filter((c) => !c.startsWith('o.estado_atencion')).join(' AND ')}`,
+        parametros.filter((_, index) => index < 2 || (modulo && modulo !== 'TODOS' && index === 2)),
+      ),
+    ])
 
     const observaciones = (rows as MisObservacionesRow[]).map((fila) => {
       const actividadId = fila.actividad_id == null ? null : Number(fila.actividad_id)
@@ -177,7 +205,7 @@ export async function GET(request: Request) {
         acciones,
       }
     })
-    return NextResponse.json(observaciones)
+    return NextResponse.json({ observaciones, conteos: { total: Number(conteos.total), pendientes: Number(conteos.pendientes) } })
   } catch (error) {
     console.error('Error al obtener mis observaciones:', error)
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
