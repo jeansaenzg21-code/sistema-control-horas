@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { RowDataPacket } from 'mysql2/promise'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { puedeVerGestionLaptops } from '@/lib/permisos'
@@ -8,6 +9,49 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 const MAX_BYTES = 10 * 1024 * 1024
+
+function claveTexto(valor: string | null | undefined): string {
+  return String(valor ?? '').trim().toUpperCase()
+}
+
+function contarGrupos(conteo: Map<string, number>): number {
+  let grupos = 0
+  for (const cantidad of conteo.values()) {
+    if (cantidad > 1) grupos++
+  }
+  return grupos
+}
+
+/**
+ * Cuenta los duplicados del Excel sin ocultarlos. Antes la importacion se
+ * quedaba con la primera aparicion de cada codigo; ahora se guardan todas y el
+ * sistema solo avisa de que existen.
+ */
+function resumirDuplicados(filas: FilaLaptop[]) {
+  const porCodigo = new Map<string, number>()
+  const porSerie = new Map<string, number>()
+  for (const fila of filas) {
+    const codigo = claveTexto(fila.codigo)
+    if (codigo) porCodigo.set(codigo, (porCodigo.get(codigo) ?? 0) + 1)
+    const serie = claveTexto(fila.numero_serie)
+    if (serie) porSerie.set(serie, (porSerie.get(serie) ?? 0) + 1)
+  }
+
+  let equipos = 0
+  for (const fila of filas) {
+    const codigo = claveTexto(fila.codigo)
+    const serie = claveTexto(fila.numero_serie)
+    if ((porCodigo.get(codigo) ?? 0) > 1 || (serie !== '' && (porSerie.get(serie) ?? 0) > 1)) {
+      equipos++
+    }
+  }
+
+  return {
+    codigos: contarGrupos(porCodigo),
+    series: contarGrupos(porSerie),
+    equipos,
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -55,99 +99,66 @@ export async function POST(request: Request) {
     const errores: Array<{ hoja: string; fila: number | null; mensaje: string }> = [
       ...analisis.advertencias,
     ]
-
-    // El Excel repite LP-091 (asignada y disponible). Se conserva la primera
-    // aparición y se reporta la segunda: el código es la clave del inventario.
-    const vistos = new Map<string, FilaLaptop>()
-    const filasUnicas: FilaLaptop[] = []
-    for (const fila of analisis.filas) {
-      const clave = fila.codigo.trim().toUpperCase()
-      const previa = vistos.get(clave)
-      if (previa) {
-        errores.push({
-          hoja: fila.origen_hoja,
-          fila: fila.origen_fila,
-          mensaje: `Código duplicado ${fila.codigo}; se conserva la primera aparición (${previa.origen_hoja}, fila ${previa.origen_fila}).`,
-        })
-        continue
-      }
-      vistos.set(clave, fila)
-      filasUnicas.push(fila)
-    }
+    const duplicados = resumirDuplicados(analisis.filas)
+    const hojas = [...new Set(analisis.filas.map((fila) => fila.origen_hoja).filter(Boolean))]
 
     const conn = await pool.getConnection()
     try {
       await conn.beginTransaction()
 
-      let creados = 0
-      let actualizados = 0
-      let sinCambios = 0
+      // El Excel es la fuente de verdad de las hojas de inventario: se reemplaza
+      // lo que habia en esas hojas y se insertan TODAS las filas, incluso las
+      // repetidas. Asi reimportar el mismo archivo no acumula copias.
+      let eliminados = 0
+      if (hojas.length > 0) {
+        const marcadores = hojas.map(() => '?').join(', ')
+        const [previos] = await conn.query<RowDataPacket[]>(
+          `SELECT COUNT(*) AS total
+             FROM inventario_laptops
+            WHERE empresa_id = ? AND origen_hoja IN (${marcadores})`,
+          [empresaId, ...hojas]
+        )
+        eliminados = Number((previos[0] as { total: number }).total)
 
-      for (const fila of filasUnicas) {
-        const [resultado] = await conn.query(
+        await conn.query(
+          `DELETE FROM inventario_laptops
+            WHERE empresa_id = ? AND origen_hoja IN (${marcadores})`,
+          [empresaId, ...hojas]
+        )
+      }
+
+      if (analisis.filas.length > 0) {
+        const valores = analisis.filas.map((fila) => [
+          empresaId,
+          fila.codigo,
+          fila.tipo_activo,
+          fila.propiedad,
+          fila.responsable_actual,
+          fila.estado,
+          fila.area,
+          fila.area_destino,
+          fila.procesador,
+          fila.marca,
+          fila.modelo,
+          fila.ram,
+          fila.numero_serie,
+          fila.disco,
+          fila.proveedor,
+          fila.observacion,
+          fila.origen_hoja,
+          fila.origen_seccion,
+          fila.origen_fila,
+          true,
+        ])
+
+        await conn.query(
           `INSERT INTO inventario_laptops
              (empresa_id, codigo, tipo_activo, propiedad, responsable_actual, estado,
               area, area_destino, procesador, marca, modelo, ram, numero_serie,
               disco, proveedor, observacion, origen_hoja, origen_seccion, origen_fila, activo)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
-           ON DUPLICATE KEY UPDATE
-             tipo_activo = VALUES(tipo_activo),
-             propiedad = VALUES(propiedad),
-             responsable_actual = VALUES(responsable_actual),
-             estado = VALUES(estado),
-             area = VALUES(area),
-             area_destino = VALUES(area_destino),
-             procesador = VALUES(procesador),
-             marca = VALUES(marca),
-             modelo = VALUES(modelo),
-             ram = VALUES(ram),
-             numero_serie = VALUES(numero_serie),
-             disco = VALUES(disco),
-             proveedor = VALUES(proveedor),
-             observacion = VALUES(observacion),
-             origen_hoja = VALUES(origen_hoja),
-             origen_seccion = VALUES(origen_seccion),
-             origen_fila = VALUES(origen_fila),
-             activo = TRUE`,
-          [
-            empresaId,
-            fila.codigo,
-            fila.tipo_activo,
-            fila.propiedad,
-            fila.responsable_actual,
-            fila.estado,
-            fila.area,
-            fila.area_destino,
-            fila.procesador,
-            fila.marca,
-            fila.modelo,
-            fila.ram,
-            fila.numero_serie,
-            fila.disco,
-            fila.proveedor,
-            fila.observacion,
-            fila.origen_hoja,
-            fila.origen_seccion,
-            fila.origen_fila,
-          ]
+           VALUES ?`,
+          [valores]
         )
-
-        const afectadas = Number((resultado as { affectedRows: number }).affectedRows)
-        if (afectadas === 1) creados++
-        else if (afectadas === 2) actualizados++
-        else sinCambios++
-      }
-
-      const duplicados = analisis.filas.length - filasUnicas.length
-      const omitidos = sinCambios + duplicados
-      const resumen = {
-        ...analisis.resumen,
-        creados,
-        actualizados,
-        sin_cambios: sinCambios,
-        omitidos,
-        duplicados,
-        almacen_p100: analisis.almacenP100.length,
       }
 
       await conn.commit()
@@ -155,11 +166,12 @@ export async function POST(request: Request) {
       return NextResponse.json({
         ok: true,
         total: analisis.filas.length,
-        creados,
-        actualizados,
-        omitidos,
-        sin_cambios: sinCambios,
-        duplicados: resumen.duplicados,
+        creados: analisis.filas.length,
+        actualizados: 0,
+        eliminados,
+        omitidos: 0,
+        sin_cambios: 0,
+        duplicados,
         almacen_p100: analisis.almacenP100.length,
         errores,
       })
@@ -175,6 +187,16 @@ export async function POST(request: Request) {
     if (code === 'ER_NO_SUCH_TABLE') {
       return NextResponse.json(
         { error: 'Falta aplicar la migración sql/migraciones/0011_inventario_laptops.sql.' },
+        { status: 503 }
+      )
+    }
+    if (code === 'ER_DUP_ENTRY') {
+      return NextResponse.json(
+        {
+          error:
+            'La base de datos todavía exige códigos únicos. Aplica la migración ' +
+            'sql/migraciones/0011_inventario_laptops_duplicados.sql para permitir duplicados.',
+        },
         { status: 503 }
       )
     }

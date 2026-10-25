@@ -227,13 +227,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let vigente = true
 
     // Ya no se puede saber "de entrada" si hay sesion mirando un token: la
-    // cookie es invisible al JavaScript. Se pregunta al servidor y, si responde,
-    // se cargan los usuarios.
+    // cookie es invisible al JavaScript. La sesion y los usuarios se piden en
+    // paralelo: la pantalla deja de esperar a la lista completa de usuarios,
+    // que solo necesitan algunos modulos. Si no hay sesion, la peticion de
+    // usuarios falla en silencio.
+    void cargarUsuarios()
     cargarContextoEmpresa()
-      .then((ok) => {
-        if (ok && vigente) return cargarUsuarios()
-        return undefined
-      })
       .finally(() => {
         if (vigente) setCargando(false)
       })

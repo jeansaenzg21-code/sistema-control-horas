@@ -4,3 +4,42 @@
 @container (max-width: 1080px){.filterGrid{grid-template-columns:repeat(3,minmax(0,1fr))}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}.mainGrid{grid-template-columns:minmax(0,1fr)}.detail{width:100%}.editGrid{grid-template-columns:repeat(3,minmax(0,1fr))}.summary{grid-template-columns:115px 1fr}}
 @container (max-width: 650px){.topline{justify-content:flex-start}.actions{width:100%}.actions button{flex:1}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.filterGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.editGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.hint{display:none}}
 @container (max-width: 420px){.filterGrid{grid-template-columns:1fr}.stats{grid-template-columns:1fr}.modalGrid{grid-template-columns:1fr}.detailButtons button{flex:1}}
+
+/* Ajustes: todas las columnas visibles, duplicados y detalle armonizado. */
+.stats{grid-template-columns:repeat(6,minmax(0,1fr))}
+.filterGrid{grid-template-columns:repeat(6,minmax(0,1fr)) minmax(145px,1.3fr) auto}
+.tableScroll{overflow-x:auto!important;overflow-y:auto}
+.tableScroll table{min-width:1850px}
+.mainGrid:not(.single){align-items:stretch}
+.mainGrid:not(.single)>.panel,
+.mainGrid:not(.single)>.detail{max-height:calc(100vh - 205px)}
+.mainGrid:not(.single)>.panel{display:flex;flex-direction:column;height:100%}
+.mainGrid:not(.single)>.detail{overflow-y:auto}
+.mainGrid:not(.single) .tableScroll{max-height:none;flex:1;min-height:0}
+.dupBadge{display:inline-block;margin-left:5px;padding:2px 4px;border:1px solid #7a4d12;border-radius:4px;background:#4a2f0b;color:#ffd27a;font-size:8px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;vertical-align:middle}
+.dupRow td{background:rgba(255,180,60,.045)}
+.dupRow:hover td{background:rgba(255,180,60,.09)}
+@container (max-width: 1080px){
+  .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .filterGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .mainGrid:not(.single)>.panel,
+  .mainGrid:not(.single)>.detail{max-height:none}
+  .mainGrid:not(.single) .tableScroll{max-height:clamp(280px,calc(100vh - 350px),560px)}
+}
+@container (max-width: 650px){
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .filterGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@container (max-width: 420px){
+  .stats{grid-template-columns:1fr}
+  .filterGrid{grid-template-columns:1fr}
+}
+
+/* Enfoque del filtro Estado y demás selectores: resplandor morado por DENTRO.
+   Evita que overflow-x:clip de .root corte el lado izquierdo del contorno. */
+.root .filter select:focus {
+  outline: none !important;
+  border-color: #9a44fa;
+  box-shadow: inset 0 0 0 1px #9a44fa,
+              inset 0 0 8px rgba(154, 68, 250, 0.16);
+}

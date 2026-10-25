@@ -20,7 +20,7 @@ export default function InventarioLaptopsPage() {
     }
   }, [cargando, usuario, router])
 
-  if (cargando || !usuario || !puedeVerInventarioLaptops(usuario)) return null
+  if (!cargando && (!usuario || !puedeVerInventarioLaptops(usuario))) return null
 
   return (
     <MainLayout
