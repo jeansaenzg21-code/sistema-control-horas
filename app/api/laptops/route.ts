@@ -131,3 +131,78 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })
   }
 }
+
+const CAMPOS = [
+  ['codigo', 'codigo'], ['tipoActivo', 'tipo_activo'], ['propiedad', 'propiedad'],
+  ['usuario', 'responsable_actual'], ['estado', 'estado'], ['area', 'area'],
+  ['areaDestino', 'area_destino'], ['procesador', 'procesador'], ['marca', 'marca'],
+  ['modelo', 'modelo'], ['ram', 'ram'], ['serie', 'numero_serie'], ['disco', 'disco'],
+  ['proveedor', 'proveedor'], ['observacion', 'observacion'],
+  ['mantenimiento', 'ultimo_mantenimiento'],
+] as const
+
+function datosEquipo(body: Record<string, unknown>) {
+  const datos: Record<string, string | null> = {}
+  for (const [cliente, columna] of CAMPOS) {
+    const value = body[cliente]
+    datos[columna] = value == null || String(value).trim() === '' ? null : String(value).trim()
+  }
+  return datos
+}
+
+async function autorizarEscritura(request: Request) {
+  const user = await getUserFromRequest(request)
+  if (!user || !puedeVerGestionLaptops(user)) return { error: NextResponse.json({ error: 'No autorizado.' }, { status: 403 }) }
+  const context = await getEmpresaContext(user)
+  if (!context.activa) return { error: NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 }) }
+  return { user, empresaId: context.activa.id }
+}
+
+export async function POST(request: Request) {
+  try {
+    const auth = await autorizarEscritura(request)
+    if ('error' in auth) return auth.error
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null
+    if (!body) return NextResponse.json({ error: 'Datos inválidos.' }, { status: 400 })
+    const datos = datosEquipo(body)
+    if (!datos.codigo || !datos.numero_serie || !datos.marca) {
+      return NextResponse.json({ error: 'Código, serie y marca son obligatorios.' }, { status: 400 })
+    }
+    const columnas = Object.keys(datos)
+    const [result] = await pool.query(
+      `INSERT INTO inventario_laptops (empresa_id, ${columnas.join(', ')}, activo) VALUES (?, ${columnas.map(() => '?').join(', ')}, TRUE)`,
+      [auth.empresaId, ...Object.values(datos)]
+    )
+    return NextResponse.json({ ok: true, id: Number((result as { insertId: number }).insertId) }, { status: 201 })
+  } catch (error) {
+    console.error('Error al crear laptop:', error)
+    return NextResponse.json({ error: 'No se pudo crear el equipo.' }, { status: 500 })
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const auth = await autorizarEscritura(request)
+    if ('error' in auth) return auth.error
+    const body = await request.json().catch(() => null) as (Record<string, unknown> & { id?: unknown }) | null
+    const id = Number(body?.id)
+    if (!body || !Number.isInteger(id) || id < 1) return NextResponse.json({ error: 'Equipo inválido.' }, { status: 400 })
+    const datos = datosEquipo(body)
+    if (!datos.codigo || !datos.numero_serie || !datos.marca) {
+      return NextResponse.json({ error: 'Código, serie y marca son obligatorios.' }, { status: 400 })
+    }
+    const columnas = Object.keys(datos)
+    const [result] = await pool.query(
+      `UPDATE inventario_laptops SET ${columnas.map((columna) => `${columna} = ?`).join(', ')} WHERE id = ? AND empresa_id = ? AND activo = TRUE`,
+      [...Object.values(datos), id, auth.empresaId]
+    )
+    if ((result as { affectedRows: number }).affectedRows === 0) {
+      const [rows] = await pool.query<RowDataPacket[]>('SELECT id FROM inventario_laptops WHERE id = ? AND empresa_id = ? AND activo = TRUE', [id, auth.empresaId])
+      if (!rows.length) return NextResponse.json({ error: 'No se encontró el equipo.' }, { status: 404 })
+    }
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('Error al guardar laptop:', error)
+    return NextResponse.json({ error: 'No se pudieron guardar los cambios.' }, { status: 500 })
+  }
+}
