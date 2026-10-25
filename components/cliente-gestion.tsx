@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, FileSpreadsheet,
   Loader2, UserPlus, UsersRound,
@@ -123,11 +124,11 @@ type Desviacion = {
 
 }
 
-type Candidato = { id: number; nombre: string; cargo: string | null; yaAsignado: boolean }
+type Candidato = { id: number; nombre: string; cargo: string | null; area_id: number | null; area: string | null; yaAsignado: boolean }
 
 type Gestion = {
 
-  cliente: { id: number; nombre: string; area: string; areaId: number }
+  cliente: { id: number; nombre: string; area: string; areaId: number; esOutsourcing?: boolean; encargado?: string | null; asistente?: string | null }
 
   presupuestos: { id: number; version: number; estado: string; archivoNombre: string }[]
 
@@ -156,6 +157,8 @@ type Gestion = {
   }
 
   equipo: FilaIntegrante[]
+
+  equipoOutsourcing: { usuarioId: number | null; nombre: string; cargo: string | null; areaId: number | null; area: string | null; funcion: string; horasBolsa: number; horasRegistradas: number | null }[]
 
   servicios: FilaServicio[]
 
@@ -215,7 +218,7 @@ export function ClienteGestion({
 
   const { usuario } = useAuth()
 
-  const esSocio = usuario?.rol === 'socio'
+  const puedeEditarCliente = usuario?.rol === 'admin' || usuario?.rol === 'jefe_area'
 
   const [datos, setDatos] = useState<Gestion | null>(null)
 
@@ -403,7 +406,7 @@ export function ClienteGestion({
 
               API las rechaza igual, así que ni se ofrecen. */}
 
-          {esSocio ? null : (
+          {!puedeEditarCliente ? null : (
 
             <>
 
@@ -493,8 +496,6 @@ export function ClienteGestion({
 
           </div>
 
-
-
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
 
             <Kpi
@@ -515,11 +516,11 @@ export function ClienteGestion({
 
               icono={<CheckCircle2 size={20} />}
 
-              etiqueta="Propostas por aprobar"
+              etiqueta="Horas propuestas"
 
               valor={horas(datos.indicadores.horasPropuestas)}
 
-              nota="No son contrato"
+              nota="Pendientes de aprobación"
 
             />
 
@@ -605,19 +606,9 @@ export function ClienteGestion({
 
 
 
-          {tabActiva === 'equipo' && (
-
-            <PanelEquipo
-
-              datos={datos}
-
-              asignando={asignando}
-
-              onAsignar={asignar}
-
-            />
-
-          )}
+          {tabActiva === 'equipo' && (datos.cliente.esOutsourcing
+            ? <PanelEquipoCliente datos={datos} onActualizado={cargar} />
+            : <PanelEquipo datos={datos} asignando={asignando} onAsignar={asignar} />)}
 
 
 
@@ -785,6 +776,87 @@ function agruparSinRepartir(filas: FilaSinRepartir[]): GrupoSinRepartir[] {
 }
 
 
+
+function PanelEquipoCliente({ datos, onActualizado }: { datos: Gestion; onActualizado: () => Promise<void> }) {
+  const [asignacionAbierta, setAsignacionAbierta] = useState(false)
+  const [seleccionados, setSeleccionados] = useState<number[]>([])
+  const [guardando, setGuardando] = useState(false)
+  const [aviso, setAviso] = useState('')
+  const asistentesExistentes = datos.equipoOutsourcing
+    .filter((persona) => persona.funcion === 'ASISTENTE' && persona.usuarioId !== null)
+    .map((persona) => persona.usuarioId as number)
+  const idsEquipo = new Set(datos.equipoOutsourcing.map((persona) => persona.usuarioId).filter((id): id is number => id !== null))
+  const candidatos = datos.candidatos.filter((persona) => !idsEquipo.has(persona.id))
+
+  const guardarAsignacion = async () => {
+    if (!seleccionados.length) return
+    setGuardando(true)
+    setAviso('')
+    try {
+      const asistentes = [...new Set([...asistentesExistentes, ...seleccionados])]
+      const respuesta = await fetch('/api/clientes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: datos.cliente.id, es_outsourcing: true, asistentes_usuario_ids: asistentes }),
+      })
+      const resultado = await respuesta.json()
+      if (!respuesta.ok) throw new Error(resultado.error ?? 'No se pudo asignar al personal.')
+      setAviso('Personal asignado al cliente.')
+      setSeleccionados([])
+      setAsignacionAbierta(false)
+      await onActualizado()
+    } catch (error) {
+      setAviso(error instanceof Error ? error.message : 'No se pudo asignar al personal.')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <section className={`${PANEL} min-w-0 overflow-hidden`}>
+      <CabeceraPanel
+        icono={<UsersRound size={19} />}
+        titulo="Encargado y asistentes del cliente"
+        descripcion="Integrantes asignados y horas registradas en este cliente"
+        accion={datos.permisos.puedeGestionar ? <button type="button" onClick={() => { setAsignacionAbierta((abierto) => !abierto); setAviso('') }} aria-expanded={asignacionAbierta} className="rounded-lg border border-violet-500/40 px-2.5 py-1.5 text-[11px] font-semibold text-violet-300 hover:bg-violet-500/10">{asignacionAbierta ? 'Cerrar' : 'Asignar más personal'}</button> : undefined}
+      />
+      {asignacionAbierta && <div className="border-b border-border bg-muted/10 px-4 py-3">
+        <p className="mb-2 text-xs font-medium">Selecciona asistentes del área de este cliente</p>
+        {candidatos.length ? <div className="grid gap-1.5 sm:grid-cols-2">{candidatos.map((persona) => <label key={persona.id} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border/70 bg-card px-3 py-2 text-xs"><input type="checkbox" checked={seleccionados.includes(persona.id)} onChange={(e) => setSeleccionados((actuales) => e.target.checked ? [...actuales, persona.id] : actuales.filter((id) => id !== persona.id))} /><span className="min-w-0 flex-1"><span className="block truncate">{persona.nombre}</span>{persona.area && persona.area !== datos.cliente.area && <span className="block truncate text-[10px] text-sky-300">Área: {persona.area}</span>}</span>{persona.cargo && <span className="truncate text-[10px] text-muted-foreground">{persona.cargo}</span>}</label>)}</div> : <p className="text-xs text-muted-foreground">No hay más integrantes activos disponibles en esta empresa.</p>}
+        <div className="mt-3 flex items-center gap-2"><button type="button" onClick={() => void guardarAsignacion()} disabled={!seleccionados.length || guardando} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{guardando ? 'Asignando…' : 'Asignar asistentes'}</button><button type="button" onClick={() => { setAsignacionAbierta(false); setSeleccionados([]) }} className="rounded-lg border border-border px-3 py-1.5 text-xs">Cancelar</button></div>
+      </div>}
+      {aviso && <p role="status" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{aviso}</p>}
+      {!datos.presupuestoVigente && <p className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-xs text-amber-200">
+        Falta importar el presupuesto de horas. Las horas registradas seguirán acumulándose; la bolsa se mostrará cuando esté disponible.
+      </p>}
+      {datos.equipoOutsourcing.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[500px] text-left text-xs">
+            <thead className="bg-muted/30 text-[10px] text-muted-foreground">
+              <tr><th className="px-4 py-2">Integrante</th><th className="px-3 py-2">Función</th><th className="px-3 py-2 text-right">Bolsa de horas</th><th className="px-4 py-2 text-right">Registradas</th></tr>
+            </thead>
+            <tbody>{datos.equipoOutsourcing.map((persona) => (
+              <tr key={`${persona.usuarioId ?? persona.nombre}-${persona.funcion}`} className="border-t border-border/60">
+                <td className="px-4 py-2.5 font-medium">{persona.nombre}{persona.cargo ? <span className="ml-1 text-[10px] text-muted-foreground">· {persona.cargo}</span> : null}{persona.area && persona.area !== datos.cliente.area && <span className="block text-[10px] font-normal text-sky-300">Pertenece a {persona.area}</span>}</td>
+                <td className="px-3 py-2.5">{persona.funcion === 'ENCARGADO' ? 'Encargado' : 'Asistente'}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">{persona.horasBolsa > 0 ? horas(persona.horasBolsa) : 'Sin bolsa asignada'}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{persona.horasRegistradas === null ? '—' : horas(persona.horasRegistradas)}</td>
+              </tr>
+      ))}</tbody>
+          </table>
+        </div>
+      ) : <p className="px-4 py-5 text-center text-xs text-muted-foreground">Aún no hay encargado ni asistentes asignados a este cliente.</p>}
+      {datos.equipoOutsourcing.filter((persona) => persona.usuarioId === null).map((persona) => (
+        <p key={`sin-usuario-${persona.funcion}-${persona.nombre}`} className="border-t border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-xs text-amber-200">
+          {persona.nombre} no aparece entre los integrantes del área de outsourcing.{' '}
+          {datos.permisos.puedeGestionar
+            ? <>Puedes registrar a esta persona en <Link href="/configuracion" className="font-semibold underline underline-offset-2 hover:text-amber-100">Configuración</Link>.</>
+            : 'Solicita al jefe de área que registre a esta persona en Configuración.'}
+        </p>
+      ))}
+    </section>
+  )
+}
 
 function PanelEquipo({
 
@@ -1173,7 +1245,7 @@ function PanelServicios({ datos }: { datos: Gestion }) {
           <UsersRound size={19} className="text-violet-300" />
           <div>
             <h3 className="text-[13px] font-semibold text-[#e8e9f3]">Servicios y bolsas de horas</h3>
-            <p className="text-[10px] text-[#9aa2b8]">{servicios.length} {servicios.length === 1 ? 'bolsa' : 'bolsas'} · responsables, horas distribuidas y consumo</p>
+            <p className="text-[10px] text-[#9aa2b8]">{servicios.length} {servicios.length === 1 ? 'bolsa' : 'bolsas'} · integrantes, horas distribuidas y consumo</p>
           </div>
         </div>
 
@@ -1190,7 +1262,7 @@ function PanelServicios({ datos }: { datos: Gestion }) {
           return (
             <article key={servicio.id} className="overflow-hidden rounded-xl border border-border/80 bg-secondary/25">
               <div className="grid grid-cols-1 items-center gap-3 px-3 py-3 lg:grid-cols-[minmax(180px,1.05fr)_minmax(215px,1.35fr)_minmax(270px,1fr)] lg:gap-4">
-                {/* Nombre completo con espacio suficiente, sin ocultar a los responsables. */}
+                {/* Nombre completo con espacio suficiente, sin ocultar a los integrantes. */}
                 <div className="flex min-w-0 items-center gap-3">
                   <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${tono}`}><FileSpreadsheet size={19} /></span>
                   <div className="min-w-0">

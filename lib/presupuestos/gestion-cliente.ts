@@ -85,6 +85,8 @@ export type Candidato = {
   id: number
   nombre: string
   cargo: string | null
+  area_id: number | null
+  area: string | null
   /** Si ya tiene horas asignadas en este cliente. */
   yaAsignado: boolean
 }
@@ -113,6 +115,10 @@ export type FilaCliente = RowDataPacket & {
   ruc: string | null
   correo: string | null
   telefono: string | null
+  es_outsourcing?: number | boolean
+  encargado_usuario_id?: number | null
+  encargado?: string | null
+  asistente?: string | null
 }
 
 export type GestionCliente = {
@@ -124,6 +130,9 @@ export type GestionCliente = {
     ruc: string | null
     correo: string | null
     telefono: string | null
+    esOutsourcing?: boolean
+    encargado?: string | null
+    asistente?: string | null
   }
   presupuestos: EstadoPresupuesto[]
   presupuestoVigente: number | null
@@ -139,6 +148,7 @@ export type GestionCliente = {
     cronogramaConFechas: boolean
   }
   equipo: FilaIntegrante[]
+  equipoOutsourcing: { usuarioId: number | null; nombre: string; cargo: string | null; areaId: number | null; area: string | null; funcion: string; horasBolsa: number; horasRegistradas: number | null }[]
   servicios: FilaServicio[]
   sinResolver: {
     id: number
@@ -158,6 +168,36 @@ export type GestionCliente = {
 
 function n(v: unknown): number {
   return Math.round(Number(v ?? 0) * 100) / 100
+}
+
+function tokensNombreIntegrante(nombre: string): string[] {
+  return nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es')
+    .replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean)
+}
+
+function separarNombresAsistente(nombres: string | null | undefined): string[] {
+  const separados = (nombres ?? '').split(/[,;\/|\n\r]+|\s+&\s+|\s+y\s+/i).map((nombre) => nombre.trim()).filter(Boolean)
+  return [...new Map(separados.map((nombre) => [tokensNombreIntegrante(nombre).join(' '), nombre])).values()]
+}
+
+function buscarIntegrante(nombre: string | null | undefined, candidatos: { id: number; nombre: string }[]): number | null {
+  const buscados = tokensNombreIntegrante(nombre ?? '')
+  if (!buscados.length) return null
+  const evaluados = candidatos.map((candidato) => {
+    const tokens = tokensNombreIntegrante(candidato.nombre)
+    const exacto = tokens.join(' ') === buscados.join(' ')
+    const coincidencias = buscados.filter((token) => tokens.some((candidatoToken) => candidatoToken === token || (token.length === 1 && candidatoToken.startsWith(token)))).length
+    const puntaje = coincidencias / buscados.length
+    return { id: candidato.id, exacto, puntaje }
+  }).sort((a, b) => Number(b.exacto) - Number(a.exacto) || b.puntaje - a.puntaje)
+  if (evaluados[0]?.exacto) return evaluados[0].id
+  if (buscados.length === 1) {
+    const coincidenciasUnicas = candidatos.filter((candidato) => tokensNombreIntegrante(candidato.nombre).includes(buscados[0]))
+    return coincidenciasUnicas.length === 1 ? coincidenciasUnicas[0].id : null
+  }
+  return evaluados[0]?.puntaje >= 0.75 && evaluados[0].puntaje - (evaluados[1]?.puntaje ?? 0) >= 0.2
+    ? evaluados[0].id
+    : null
 }
 
 /** Suma DECIMAL de MySQL, que llegan como texto, sin concatenarlos. */
@@ -242,6 +282,95 @@ export async function obtenerGestionCliente(
   const vigente = presupuestos[0]?.id ?? null
   const tienePresupuestos = ids.length > 0
   const marcas = ids.map(() => '?').join(',')
+
+  const equipoOutsourcing: { usuarioId: number | null; nombre: string; cargo: string | null; areaId: number | null; area: string | null; funcion: string; horasBolsa: number; horasRegistradas: number | null }[] = []
+  if (cliente.es_outsourcing === true || Number(cliente.es_outsourcing) === 1) {
+    const [asignaciones] = await pool.query<(RowDataPacket & { usuario_id: number; funcion: 'ENCARGADO' | 'ASISTENTE' })[]>(
+      `SELECT ca.usuario_id, ca.funcion FROM clientes_asignaciones ca
+        JOIN usuarios u ON u.id = ca.usuario_id AND u.activo = TRUE
+        JOIN areas usuario_area ON usuario_area.id = u.area_id
+        JOIN areas area_cliente ON area_cliente.id = ? AND area_cliente.empresa_id = usuario_area.empresa_id
+       WHERE ca.cliente_id = ? AND ca.activo = TRUE`,
+      [cliente.area_id, clienteId]
+    )
+    const funciones = new Map<number, 'ENCARGADO' | 'ASISTENTE'>()
+    for (const asignacion of asignaciones) funciones.set(Number(asignacion.usuario_id), asignacion.funcion)
+    if (cliente.encargado_usuario_id != null) funciones.set(Number(cliente.encargado_usuario_id), 'ENCARGADO')
+
+    // El padrón Excel contiene nombres, mientras que las horas se registran con
+    // el ID de usuario. Resolver el nombre contra el personal activo del área
+    // permite mostrar el acumulado incluso en clientes todavía sin presupuesto
+    // y también completa las asignaciones históricas que solo guardaron el texto.
+    const [personalArea] = await pool.query<(RowDataPacket & { id: number; nombre: string })[]>(
+      `SELECT u.id, u.nombre FROM usuarios u JOIN areas a ON a.id = u.area_id
+        JOIN areas area_cliente ON area_cliente.id = ? AND area_cliente.empresa_id = a.empresa_id
+       WHERE u.activo = TRUE AND u.rol IN ('PERSONAL','SUPERVISOR','JEFE_AREA')`,
+      [cliente.area_id]
+    )
+    const candidatos = personalArea.map((persona) => ({ id: Number(persona.id), nombre: String(persona.nombre) }))
+    const encargadoIdPorNombre = buscarIntegrante(cliente.encargado, candidatos)
+    if (encargadoIdPorNombre != null && !funciones.has(encargadoIdPorNombre)) funciones.set(encargadoIdPorNombre, 'ENCARGADO')
+    const asistentesPorNombre = separarNombresAsistente(cliente.asistente).map((nombre) => ({ nombre, usuarioId: buscarIntegrante(nombre, candidatos) }))
+    for (const asistente of asistentesPorNombre) {
+      if (asistente.usuarioId != null && !funciones.has(asistente.usuarioId)) funciones.set(asistente.usuarioId, 'ASISTENTE')
+    }
+
+    // Repara clientes importados antes de que el buscador contemplara usuarios
+    // de otras áreas o jefes de área. Solo quien administra el cliente puede
+    // materializar la relación descubierta para que la misma persona lo vea en
+    // su cartera personal a partir de la siguiente consulta.
+    if (puedeGestionar) {
+      const asignacionesResueltas = [...funciones]
+      if (asignacionesResueltas.length) {
+        const valores = asignacionesResueltas.map(() => '(?, ?, ?)').join(', ')
+        await pool.query(
+          `INSERT INTO clientes_asignaciones (cliente_id, usuario_id, funcion)
+           VALUES ${valores} ON DUPLICATE KEY UPDATE activo = TRUE`,
+          asignacionesResueltas.flatMap(([usuarioId, funcion]) => [clienteId, usuarioId, funcion]),
+        )
+      }
+      if (encargadoIdPorNombre != null) {
+        await pool.query('UPDATE clientes SET encargado_usuario_id = COALESCE(encargado_usuario_id, ?) WHERE id = ?', [encargadoIdPorNombre, clienteId])
+      }
+    }
+
+    const usuarioIds = [...funciones.keys()]
+    if (usuarioIds.length) {
+      const [personal] = await pool.query<(RowDataPacket & { id: number; nombre: string; cargo: string | null; area_id: number | null; area: string | null; horas_bolsa: string; horas_registradas: string })[]>(
+        `SELECT u.id, u.nombre, u.cargo, u.area_id, a.nombre AS area,
+                COALESCE((SELECT SUM(pa.horas) FROM presupuesto_asignaciones pa
+                           JOIN presupuesto_servicios ps ON ps.id = pa.servicio_id
+                           JOIN presupuestos p ON p.id = ps.presupuesto_id
+                          WHERE p.cliente_id = ? AND pa.usuario_id = u.id
+                            AND pa.estado = 'CONFIRMADA' AND ps.activo = TRUE
+                            AND ps.origen <> 'CONSOLIDADO'), 0) AS horas_bolsa,
+                COALESCE((SELECT SUM(GREATEST(0, TIMESTAMPDIFF(SECOND, a.inicio, COALESCE(a.fin, NOW())) -
+                           COALESCE((SELECT SUM(TIMESTAMPDIFF(SECOND, pa.inicio, COALESCE(pa.fin, NOW())))
+                                       FROM pausas pa WHERE pa.actividad_id = a.id), 0)))
+                             FROM actividades a WHERE a.cliente_id = ? AND a.usuario_id = u.id
+                               AND (a.estado IN ('EN_CURSO','PAUSADA') OR
+                                    (a.fin IS NOT NULL AND a.estado IN ('PENDIENTE_APROBACION','APROBADA')))), 0) / 3600 AS horas_registradas
+            FROM usuarios u LEFT JOIN areas a ON a.id = u.area_id
+           WHERE u.id IN (${usuarioIds.map(() => '?').join(',')})`,
+        [clienteId, clienteId, ...usuarioIds]
+      )
+      equipoOutsourcing.push(...personal.map((persona) => ({
+        usuarioId: Number(persona.id),
+        nombre: persona.nombre,
+        cargo: persona.cargo,
+        areaId: persona.area_id == null ? null : Number(persona.area_id),
+        area: persona.area,
+        funcion: funciones.get(Number(persona.id)) ?? 'ASISTENTE',
+        horasBolsa: n(persona.horas_bolsa),
+        horasRegistradas: n(persona.horas_registradas),
+      })))
+      equipoOutsourcing.sort((a, b) => (a.funcion === b.funcion ? a.nombre.localeCompare(b.nombre, 'es') : a.funcion === 'ENCARGADO' ? -1 : 1))
+    }
+    if (encargadoIdPorNombre == null && cliente.encargado?.trim()) equipoOutsourcing.push({ usuarioId: null, nombre: cliente.encargado.trim(), cargo: null, areaId: null, area: null, funcion: 'ENCARGADO', horasBolsa: 0, horasRegistradas: null })
+    for (const asistente of asistentesPorNombre) {
+      if (asistente.usuarioId == null) equipoOutsourcing.push({ usuarioId: null, nombre: asistente.nombre, cargo: null, areaId: null, area: null, funcion: 'ASISTENTE', horasBolsa: 0, horasRegistradas: null })
+    }
+  }
 
   // --- segunda tanda: siete consultas en paralelo --------------------------
   //
@@ -395,16 +524,16 @@ export async function obtenerGestionCliente(
             ids
           )
         : null,
-      // Candidatos para repartir: el equipo del ÁREA del cliente. Sin proyecto
-      // ya no hay "participantes del proyecto", así que la lista sensata es el
-      // personal del área a la que pertenece el cliente. No depende de los
-      // presupuestos, así que se lanza siempre en esta misma tanda.
+      // Personal activo de todas las áreas de la empresa, para que el jefe
+      // pueda asignar asistentes que pertenezcan a otra división.
       pool.query<
-        (RowDataPacket & { id: number; nombre: string; cargo: string | null; area_id: number })[]
+        (RowDataPacket & { id: number; nombre: string; cargo: string | null; area_id: number; area: string | null })[]
       >(
-        `SELECT u.id, u.nombre, u.cargo, u.area_id
+        `SELECT u.id, u.nombre, u.cargo, u.area_id, a.nombre AS area
            FROM usuarios u
-          WHERE u.activo = TRUE AND u.area_id = ?
+           JOIN areas a ON a.id = u.area_id
+           JOIN areas area_cliente ON area_cliente.id = ? AND area_cliente.empresa_id = a.empresa_id
+           WHERE u.activo = TRUE AND u.rol IN ('PERSONAL','SUPERVISOR','JEFE_AREA')
           ORDER BY u.nombre`,
         [cliente.area_id]
       ),
@@ -519,6 +648,8 @@ export async function obtenerGestionCliente(
     id: u.id,
     nombre: u.nombre,
     cargo: u.cargo,
+    area_id: Number(u.area_id),
+    area: u.area,
     yaAsignado: yaAsignados.has(u.id),
   }))
 
@@ -563,6 +694,9 @@ export async function obtenerGestionCliente(
       ruc: cliente.ruc,
       correo: cliente.correo,
       telefono: cliente.telefono,
+      esOutsourcing: Boolean(cliente.es_outsourcing),
+      encargado: cliente.encargado ?? null,
+      asistente: cliente.asistente ?? null,
     },
     presupuestos: listaPresupuestos,
     presupuestoVigente: vigente,
@@ -581,6 +715,7 @@ export async function obtenerGestionCliente(
       cronogramaConFechas,
     },
     equipo,
+    equipoOutsourcing,
     servicios,
     sinResolver,
     desviaciones,

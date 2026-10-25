@@ -96,6 +96,24 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: context.error }, { status: context.status })
     }
 
+    const { searchParams } = new URL(request.url)
+    if (searchParams.get('buscar_personal_entre_areas') === '1') {
+      if (!esAdmin(context.user) && !esJefeDeArea(context.user)) {
+        return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
+      }
+      const [personal] = await pool.query(
+        `SELECT u.id, u.nombre, u.usuario, u.rol, u.area_id, u.cargo, u.activo,
+                a.nombre AS area_nombre
+           FROM usuarios u
+           JOIN areas a ON a.id = u.area_id
+          WHERE a.empresa_id = ? AND u.activo = TRUE
+            AND u.rol IN ('PERSONAL', 'SUPERVISOR', 'JEFE_AREA')
+          ORDER BY u.nombre`,
+        [context.empresaId]
+      )
+      return NextResponse.json(personal)
+    }
+
     let query = `${SELECT_USUARIOS} WHERE a.empresa_id = ?`
     const params: number[] = [context.empresaId]
     if (esJefeDeArea(context.user) && context.user.area_id != null) {

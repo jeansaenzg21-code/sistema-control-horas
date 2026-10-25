@@ -58,7 +58,7 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
   const user = await getUserFromRequest(request)
   if (!user) {
-    return NextResponse.json({ error: 'Sesi��n invǭlida o expirada.' }, { status: 401 })
+    return NextResponse.json({ error: 'La sesión no es válida o ha expirado.' }, { status: 401 })
   }
 
   const context = await getEmpresaContext(user)
@@ -76,7 +76,7 @@ export async function DELETE(request: Request) {
 
   const token = tokenDeRequest(request)
   if (!token) {
-    return NextResponse.json({ error: 'Sesi��n invǭlida o expirada.' }, { status: 401 })
+    return NextResponse.json({ error: 'La sesión no es válida o ha expirado.' }, { status: 401 })
   }
 
   await pool.query(

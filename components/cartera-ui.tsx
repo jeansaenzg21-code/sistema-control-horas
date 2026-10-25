@@ -36,6 +36,16 @@ export type ClienteCartera = {
 
   direccion: string | null
 
+  encargado: string | null
+
+  asistente: string | null
+
+  es_outsourcing: boolean
+
+  mi_funcion: string | null
+
+  encargado_usuario_id?: number | null
+
   horasContratadas: number
 
   /** Horas del Excel pendientes de aprobar. No son contrato. */
