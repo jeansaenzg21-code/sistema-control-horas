@@ -123,6 +123,33 @@ export default function GestionLaptops({ showHeading = false }: { showHeading?: 
     ];
   }, [items, duplicados]);
 
+  const activarFiltroKpi = (label: string) => {
+    if (label === 'Total equipos') {
+      setFilters(initialFilters);
+      return;
+    }
+    if (label === 'Asignadas / Reservadas') {
+      setFilters(filters.estado === 'Asignado / Reservado'
+        ? initialFilters
+        : { ...initialFilters, estado: 'Asignado / Reservado' });
+    } else if (label === 'Disponibles' || label === 'En reparación' || label === 'Pendientes de validar') {
+      const estado = label === 'Pendientes de validar' ? 'Pendiente' : label === 'Disponibles' ? 'Disponible' : 'En reparación';
+      setFilters(filters.estado === estado
+        ? initialFilters
+        : { ...initialFilters, estado });
+    } else if (label === 'Duplicados') {
+      setFilters(filters.duplicado === 'Solo duplicados'
+        ? initialFilters
+        : { ...initialFilters, duplicado: 'Solo duplicados' });
+    }
+  };
+
+  const kpiActivo = (label: string) => label === 'Total equipos'
+    ? Object.entries(filters).every(([key, value]) => value === initialFilters[key as keyof Filters])
+    : label === 'Duplicados'
+      ? filters.duplicado === 'Solo duplicados'
+      : filters.estado === (label === 'Asignadas / Reservadas' ? 'Asignado / Reservado' : label === 'Disponibles' ? 'Disponible' : label === 'En reparación' ? 'En reparación' : label === 'Pendientes de validar' ? 'Pendiente' : '');
+
   const filtered = useMemo(() => items.filter(e => {
     const match = (v:string, chosen:string) => chosen === 'Todos' || chosen === 'Todas' || v === chosen;
     const matchMarca = (v:string, chosen:string) => chosen === 'Todas' || v.trim().toLocaleLowerCase('es') === chosen.trim().toLocaleLowerCase('es');
@@ -239,7 +266,7 @@ export default function GestionLaptops({ showHeading = false }: { showHeading?: 
       </div>
     </div>
 
-    <div className={styles.stats}>{kpis.map(k=><div className={`${styles.stat} ${styles[k.tone]}`} key={k.label}><div className={styles.statIcon}><k.Icon size={23}/></div><div className={styles.statText}><span>{k.label}</span><strong>{k.value}</strong><small>{k.hint}</small></div></div>)}</div>
+    <div className={styles.stats}>{kpis.map(k=><button type="button" className={`${styles.stat} ${styles[k.tone]} ${styles.statButton} ${kpiActivo(k.label)?styles.statActive:''}`} key={k.label} onClick={()=>activarFiltroKpi(k.label)} aria-pressed={kpiActivo(k.label)} title={`Filtrar por ${k.label}`}><div className={styles.statIcon}><k.Icon size={23}/></div><div className={styles.statText}><span>{k.label}</span><strong>{k.value}</strong><small>{k.hint}</small></div></button>)}</div>
 
     <div className={styles.filterGrid}>
       {([
