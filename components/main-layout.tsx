@@ -67,30 +67,7 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal' }: Main
     })
   }
 
-  if (cargando) {
-    return (
-      <div className="flex min-h-screen bg-background">
-        <div className="hidden w-56 shrink-0 border-r border-border bg-sidebar md:block" />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="sticky top-0 z-30 flex min-h-14 items-center border-b border-border bg-header px-4 py-2 sm:px-6">
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-bold tracking-tight text-foreground">{title}</h1>
-              {subtitle && <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>}
-            </div>
-          </div>
-          <main className="flex-1 overflow-y-auto bg-background">
-            <div className="mx-auto w-full max-w-[1680px] animate-pulse space-y-3 px-4 py-4">
-              <div className="h-24 rounded-xl bg-muted" />
-              <div className="h-40 rounded-xl bg-muted" />
-              <div className="h-64 rounded-xl bg-muted" />
-            </div>
-          </main>
-        </div>
-      </div>
-    )
-  }
-
-  if (!usuario || !empresaActiva) return null
+  if (!cargando && (!usuario || !empresaActiva)) return null
 
   return (
     <div className="flex min-h-screen bg-background">
