@@ -114,8 +114,11 @@ export async function GET(request: Request) {
        WHERE ca.cliente_id = c.id AND ca.usuario_id = ? AND ca.activo = TRUE
     )`
     if (soloAsignados) {
-      query += ` AND (${personalCliente} OR ${presupuestoAsignado})`
+      // El jefe de Outsourcing necesita ver la cartera completa del área para
+      // poder registrar trabajo aunque no tenga asignaciones individuales.
+      query += ` AND (${personalCliente} OR ${presupuestoAsignado}${esJefeDeArea(context.user) ? ' OR (c.es_outsourcing = TRUE AND c.area_id = ?)' : ''})`
       params.push(context.user.id, context.user.id)
+      if (esJefeDeArea(context.user) && context.user.area_id != null) params.push(context.user.area_id)
     } else if (usuarioIndividual) {
       query += ` AND (${personalCliente})`
       params.push(context.user.id)

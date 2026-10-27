@@ -6,6 +6,7 @@ import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { useCatalogosActividad } from '@/lib/use-catalogos-actividad'
 import { ProgresoServicio } from './servicio-progreso'
+import { ClienteSearch } from './cliente-search'
 
 export function ActivityForm() {
   const { iniciarActividad } = useActividad()
@@ -29,6 +30,11 @@ export function ActivityForm() {
     () => servicios.find((servicio) => servicio.id === Number(servicioId)) ?? null,
     [servicios, servicioId],
   )
+  const clienteOutsourcing = clientesVisibles.find((cliente) => cliente.id === Number(clienteId))?.es_outsourcing
+  const servicioOutsourcing = servicios.find((servicio) => servicio.nombre === 'Outsourcing contable')
+  useEffect(() => {
+    if (clienteOutsourcing && servicioOutsourcing) setServicioId(servicioOutsourcing.id)
+  }, [clienteOutsourcing, servicioOutsourcing])
 
   const puedeEnviar = tipoActividadId !== '' && !cargando
 
@@ -82,30 +88,16 @@ export function ActivityForm() {
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-foreground">Cliente</label>
-          <div className="relative">
-            <select
-              value={clienteId}
-              onChange={(e) => setClienteId(e.target.value ? Number(e.target.value) : '')}
-              className="w-full cursor-pointer appearance-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50 hover:border-[#7c3aed]/50"
-            >
-              <option value="">Sin cliente (opcional)</option>
-              {clientesVisibles.map((cliente) => (
-                  <option key={cliente.id} value={cliente.id}>
-                    {cliente.nombre}
-                  </option>
-                ))}
-            </select>
-            <ChevronDown
-              size={17}
-              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            />
-          </div>
+          <ClienteSearch clientes={clientesVisibles} value={clienteId} onChange={setClienteId} />
         </div>
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-foreground">Servicio</label>
           <div className="relative">
-            <select
+            {clienteOutsourcing ? (
+              <input readOnly value={cargandoServicios ? 'Cargando servicio...' : servicioOutsourcing?.nombre ?? 'Outsourcing contable'}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground" />
+            ) : <select
               value={servicioId}
               onChange={(e) => setServicioId(e.target.value ? Number(e.target.value) : '')}
               disabled={!clienteId || cargandoServicios || sinAsignaciones}
@@ -125,7 +117,7 @@ export function ActivityForm() {
                   {servicio.nombre} ({Number(servicio.horas).toFixed(0)} h)
                 </option>
               ))}
-            </select>
+            </select>}
             <ChevronDown
               size={17}
               className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"

@@ -67,10 +67,10 @@ export async function GET(request: Request) {
     // que no las puede reclamar nadie todavía: contarlas sería inventar el dueño.
     const filtroAsignacion = veTodasLasBolsas
       ? ''
-      : `AND EXISTS (SELECT 1 FROM presupuesto_asignaciones pa
+      : `AND ((c.es_outsourcing = TRUE AND s.nombre = 'Outsourcing contable') OR EXISTS (SELECT 1 FROM presupuesto_asignaciones pa
                        WHERE pa.servicio_id = s.id
                          AND pa.usuario_id = ?
-                         AND pa.estado = 'CONFIRMADA')`
+                         AND pa.estado = 'CONFIRMADA'))`
 
     // `s.horas` son las horas del SERVICIO entero, no de la persona: sirven para
     // el encabezado del presupuesto, no para saber si uno se está pasando. Las
@@ -127,7 +127,7 @@ export async function GET(request: Request) {
         context.activa.id,
         clienteId,
         ...(areaJefe != null ? [areaJefe] : []),
-        ...(veTodasLasBolsas ? [] : [user.id]),
+          ...(!veTodasLasBolsas ? [user.id] : []),
       ]
     )
 
