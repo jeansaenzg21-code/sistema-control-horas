@@ -257,9 +257,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const normalized = normalizeUsuario(data.usuario ?? {})
       setUsuario(normalized)
-      // La sesión ya quedó creada por el servidor. No retener la navegación al
-      // login mientras se cargan los datos secundarios del contexto.
-      void cargarContextoEmpresa()
+      // La sesión ya quedó creada, pero la navegación inicial necesita que el
+      // contexto de empresa esté cargado: las páginas internas lo validan en
+      // MainLayout y podrían devolver al login si esta petición queda atrás.
+      await cargarContextoEmpresa()
       void cargarUsuarios()
       return { ok: true }
     } catch {

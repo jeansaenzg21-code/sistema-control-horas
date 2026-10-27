@@ -31,7 +31,7 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal' }: Main
     if (!usuario) {
       router.replace('/login')
     } else if (!empresaActiva) {
-      router.replace('/hub')
+      router.replace('/login')
     }
   }, [cargando, usuario, empresaActiva, router])
 

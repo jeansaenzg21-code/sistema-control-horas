@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Search, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, DoorOpen, Menu } from 'lucide-react'
+import { Bell, Search, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, Menu } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useNotificaciones } from '@/lib/notificaciones-context'
 import { cn } from '@/lib/utils'
@@ -14,12 +14,10 @@ interface HeaderProps {
 }
 
 export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
-  const { usuario, empresaActiva, logout, salirDeEmpresa } = useAuth()
+  const { usuario, empresaActiva, logout } = useAuth()
   const { notificaciones, noLeidas, marcarLeida, marcarTodasLeidas } = useNotificaciones()
   const [notifAbierto, setNotifAbierto] = useState(false)
   const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false)
-  const [saliendoEmpresa, setSaliendoEmpresa] = useState(false)
-  const [errorSalirEmpresa, setErrorSalirEmpresa] = useState('')
   const contenedorNotifRef = useRef<HTMLDivElement>(null)
   const contenedorUsuarioRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -57,25 +55,6 @@ export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
     setMenuUsuarioAbierto(false)
     router.push('/configuracion')
   }
-
-  const manejarSalirEmpresa = async () => {
-    setErrorSalirEmpresa('')
-    setSaliendoEmpresa(true)
-    const resultado = await salirDeEmpresa()
-    if (resultado.ok) {
-      setMenuUsuarioAbierto(false)
-      router.replace('/hub')
-      router.refresh()
-    } else {
-      setErrorSalirEmpresa(resultado.error || 'No se pudo salir de la empresa.')
-    }
-    setSaliendoEmpresa(false)
-  }
-
-  const puedeSalirEmpresa = Boolean(
-    empresaActiva
-    && (usuario?.rol === 'admin' || usuario?.rol === 'socio' || empresaActiva.permite_salir_empresa)
-  )
 
   const manejarLogout = () => {
     setMenuUsuarioAbierto(false)
@@ -232,22 +211,6 @@ export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
                   <Settings size={16} className="text-muted-foreground" />
                   Configuración
                 </button>
-                {puedeSalirEmpresa && (
-                  <button
-                    type="button"
-                    onClick={manejarSalirEmpresa}
-                    disabled={saliendoEmpresa}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <DoorOpen size={16} className="text-muted-foreground" />
-                    {saliendoEmpresa ? 'Saliendo...' : 'Salir de empresa'}
-                  </button>
-                )}
-                {errorSalirEmpresa && (
-                  <p className="mx-1 mb-1 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-400">
-                    {errorSalirEmpresa}
-                  </p>
-                )}
                 <button
                   onClick={manejarLogout}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-rose-500 transition-colors hover:bg-muted"
