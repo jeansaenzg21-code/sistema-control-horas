@@ -142,6 +142,17 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
   const s = sesiones[0]
   if (!s.activo) return null
 
+  // Sesiones emitidas antes de deshabilitar el hub pueden seguir sin empresa
+  // activa. Completarla aquí persiste la empresa predeterminada para toda la
+  // sesión (incluidas las comprobaciones que leen `user.empresa_id`).
+  let empresaSesion = s.empresa_id == null ? null : Number(s.empresa_id)
+  if (empresaSesion == null) {
+    empresaSesion = await getDefaultEmpresaId(Number(s.usuario_id))
+    if (empresaSesion != null) {
+      await pool.query('UPDATE sesiones SET empresa_id = ? WHERE token = ?', [empresaSesion, hashToken(token)])
+    }
+  }
+
   const usuario: SessionUser = {
     id: Number(s.usuario_id),
     nombre: String(s.nombre),
@@ -152,7 +163,7 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
     cargo: s.cargo == null ? null : String(s.cargo),
     especialidad: s.especialidad == null ? null : String(s.especialidad),
     activo: Boolean(s.activo),
-    empresa_id: s.empresa_id == null ? null : Number(s.empresa_id),
+    empresa_id: empresaSesion,
   }
 
   // El bloqueo va AQUÍ y no en cada ruta: es el único punto por el que pasan las
@@ -186,9 +197,12 @@ export async function getEmpresasDisponibles(user: SessionUser): Promise<Empresa
 
 export async function getEmpresaContext(user: SessionUser): Promise<EmpresaContext> {
   const disponibles = await getEmpresasDisponibles(user)
-  const activa = user.empresa_id
-    ? disponibles.find((empresa) => empresa.id === user.empresa_id) || null
-    : null
+  // La aplicación ya no requiere que el usuario elija empresa en un hub. Se
+  // conserva su empresa de sesión cuando es válida y, para sesiones antiguas
+  // sin empresa activa, se asigna automáticamente la primera disponible.
+  const activa = (user.empresa_id
+    ? disponibles.find((empresa) => empresa.id === user.empresa_id)
+    : null) || disponibles[0] || null
   return { activa, disponibles }
 }
 
