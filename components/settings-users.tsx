@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Clock, Plus, Pencil, Trash2, UserRound } from 'lucide-react'
+import { ArrowRightLeft, Clock, Plus, Pencil, Trash2, UserRound } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
+import { useAreas } from '@/lib/areas-context'
 import { SettingsHorario } from './settings-horario'
 import { opcionesApi } from '@/lib/api-cliente'
 
@@ -20,6 +21,7 @@ interface FormularioUsuario {
 
 export function SettingsUsers({ areaId }: SettingsUsersProps) {
   const { usuarios, usuario: actual, cargarUsuarios } = useAuth()
+  const { areas } = useAreas()
   const esJefeArea = actual?.rol === 'jefe_area'
   const esAdmin = actual?.rol === 'admin'
   const [formularioAbierto, setFormularioAbierto] = useState(false)
@@ -34,6 +36,8 @@ export function SettingsUsers({ areaId }: SettingsUsersProps) {
   const [error, setError] = useState('')
   const [exito, setExito] = useState('')
   const [horarioDe, setHorarioDe] = useState<{ id: number; nombre: string } | null>(null)
+  const [areaDestino, setAreaDestino] = useState<Record<number, string>>({})
+  const [transfiriendoId, setTransfiriendoId] = useState<number | null>(null)
 
   const usuariosArea = usuarios.filter((u) => u.area_id === areaId && u.rol === 'personal')
   const enModoEdicion = formularioAbierto
@@ -169,6 +173,36 @@ export function SettingsUsers({ areaId }: SettingsUsersProps) {
       )
     } catch {
       setError('No se pudo eliminar.')
+    }
+  }
+
+  const transferirUsuario = async (id: number, nombre: string) => {
+    const destino = Number(areaDestino[id])
+    if (!Number.isInteger(destino) || destino <= 0 || destino === areaId) return
+    const nombreDestino = areas.find((area) => area.id === destino)?.nombre ?? 'el área seleccionada'
+    if (!window.confirm(`¿Transferir a ${nombre} a ${nombreDestino}?`)) return
+
+    setError('')
+    setExito('')
+    setTransfiriendoId(id)
+    try {
+      const res = await fetch(`/api/usuarios/${id}`, opcionesApi({ method: 'PUT', body: { area_id: destino } }))
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data.error || 'No se pudo transferir al usuario.')
+        return
+      }
+      await cargarUsuarios()
+      setExito(`${nombre} fue transferido a ${nombreDestino}.`)
+      setAreaDestino((actual) => {
+        const siguiente = { ...actual }
+        delete siguiente[id]
+        return siguiente
+      })
+    } catch {
+      setError('No se pudo conectar al servidor.')
+    } finally {
+      setTransfiriendoId(null)
     }
   }
 
@@ -346,6 +380,31 @@ export function SettingsUsers({ areaId }: SettingsUsersProps) {
                   >
                     <Clock size={16} />
                   </button>
+                )}
+                {esAdmin && (
+                  <div className="flex items-center gap-1">
+                    <select
+                      aria-label={`Área destino para ${u.nombre}`}
+                      value={areaDestino[u.id] ?? ''}
+                      onChange={(e) => setAreaDestino((actual) => ({ ...actual, [u.id]: e.target.value }))}
+                      className="h-8 max-w-36 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                    >
+                      <option value="">Transferir a…</option>
+                      {areas.filter((area) => area.activo && area.id !== areaId).map((area) => (
+                        <option key={area.id} value={area.id}>{area.nombre}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void transferirUsuario(u.id, u.nombre)}
+                      disabled={!areaDestino[u.id] || transfiriendoId === u.id}
+                      aria-label={`Transferir a ${u.nombre}`}
+                      title="Transferir de área"
+                      className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-[#7c3aed]/10 hover:text-[#c4b5fd] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <ArrowRightLeft size={16} />
+                    </button>
+                  </div>
                 )}
                 <button
                   type="button"
