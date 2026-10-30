@@ -51,7 +51,12 @@ export function SettingsAreas() {
   const area = areaSeleccionada != null ? areas.find((a) => a.id === areaSeleccionada) : null
   const usuariosArea = useMemo(() => {
     return usuarios
-      .filter((u) => u.area_id === areaSeleccionada && u.rol === 'jefe_area' && u.activo)
+      .filter((u) => (
+        u.area_id === areaSeleccionada
+        && u.activo
+        && u.rol !== 'admin'
+        && u.rol !== 'socio'
+      ))
       .sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [areaSeleccionada, usuarios])
   const resultadosBusqueda = useMemo(() => {
@@ -77,12 +82,15 @@ export function SettingsAreas() {
       .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   }, [areas, busquedaGeneral, usuarios])
   const candidatosJefe = useMemo(() => {
-    const consulta = busquedaJefe.trim().toLocaleLowerCase('es')
+    const consulta = normalizarBusqueda(busquedaJefe.trim())
     if (!consulta) return usuariosArea
-    return usuariosArea.filter((u) => (
-      [u.nombre, u.usuario, u.cargo ?? '', etiquetaRol(u.rol)]
-        .some((valor) => valor.toLocaleLowerCase('es').includes(consulta))
-    ))
+    const terminos = consulta.split(/\s+/).filter(Boolean)
+    return usuariosArea.filter((u) => {
+      const texto = normalizarBusqueda(
+        [u.nombre, u.usuario, u.correo ?? '', u.cargo ?? '', etiquetaRol(u.rol)].join(' ')
+      )
+      return terminos.every((termino) => texto.includes(termino))
+    })
   }, [busquedaJefe, usuariosArea])
   const jefeSeleccionadoActual = usuariosArea.find((u) => u.id === jefeSeleccionado) ?? null
   const hayCambioJefe = jefeSeleccionado !== jefeGuardado
@@ -105,6 +113,9 @@ export function SettingsAreas() {
     const resultado = await actualizarArea(area.id, { jefe_id: jefeSeleccionado })
     if (resultado.ok) {
       setJefeGuardado(jefeSeleccionado)
+      // El jefe anterior deja de serlo: hay que recargar los usuarios para que
+      // vuelva a aparecer como colaborador de la división.
+      await cargarUsuarios()
       setExitoJefe(jefeSeleccionado ? 'Jefe de área actualizado.' : 'Jefe de área quitado.')
     } else {
       setErrorJefe(resultado.error || 'No se pudo actualizar el jefe de área.')
@@ -210,7 +221,7 @@ export function SettingsAreas() {
                 type="search"
                 value={busquedaJefe}
                 onChange={(e) => setBusquedaJefe(e.target.value)}
-                placeholder="Buscar un usuario..."
+                placeholder="Buscar por nombre o usuario..."
                 className="w-full rounded-lg border border-border bg-background py-2.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
               />
             </div>
@@ -259,7 +270,7 @@ export function SettingsAreas() {
                   </button>
                 )
               }) : (
-                <p className="px-3 py-4 text-center text-xs text-muted-foreground">No hay perfiles Jefe de área activos en esta división.</p>
+                <p className="px-3 py-4 text-center text-xs text-muted-foreground">No hay usuarios activos en esta división.</p>
               )}
             </div>
 

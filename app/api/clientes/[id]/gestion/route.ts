@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { RowDataPacket } from 'mysql2'
 
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
-import { esAdministrador, puedeAdministrarArea } from '@/lib/permisos'
+import { esAdministrador, esJefeDeArea, esSocio, puedeAdministrarArea } from '@/lib/permisos'
 import { obtenerGestionCliente, type FilaCliente } from '@/lib/presupuestos/gestion-cliente'
 import pool from '@/lib/db'
 
@@ -19,8 +19,11 @@ type Contexto = { params: Promise<{ id: string }> }
  */
 export async function GET(request: Request, ctx: Contexto) {
   try {
-    const user = await getUserFromRequest(request)
-    if (!user) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 })
+      const user = await getUserFromRequest(request)
+      if (!user) return NextResponse.json({ error: 'No autorizado.' }, { status: 401 })
+      if (!esAdministrador(user) && !esJefeDeArea(user) && !esSocio(user)) {
+        return NextResponse.json({ error: 'La gestión de clientes solo está disponible para quienes administran el área.' }, { status: 403 })
+      }
 
     const empresa = await getEmpresaContext(user)
     if (!empresa.activa) {
@@ -40,7 +43,8 @@ export async function GET(request: Request, ctx: Contexto) {
     // datos (nombre, contacto, área), y volver a leerlos allí sería un viaje más
     // a la base de datos por una fila que ya tenemos aquí.
     const [propio] = await pool.query<RowDataPacket[]>(
-      `SELECT c.id, c.nombre, c.area_id, a.nombre AS area, c.ruc, c.correo, c.telefono
+      `SELECT c.id, c.nombre, c.area_id, a.nombre AS area, c.ruc, c.correo, c.telefono,
+              c.es_outsourcing, c.encargado_usuario_id, c.encargado, c.asistente
          FROM clientes c
          INNER JOIN areas a ON a.id = c.area_id
         WHERE c.id = ? AND a.empresa_id = ? AND c.activo = TRUE`,
@@ -50,6 +54,8 @@ export async function GET(request: Request, ctx: Contexto) {
       return NextResponse.json({ error: 'El cliente no existe.' }, { status: 404 })
     }
     const areaId = Number(propio[0].area_id)
+
+    if (esJefeDeArea(user) && user.area_id !== areaId) return NextResponse.json({ error: 'El cliente no existe.' }, { status: 404 })
 
     const puedeGestionar = puedeAdministrarArea(user, areaId)
     const motivo = puedeGestionar

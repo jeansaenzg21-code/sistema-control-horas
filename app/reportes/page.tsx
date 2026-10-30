@@ -101,7 +101,7 @@ export default function Reportes() {
 
   const manejarExcel = () => {
     const calcularHoras = (r: typeof registros[0]): string => {
-      if (!r.fin || !r.inicio) return '�?"'
+      if (!r.fin || !r.inicio) return '—'
       const inicioMs = new Date(r.inicio).getTime()
       const finMs = new Date(r.fin).getTime()
       const totalSeg = Math.max(0, Math.floor((finMs - inicioMs) / 1000) - (r.pausa_acumulada_segundos || 0))

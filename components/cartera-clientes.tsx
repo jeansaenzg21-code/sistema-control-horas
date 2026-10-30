@@ -252,7 +252,7 @@ function GraficoCartera({ clientes, modo }: {
   )
 }
 
-export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, onAbrirGestion, onImportarClientes, areaId = null }: {
+export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, onAbrirGestion, onImportarClientes, onSolicitarAsistente, areaId = null }: {
   onEditar: (cliente: ClienteCartera) => void
 
   onEliminar: (cliente: ClienteCartera) => void
@@ -263,6 +263,7 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
 
   /** Alta de uno o varios clientes desde Excel. */
   onImportarClientes: () => void
+  onSolicitarAsistente?: (cliente: ClienteCartera) => void
   areaId?: number | null
 }) {
 
@@ -271,7 +272,7 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
   // El SOCIO recorre la cartera como el administrador, pero sin los controles
   // de escritura. Ocultarlos aquí no es la protección: la API los rechaza igual
   // (lib/auth.ts). Es solo para no ofrecer botones que no harían nada.
-  const soloLectura = usuario?.rol === 'socio'
+  const soloLectura = usuario?.rol !== 'jefe_area' && usuario?.rol !== 'admin'
 
   const [datos, setDatos] = useState<Respuesta | null>(null)
 
@@ -341,7 +342,34 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
 
   const alertas = datos?.alertas ?? []
 
-  const alertasOrdenadas = [...alertas].sort((a, b) => ({ desviacion: 0, pendiente: 1, informativa: 2 }[a.tipo] - { desviacion: 0, pendiente: 1, informativa: 2 }[b.tipo]))
+  const sinPresupuesto = alertas.filter((alerta) => alerta.tipo === 'informativa' && alerta.titulo === 'Cliente sin presupuesto')
+  const sinEncargado = alertas.filter((alerta) => alerta.id.startsWith('outsourcing-sin-encargado-'))
+  const alertasAgrupadas = alertas.filter((alerta) => !sinPresupuesto.includes(alerta) && !sinEncargado.includes(alerta))
+  if (sinPresupuesto.length > 1) {
+    alertasAgrupadas.push({
+      id: 'clientes-sin-presupuesto',
+      clienteId: sinPresupuesto[0].clienteId,
+      clienteNombre: '',
+      tipo: 'informativa',
+      titulo: `${sinPresupuesto.length} clientes no tienen presupuesto de horas asignadas`,
+      descripcion: '',
+      dato: '',
+      cuando: null,
+    })
+  } else alertasAgrupadas.push(...sinPresupuesto)
+  if (sinEncargado.length > 1) {
+    alertasAgrupadas.push({
+      id: 'outsourcing-sin-encargado-resumen',
+      clienteId: sinEncargado[0].clienteId,
+      clienteNombre: '',
+      tipo: 'informativa',
+      titulo: `${sinEncargado.length} clientes de outsourcing no tienen encargado asignado`,
+      descripcion: '',
+      dato: '',
+      cuando: null,
+    })
+  } else alertasAgrupadas.push(...sinEncargado)
+  const alertasOrdenadas = alertasAgrupadas.sort((a, b) => ({ desviacion: 0, pendiente: 1, informativa: 2 }[a.tipo] - { desviacion: 0, pendiente: 1, informativa: 2 }[b.tipo]))
   const alertasVisibles = alertasExpandidas ? alertasOrdenadas : alertasOrdenadas.slice(0, 3)
   const cantidadDesviaciones = alertas.filter((alerta) => alerta.tipo === 'desviacion').length
   const cantidadPendientes = alertas.filter((alerta) => alerta.tipo === 'pendiente').length
@@ -404,13 +432,13 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
           </div>
 
           <div className={`${PANEL} min-w-0 overflow-hidden !rounded-xl`}>
-            <div className="min-w-0 overflow-hidden">
+            <div className="max-h-[520px] min-w-0 overflow-auto [scrollbar-width:thin]">
               {/* Sin min-w: la tabla es table-fixed con anchos en porcentaje, así
                   que se ajusta sola al panel. Poner un ancho mínimo obligaba a
                   aparecer la barra horizontal para esconder columnas. */}
               <table className="w-full table-fixed border-collapse text-left text-[11px] text-[#ecedf5]">
                 <colgroup><col style={{ width: '28%' }} /><col style={{ width: '15%' }} /><col style={{ width: '18%' }} /><col style={{ width: '13%' }} /><col style={{ width: '13%' }} /><col style={{ width: '13%' }} /></colgroup>
-                <thead className="bg-secondary text-[#abb4c8]"><tr className="border-b border-border">
+                <thead className="sticky top-0 z-10 bg-secondary text-[#abb4c8]"><tr className="border-b border-border">
                   <th scope="col" className="py-3 pl-3 pr-2 font-medium">Cliente</th>
                   <th scope="col" className="px-2 py-3 text-center font-medium">Horas<br />contratadas</th>
                   <th scope="col" className="px-2 py-3 text-center font-medium">Horas<br />consumidas</th>
@@ -420,8 +448,8 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
                 </tr></thead>
                 <tbody>
                   {clientes.map((cliente) => <Fragment key={cliente.id}>
-                    <tr className="group border-b border-border hover:bg-muted/75">
-                      <td className="py-3 pl-3 pr-2 align-middle"><div className="flex min-w-0 items-center gap-2.5"><Avatar iniciales={inicialesDe(cliente.nombre)} color={colorDeCliente(cliente.id)} /><div className="min-w-0"><button type="button" onClick={() => onAbrirGestion(cliente)} title={cliente.nombre} className="block max-w-full text-left text-[11px] font-semibold leading-[1.35] text-[#f3f3fb] hover:text-violet-300 [overflow-wrap:anywhere]">{cliente.nombre}</button><p title={cliente.area_nombre} className="mt-1 text-[10px] leading-tight text-[#97a1b6]">{cliente.area_nombre}</p>{cliente.ruc && <span title={cliente.ruc} className="mt-0.5 block text-[9px] text-[#8390a9]">RUC {cliente.ruc}</span>}</div></div></td>
+                    <tr tabIndex={0} aria-label={`Abrir detalle de ${cliente.nombre}`} onClick={() => onAbrirGestion(cliente)} onKeyDown={(evento) => { if (evento.target !== evento.currentTarget) return; if (evento.key === 'Enter' || evento.key === ' ') { evento.preventDefault(); onAbrirGestion(cliente) } }} className="group cursor-pointer border-b border-border hover:bg-muted/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500">
+                      <td className="py-3 pl-3 pr-2 align-middle"><div className="flex min-w-0 items-center gap-2.5"><Avatar iniciales={inicialesDe(cliente.nombre)} color={colorDeCliente(cliente.id)} /><div className="min-w-0"><button type="button" onClick={(evento) => { evento.stopPropagation(); onAbrirGestion(cliente) }} title={cliente.nombre} className="block max-w-full text-left text-[11px] font-semibold leading-[1.35] text-[#f3f3fb] hover:text-violet-300 [overflow-wrap:anywhere]">{cliente.nombre}</button><p title={cliente.area_nombre} className="mt-1 text-[10px] leading-tight text-[#97a1b6]">{cliente.area_nombre}</p>{cliente.ruc && <span title={cliente.ruc} className="mt-0.5 block text-[9px] text-[#8390a6]">RUC {cliente.ruc}</span>}</div></div></td>
                       <td className="px-2 text-center font-semibold tabular-nums whitespace-nowrap">{horas(cliente.horasContratadas)}{cliente.horasContratadas === 0 && <span className="block whitespace-normal text-[9px] font-normal leading-tight text-[#919bb2]">Sin bolsa activa</span>}</td>
                       <td className="px-2 py-2 text-center align-middle">
                         <span className="block font-semibold tabular-nums">{horas(cliente.horasConsumidas)}</span>
@@ -434,7 +462,7 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
                       </td>
                       <td className="px-2 text-center whitespace-nowrap font-semibold tabular-nums">{horas(cliente.horasDisponibles)}</td>
                       <td className="px-2 text-center">{cliente.horasExcedidas > 0 ? <span className="font-semibold text-rose-300">+{horas(cliente.horasExcedidas)}{cliente.desviacionPorcentaje !== null && <span className="mt-0.5 block text-[9px]">{porcentaje(cliente.desviacionPorcentaje)}</span>}</span> : <span className="text-[#a1aabd]">Sin exceso</span>}</td>
-                      <td className="px-1 py-2 text-center"><AccionesCliente cliente={cliente} onEditar={onEditar} onEliminar={onEliminar} onImportarPresupuesto={onImportarPresupuesto} onAbrirGestion={onAbrirGestion} soloLectura={soloLectura} /></td>
+                      <td onClick={(evento) => evento.stopPropagation()} className="px-1 py-2 text-center">{cliente.mi_funcion === 'ENCARGADO' && onSolicitarAsistente ? <button type="button" onClick={() => onSolicitarAsistente(cliente)} title="Solicitar asistentes al jefe de área" className="mb-1 block whitespace-nowrap rounded-md border border-violet-500/40 px-1.5 py-1 text-[9px] text-violet-300">Solicitar asistente</button> : null}<AccionesCliente cliente={cliente} onEditar={onEditar} onEliminar={onEliminar} onImportarPresupuesto={onImportarPresupuesto} onAbrirGestion={onAbrirGestion} soloLectura={soloLectura} /></td>
                     </tr>
                     <tr className="border-b border-border last:border-0"><td colSpan={6} className="px-3 pb-2.5 pt-1"><div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[10px]"><span className="shrink-0 font-medium text-[#a0a8bf]">Servicios activos:</span>{cliente.servicios.length === 0 ? <span className="text-[#8794ac]">Sin servicios cargados</span> : <>{cliente.servicios.slice(0, 3).map((servicio) => <span key={servicio} title={servicio} className="max-w-[168px] truncate rounded-md bg-muted px-2 py-1 text-[#d0d6e6]">{servicio}</span>)}{cliente.servicios.length > 3 && <span className="rounded-md bg-muted px-2 py-1 text-[#c1c9dd]">+{cliente.servicios.length - 3} más</span>}</>}</div></td></tr>
                   </Fragment>)}
@@ -458,10 +486,10 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
                   <AlertTriangle size={17} className="shrink-0 text-rose-400" />
                   <h2 className="text-[12px] font-semibold text-[#f2f0f9]">Alertas y desviaciones</h2>
                 </div>
-                {alertas.length > 3 && <button type="button" onClick={() => setAlertasExpandidas((v) => !v)} aria-expanded={alertasExpandidas} className={`${BOTON} !shrink-0 !px-2 !py-1 text-[10px]`}>{alertasExpandidas ? 'Ver menos' : `Ver todas (${alertas.length})`}</button>}
+                {alertasOrdenadas.length > 3 && <button type="button" onClick={() => setAlertasExpandidas((v) => !v)} aria-expanded={alertasExpandidas} className={`${BOTON} !shrink-0 !px-2 !py-1 text-[10px]`}>{alertasExpandidas ? 'Ver menos' : `Ver todas (${alertasOrdenadas.length})`}</button>}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-2 text-[10px] text-[#aeb7ca]">
-                <span><strong className="text-[#e6def7]">{alertas.length}</strong> alertas</span>
+                <span><strong className="text-[#e6def7]">{alertasOrdenadas.length}</strong> alertas</span>
                 <span><strong className="text-rose-300">{cantidadDesviaciones}</strong> desviaciones</span>
                 <span><strong className="text-amber-300">{cantidadPendientes}</strong> pendientes</span>
               </div>
@@ -471,16 +499,16 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
                     <IconoAlerta tipo={alerta.tipo} />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[11px] font-semibold text-[#e8e8f4]">{alerta.titulo}</span>
-                      <span className="mt-0.5 block text-[10px] text-[#9ba4b8]">{alerta.clienteNombre}</span>
-                      <span className="mt-1 block text-[10px] leading-relaxed text-[#abb4c9]">{alerta.descripcion}</span>
+                      {alerta.clienteNombre && <span className="mt-0.5 block text-[10px] text-[#9ba4b8]">{alerta.clienteNombre}</span>}
+                      {alerta.descripcion && <span className="mt-1 block text-[10px] leading-relaxed text-[#abb4c9]">{alerta.descripcion}</span>}
                       {alerta.cuando && <span className="mt-1 block text-[9px] text-[#8993a8]">Última actividad: {formatearFecha(alerta.cuando)}</span>}
                     </span>
-                    <span className={`shrink-0 whitespace-nowrap text-[11px] font-bold ${alerta.tipo === 'desviacion' ? 'text-rose-300' : alerta.tipo === 'pendiente' ? 'text-amber-300' : 'text-violet-300'}`}>{alerta.dato}</span>
+                    {alerta.dato && <span className={`shrink-0 whitespace-nowrap text-[11px] font-bold ${alerta.tipo === 'desviacion' ? 'text-rose-300' : alerta.tipo === 'pendiente' ? 'text-amber-300' : 'text-violet-300'}`}>{alerta.dato}</span>}
                   </button>
                 ))}
-                {alertas.length === 0 && <p className="py-6 text-center text-xs text-[#a1abc0]">No hay alertas por ahora.</p>}
+                {alertasOrdenadas.length === 0 && <p className="py-6 text-center text-xs text-[#a1abc0]">No hay alertas por ahora.</p>}
               </div>
-              {!alertasExpandidas && alertas.length > 3 && <button type="button" onClick={() => setAlertasExpandidas(true)} className="w-full border-t border-border px-3 py-2 text-center text-[11px] font-medium text-violet-300 hover:bg-violet-500/10">Mostrar {alertas.length - 3} alertas más</button>}
+              {!alertasExpandidas && alertasOrdenadas.length > 3 && <button type="button" onClick={() => setAlertasExpandidas(true)} className="w-full border-t border-border px-3 py-2 text-center text-[11px] font-medium text-violet-300 hover:bg-violet-500/10">Mostrar {alertasOrdenadas.length - 3} alertas más</button>}
             </section>
         </aside>
       </section>
