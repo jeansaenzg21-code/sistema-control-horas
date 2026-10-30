@@ -31,6 +31,10 @@ interface FormularioCliente {
   correo: string
   telefono: string
   direccion: string
+  encargado: string
+  asistente: string
+  es_outsourcing: boolean
+  encargado_usuario_id: number | ''
   area_id: number | ''
   horas_contratadas: number | ''
 }
@@ -41,6 +45,10 @@ const formularioVacio: FormularioCliente = {
   correo: '',
   telefono: '',
   direccion: '',
+  encargado: '',
+  asistente: '',
+  es_outsourcing: false,
+  encargado_usuario_id: '',
   area_id: '',
   horas_contratadas: '',
 }
@@ -51,7 +59,7 @@ const SUBTITULO_CARPETA = 'Presupuestos, bolsas de horas y desviaciones desde un
 export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, subtitulo: string) => void }) {
   const { cargando, cargarClientes, actualizarCliente, eliminarCliente } = useClientes()
   const { areas } = useAreas()
-  const { usuario } = useAuth()
+  const { usuario, usuarios } = useAuth()
   const { cargarNotificaciones } = useNotificaciones()
 
   const [editandoId, setEditandoId] = useState<number | null>(null)
@@ -61,6 +69,34 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
   const [presupuestosDe, setPresupuestosDe] = useState<{ id: number; nombre: string } | null>(null)
   const [clienteAbierto, setClienteAbierto] = useState<ClienteCartera | null>(null)
   const [importandoMasivo, setImportandoMasivo] = useState(false)
+  const [solicitudesAsistente, setSolicitudesAsistente] = useState<Array<{ id: number; cliente_id: number; cliente: string; solicitante: string; cantidad: number; comentario: string | null }>>([])
+  const [asistentesElegidos, setAsistentesElegidos] = useState<Record<number, number>>({})
+  const [avisoSolicitud, setAvisoSolicitud] = useState('')
+
+  const cargarSolicitudes = useCallback(async () => {
+    if (usuario?.rol !== 'jefe_area') return
+    const res = await fetch('/api/clientes/solicitudes-asistente')
+    if (res.ok) setSolicitudesAsistente(await res.json())
+  }, [usuario?.rol])
+
+  useEffect(() => { void cargarSolicitudes() }, [cargarSolicitudes])
+
+  const solicitarAsistente = async (cliente: ClienteCartera) => {
+    const comentario = window.prompt(`¿Qué apoyo necesitas para ${cliente.nombre}? (opcional)`, '')
+    if (comentario === null) return
+    const res = await fetch('/api/clientes/solicitudes-asistente', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cliente_id: cliente.id, comentario }) })
+    const body = await res.json()
+    setAvisoSolicitud(res.ok ? 'Solicitud enviada al jefe de área.' : body.error ?? 'No se pudo enviar la solicitud.')
+  }
+
+  const asignarAsistente = async (solicitudId: number) => {
+    const usuario_id = asistentesElegidos[solicitudId]
+    if (!usuario_id) return
+    const res = await fetch('/api/clientes/solicitudes-asistente', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ solicitud_id: solicitudId, usuario_id }) })
+    const body = await res.json()
+    setAvisoSolicitud(res.ok ? 'Asistente asignado.' : body.error ?? 'No se pudo asignar el asistente.')
+    if (res.ok) await cargarSolicitudes()
+  }
 
   useEffect(() => {
     if (!cargando && usuario) void cargarNotificaciones(usuario.id)
@@ -85,6 +121,10 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
       correo: cliente.correo ?? '',
       telefono: cliente.telefono ?? '',
       direccion: cliente.direccion ?? '',
+      encargado: cliente.encargado ?? '',
+      asistente: cliente.asistente ?? '',
+      es_outsourcing: cliente.es_outsourcing,
+      encargado_usuario_id: cliente.encargado_usuario_id ?? '',
       area_id: cliente.area_id,
       horas_contratadas: cliente.horasContratadas,
     })
@@ -109,6 +149,10 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
       correo: formulario.correo.trim() || null,
       telefono: formulario.telefono.trim() || null,
       direccion: formulario.direccion.trim() || null,
+      encargado: formulario.encargado.trim() || null,
+      asistente: formulario.asistente.trim() || null,
+      es_outsourcing: formulario.es_outsourcing,
+      encargado_usuario_id: formulario.encargado_usuario_id || null,
       area_id: Number(formulario.area_id),
       horas_contratadas: Number(formulario.horas_contratadas) || 0,
     })
@@ -134,14 +178,22 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
           onImportarPresupuesto={(c) => setPresupuestosDe({ id: c.id, nombre: c.nombre })}
         />
       ) : (
+        <>
+        {usuario?.rol === 'jefe_area' && solicitudesAsistente.length > 0 && <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+          <h2 className="mb-2 text-sm font-semibold">Solicitudes de asistentes para outsourcing ({solicitudesAsistente.length})</h2>
+          <div className="space-y-2">{solicitudesAsistente.map((s) => <div key={s.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 text-xs"><span className="min-w-0 flex-1"><strong>{s.cliente}</strong> · solicitado por {s.solicitante}{s.comentario ? ` · ${s.comentario}` : ''}</span><select aria-label={`Asistente para ${s.cliente}`} value={asistentesElegidos[s.id] ?? ''} onChange={(e) => setAsistentesElegidos((prev) => ({ ...prev, [s.id]: Number(e.target.value) }))} className="h-8 rounded-md border border-border bg-background px-2"><option value="">Asignar usuario…</option>{usuarios.filter((u) => u.activo && u.area_id === usuario.area_id && u.rol === 'personal').map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select><button type="button" onClick={() => void asignarAsistente(s.id)} disabled={!asistentesElegidos[s.id]} className="rounded-md bg-primary px-2.5 py-1.5 font-medium text-white disabled:opacity-50">Asignar</button></div>)}</div>
+        </section>}
         <CarteraClientes
           onEditar={(c) => { iniciarEdicion(c); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
           onEliminar={(c) => void manejarEliminar(c.id, c.nombre)}
           onImportarPresupuesto={(c) => setPresupuestosDe({ id: c.id, nombre: c.nombre })}
           onAbrirGestion={(c) => { setClienteAbierto(c); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
           onImportarClientes={() => setImportandoMasivo(true)}
+          onSolicitarAsistente={usuario?.rol === 'personal' ? solicitarAsistente : undefined}
         />
+        </>
       )}
+      {avisoSolicitud && <p role="status" className="rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-2 text-xs text-violet-200">{avisoSolicitud}</p>}
 
       {editandoId && (
         <form onSubmit={manejarEditar} className="rounded-xl border border-border bg-card p-4">
@@ -177,6 +229,27 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
               <span className="mb-1.5 block text-xs font-medium text-foreground">Dirección</span>
               <input type="text" value={formulario.direccion} onChange={(e) => setFormulario((f) => ({ ...f, direccion: e.target.value }))} placeholder="Dirección del cliente" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
             </label>
+
+            <label className="flex items-center gap-2 text-xs font-medium text-foreground md:col-span-2">
+              <input type="checkbox" checked={formulario.es_outsourcing} onChange={(e) => setFormulario((f) => ({ ...f, es_outsourcing: e.target.checked, encargado: e.target.checked ? f.encargado : '', asistente: e.target.checked ? f.asistente : '', encargado_usuario_id: e.target.checked ? f.encargado_usuario_id : '' }))} />
+              Cliente de outsourcing
+            </label>
+
+            {formulario.es_outsourcing && <>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">Encargado del cliente</span>
+              <input type="text" value={formulario.encargado} onChange={(e) => setFormulario((f) => ({ ...f, encargado: e.target.value }))} placeholder="Nombre del encargado" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
+            </label>
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">Asistente (opcional)</span>
+              <input type="text" value={formulario.asistente} onChange={(e) => setFormulario((f) => ({ ...f, asistente: e.target.value }))} placeholder="Nombre del asistente" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-foreground">Encargado asignado</span>
+              <select value={formulario.encargado_usuario_id} onChange={(e) => setFormulario((f) => ({ ...f, encargado_usuario_id: e.target.value ? Number(e.target.value) : '' }))} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"><option value="">Sin asignar</option>{usuarios.filter((u) => u.activo && u.area_id === formulario.area_id && u.rol === 'personal').map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}</select>
+            </label>
+            </>}
 
             <label className="block">
               <span className="mb-1.5 block text-xs font-medium text-foreground">División *</span>

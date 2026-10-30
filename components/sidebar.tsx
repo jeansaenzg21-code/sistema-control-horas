@@ -8,6 +8,8 @@ import {
   CalendarCheck,
   FileText,
   Users,
+  Laptop,
+  ClipboardList,
   X,
   PanelLeftClose,
   PanelLeftOpen,
@@ -16,7 +18,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Logo } from './logo'
-import { useAuth, type Rol } from '@/lib/auth-context'
+import { useAuth, type Rol, type Usuario } from '@/lib/auth-context'
+import { puedeVerGestionLaptops, puedeVerInventarioLaptops } from '@/lib/permisos'
 import { ThemeToggle } from '@/components/theme-toggle'
 
 interface NavItem {
@@ -24,6 +27,7 @@ interface NavItem {
   href: string
   icon: React.ReactNode
   roles: Rol[]
+  visiblePara?: (usuario: Usuario | null) => boolean
 }
 
 interface SidebarProps {
@@ -40,6 +44,7 @@ interface SidebarProps {
 // El jefe tiene Aprobaciones porque revisa los registros de su propia área; la
 // comprobación de a quién puede tocar es del servidor, no de este filtro.
 const ROLES_CONSULTA: Rol[] = ['admin', 'jefe_area', 'socio']
+const ROLES_MODULOS_TI: Rol[] = ['personal', 'supervisor', 'jefe_area', 'admin', 'socio']
 
 const navItems: NavItem[] = [
   { label: 'Panel Principal', href: '/', icon: <LayoutDashboard size={19} />, roles: ROLES_CONSULTA },
@@ -53,10 +58,54 @@ const navItems: NavItem[] = [
   { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ROLES_CONSULTA },
 ]
 
+// Menú TI: módulos demostrativos reservados a Fran Laureano. No son un rol:
+// `visiblePara` comprueba la identidad concreta, así que ni el administrador
+// los ve. Se agrupan aparte para no mezclarlos con los módulos de la empresa.
+const navItemsTI: NavItem[] = [
+  { label: 'Inventario de Laptops', href: '/inventario-laptops', icon: <Laptop size={19} />, roles: ROLES_MODULOS_TI, visiblePara: puedeVerInventarioLaptops },
+  { label: 'Gestión de Laptops', href: '/gestion-laptops', icon: <ClipboardList size={19} />, roles: ROLES_MODULOS_TI, visiblePara: puedeVerGestionLaptops },
+]
+
 export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }: SidebarProps) {
   const pathname = usePathname()
   const { usuario } = useAuth()
-  const itemsVisibles = navItems.filter((item) => item.roles.includes(usuario?.rol ?? 'personal'))
+  const itemsVisibles = navItems.filter((item) => (
+    item.roles.includes(usuario?.rol ?? 'personal')
+    && (!item.visiblePara || item.visiblePara(usuario))
+  ))
+  const itemsTIVisibles = navItemsTI.filter((item) => (
+    item.roles.includes(usuario?.rol ?? 'personal')
+    && (!item.visiblePara || item.visiblePara(usuario))
+  ))
+
+  const renderItem = (item: NavItem) => {
+    const isActive =
+      pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`))
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={onCerrar}
+        title={minimizada ? item.label : undefined}
+        aria-label={minimizada ? item.label : undefined}
+        className={cn(
+          'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+          minimizada && 'md:justify-center md:px-0',
+          isActive
+            ? 'bg-[#7c3aed]/10 text-[#c4b5fd]'
+            : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+        )}
+      >
+        {isActive && (
+          <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[#7c3aed]" />
+        )}
+        <span className={cn('transition-colors', isActive ? 'text-[#c4b5fd]' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground')}>
+          {item.icon}
+        </span>
+        <span className={cn(minimizada && 'md:hidden')}>{item.label}</span>
+      </Link>
+    )
+  }
 
   return (
     <>
@@ -124,34 +173,20 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
           >
             Módulos
           </p>
-          {itemsVisibles.map((item) => {
-            const isActive =
-              pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`))
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onCerrar}
-                title={minimizada ? item.label : undefined}
-                aria-label={minimizada ? item.label : undefined}
+          {itemsVisibles.map(renderItem)}
+          {itemsTIVisibles.length > 0 && (
+            <>
+              <p
                 className={cn(
-                  'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                  minimizada && 'md:justify-center md:px-0',
-                  isActive
-                    ? 'bg-[#7c3aed]/10 text-[#c4b5fd]'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                  'border-t border-sidebar-border px-3 pb-2 pt-4 text-[11px] font-medium uppercase tracking-wider text-muted-foreground',
+                  minimizada && 'md:hidden',
                 )}
               >
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[#7c3aed]" />
-                )}
-                <span className={cn('transition-colors', isActive ? 'text-[#c4b5fd]' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground')}>
-                  {item.icon}
-                </span>
-                <span className={cn(minimizada && 'md:hidden')}>{item.label}</span>
-              </Link>
-            )
-          })}
+                TI
+              </p>
+              {itemsTIVisibles.map(renderItem)}
+            </>
+          )}
         </nav>
         <div className={cn('space-y-2 border-t border-sidebar-border px-3 py-3', minimizada && 'md:px-1.5')}>
           <ThemeToggle />

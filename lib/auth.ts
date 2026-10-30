@@ -33,6 +33,7 @@ export interface EmpresaSesion {
 export interface SessionUser {
   id: number
   nombre: string
+  correo: string
   usuario: string
   rol: string
   area_id: number | null
@@ -128,7 +129,7 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
   if (!token || token.length < 10) return null
 
   const [rows] = await pool.query(
-    `SELECT s.usuario_id, s.empresa_id, u.nombre, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad, u.activo
+    `SELECT s.usuario_id, s.empresa_id, u.nombre, u.correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad, u.activo
      FROM sesiones s
      INNER JOIN usuarios u ON u.id = s.usuario_id
      WHERE s.token = ? AND s.expira_en > NOW()`,
@@ -141,16 +142,28 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
   const s = sesiones[0]
   if (!s.activo) return null
 
+  // Sesiones emitidas antes de deshabilitar el hub pueden seguir sin empresa
+  // activa. Completarla aquí persiste la empresa predeterminada para toda la
+  // sesión (incluidas las comprobaciones que leen `user.empresa_id`).
+  let empresaSesion = s.empresa_id == null ? null : Number(s.empresa_id)
+  if (empresaSesion == null) {
+    empresaSesion = await getDefaultEmpresaId(Number(s.usuario_id))
+    if (empresaSesion != null) {
+      await pool.query('UPDATE sesiones SET empresa_id = ? WHERE token = ?', [empresaSesion, hashToken(token)])
+    }
+  }
+
   const usuario: SessionUser = {
     id: Number(s.usuario_id),
     nombre: String(s.nombre),
+    correo: String(s.correo),
     usuario: String(s.usuario),
     rol: String(s.rol),
     area_id: s.area_id == null ? null : Number(s.area_id),
     cargo: s.cargo == null ? null : String(s.cargo),
     especialidad: s.especialidad == null ? null : String(s.especialidad),
     activo: Boolean(s.activo),
-    empresa_id: s.empresa_id == null ? null : Number(s.empresa_id),
+    empresa_id: empresaSesion,
   }
 
   // El bloqueo va AQUÍ y no en cada ruta: es el único punto por el que pasan las
@@ -184,9 +197,12 @@ export async function getEmpresasDisponibles(user: SessionUser): Promise<Empresa
 
 export async function getEmpresaContext(user: SessionUser): Promise<EmpresaContext> {
   const disponibles = await getEmpresasDisponibles(user)
-  const activa = user.empresa_id
-    ? disponibles.find((empresa) => empresa.id === user.empresa_id) || null
-    : null
+  // La aplicación ya no requiere que el usuario elija empresa en un hub. Se
+  // conserva su empresa de sesión cuando es válida y, para sesiones antiguas
+  // sin empresa activa, se asigna automáticamente la primera disponible.
+  const activa = (user.empresa_id
+    ? disponibles.find((empresa) => empresa.id === user.empresa_id)
+    : null) || disponibles[0] || null
   return { activa, disponibles }
 }
 
@@ -295,7 +311,7 @@ export async function createSession(usuarioId: number, dispositivo?: string | nu
     return { token, refreshToken, expiraAcceso, expiraRenovacion }
   }
 
-  // La migraci�n todav�a no est� aplicada: sesi�n antigua, sin renovaci�n.
+  // La migración todavía no está aplicada: sesión antigua, sin renovación.
   await pool.query(
     `INSERT INTO sesiones (usuario_id, empresa_id, token, expira_en) VALUES (?, ?, ?, ?)`,
     [usuarioId, empresaId, tokenHash, expiraAcceso]

@@ -26,6 +26,7 @@ import {
 
 import { useAuth } from '@/lib/auth-context'
 import { notifyClientesChange } from '@/lib/events'
+import * as XLSX from 'xlsx'
 
 type Estado = 'pendiente' | 'procesando' | 'ok' | 'error'
 
@@ -166,6 +167,66 @@ export function ImportarPresupuestosMasivo({
   const analizar = useCallback(
     async (archivos: File[]) => {
       if (!usuario || archivos.length === 0 || procesando) return
+      if (archivos.length === 1 && /\.xls$/i.test(archivos[0].name)) {
+        const libro = XLSX.read(await archivos[0].arrayBuffer(), { type: 'array' })
+        const matriz = XLSX.utils.sheet_to_json<unknown[]>(libro.Sheets[libro.SheetNames[0]], { header: 1, defval: '' })
+        const indice = matriz.findIndex((fila) => fila.some((v) => String(v).trim().toLocaleLowerCase('es') === 'outsourcing'))
+        if (indice < 0) throw new Error('No se encontró la columna OUTSOURCING en el archivo.')
+        const encabezados = matriz[indice].map((v) => String(v).trim().toLocaleLowerCase('es'))
+        const col = (nombre: string) => encabezados.indexOf(nombre)
+        const clientes = matriz.slice(indice + 1).map((fila) => ({ nombre: String(fila[col('outsourcing')] ?? '').trim(), encargado: String(fila[col('encargado')] ?? '').trim(), asistente: String(fila[col('asistente')] ?? '').trim() })).filter((c) => c.nombre)
+        const respuestaUsuarios = await fetch('/api/usuarios?buscar_personal_entre_areas=1')
+        const usuarios = respuestaUsuarios.ok ? await respuestaUsuarios.json() as Array<{ id: number; nombre: string; usuario?: string; correo?: string; area_id?: number; area_nombre?: string; activo: boolean }> : []
+        const tokens = (texto: string) => texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean)
+        const separarAsistentes = (texto: string) => texto.split(/[,;\/|\n\r]+|\s+&\s+|\s+y\s+/i).map((nombre) => nombre.trim()).filter(Boolean)
+        const buscarUsuario = (nombre: string, entreAreas = false) => {
+          const buscados = tokens(nombre)
+          if (!buscados.length) return null
+          const candidatos = usuarios.filter((u) => u.activo && (entreAreas || Number(u.area_id) === usuario.area_id)).map((u) => {
+            const nombreTokens = tokens(u.nombre)
+            const otros = tokens(`${u.usuario ?? ''} ${u.correo ?? ''}`)
+            const coincidencias = buscados.filter((t) => nombreTokens.some((token) => token === t || (t.length === 1 && token.startsWith(t)))).length
+            const exacto = nombreTokens.join(' ') === buscados.join(' ') || otros.join(' ') === buscados.join(' ')
+            return { id: u.id, exacto, puntaje: coincidencias / buscados.length }
+          }).sort((a, b) => Number(b.exacto) - Number(a.exacto) || b.puntaje - a.puntaje)
+          if (candidatos[0]?.exacto) return candidatos[0].id
+          if (buscados.length === 1) {
+            const coincidenciasUnicas = usuarios.filter((u) => u.activo && (entreAreas || Number(u.area_id) === usuario.area_id) && tokens(u.nombre).includes(buscados[0]))
+            return coincidenciasUnicas.length === 1 ? coincidenciasUnicas[0].id : null
+          }
+          // Acepta nombres con segundos apellidos o diferencias de formato, pero
+          // evita asignar un homónimo si la mejor coincidencia es ambigua.
+          if (candidatos[0]?.puntaje >= 0.75 && candidatos[0].puntaje - (candidatos[1]?.puntaje ?? 0) >= 0.2) return candidatos[0].id
+          return null
+        }
+        const existentesRespuesta = await fetch(`/api/clientes?area_id=${usuario.area_id}`)
+        const existentes = existentesRespuesta.ok ? await existentesRespuesta.json() as Array<{ id: number; nombre: string }> : []
+        const claveCliente = (nombre: string) => tokens(nombre).join(' ')
+        const clientesExistentes = new Map(existentes.map((c) => [claveCliente(c.nombre), c.id]))
+        const nuevas: Fila[] = clientes.map((c, i) => ({ id: `${Date.now()}-${i}`, nombre: c.nombre, estado: 'pendiente', detalle: 'En cola', creado: false }))
+        setFilas(nuevas); setResumenAbierto(true); setFase('procesando')
+        for (let i = 0; i < clientes.length; i++) {
+          const cliente = clientes[i], fila = nuevas[i]
+          actualizar(fila.id, { estado: 'procesando', detalle: 'Registrando cliente...' })
+          try {
+            const encargadoUsuarioId = buscarUsuario(cliente.encargado)
+            const nombresAsistentes = separarAsistentes(cliente.asistente)
+            const asistentesEncontrados = [...new Set(nombresAsistentes.map((nombre) => buscarUsuario(nombre, true)).filter((id): id is number => id !== null))]
+            const existenteId = clientesExistentes.get(claveCliente(cliente.nombre))
+            const metodo = existenteId ? 'PUT' : 'POST'
+            const datosCliente = { ...(existenteId ? { id: existenteId } : {}), nombre: cliente.nombre, area_id: usuario.area_id, es_outsourcing: true, encargado: cliente.encargado || null, asistente: cliente.asistente || null, ...(encargadoUsuarioId ? { encargado_usuario_id: encargadoUsuarioId } : {}), ...(asistentesEncontrados.length ? { asistentes_usuario_ids: asistentesEncontrados } : {}), horas_contratadas: 0 }
+            const respuesta = await fetch('/api/clientes', { method: metodo, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datosCliente) })
+            const resultado = await respuesta.json()
+            if (!respuesta.ok) throw new Error(resultado.error ?? 'No se pudo registrar.')
+            const asistentesSinVincular = nombresAsistentes.filter((nombre) => buscarUsuario(nombre, true) == null)
+            const areasAsistentes = asistentesEncontrados.map((id) => usuarios.find((persona) => persona.id === id)).filter((persona) => persona && Number(persona.area_id) !== usuario.area_id).map((persona) => `${persona!.nombre} · ${persona!.area_nombre ?? 'otra área'}`)
+            actualizar(fila.id, { estado: 'ok', creado: !existenteId, detalle: `${existenteId ? 'Actualizado' : 'Registrado'}${cliente.encargado ? ` · Encargado: ${cliente.encargado}${encargadoUsuarioId ? '' : ' (sin coincidencia de usuario en el área)'}` : ''}${nombresAsistentes.length ? ` · Asistentes vinculados: ${asistentesEncontrados.length}/${nombresAsistentes.length}${areasAsistentes.length ? ` · Otras áreas: ${areasAsistentes.join(', ')}` : ''}${asistentesSinVincular.length ? ` (sin coincidencia: ${asistentesSinVincular.join(', ')})` : ''}` : ''}` })
+          } catch (error) { actualizar(fila.id, { estado: 'error', detalle: error instanceof Error ? error.message : 'No se pudo registrar.' }) }
+        }
+        setFase('completado'); notifyClientesChange(); onCompletado?.()
+        if (inputArchivo.current) inputArchivo.current.value = ''
+        return
+      }
       const nuevas: Fila[] = archivos.map((archivo, indice) => ({
         id: `${Date.now()}-${indice}-${Math.random().toString(36).slice(2, 8)}`,
         nombre: archivo.name,
@@ -262,7 +323,7 @@ export function ImportarPresupuestosMasivo({
                 e.preventDefault()
                 setArrastrando(false)
                 const archivos = Array.from(e.dataTransfer.files ?? []).filter((archivo) =>
-                  /\.(xlsx|xlsm)$/i.test(archivo.name),
+                  /\.(xlsx|xlsm|xls)$/i.test(archivo.name),
                 )
                 if (archivos.length > 0) void analizar(archivos)
               }}
@@ -273,7 +334,7 @@ export function ImportarPresupuestosMasivo({
               <input
                 ref={inputArchivo}
                 type="file"
-                accept=".xlsx,.xlsm"
+                accept=".xlsx,.xlsm,.xls"
                 multiple
                 className="hidden"
                 onChange={(e) => {
@@ -284,8 +345,7 @@ export function ImportarPresupuestosMasivo({
               <Upload size={24} className="mx-auto mb-2 text-muted-foreground" />
               <p className="text-sm font-medium text-foreground">Sube uno o varios Excel de clientes</p>
               <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-                Se lee el cliente y la división de cada documento. Si el cliente no existe se crea, y
-                su presupuesto se importa en el mismo paso.
+                Acepta .xls, .xlsx y .xlsm. Para el padrón de outsourcing usa las columnas OUTSOURCING, Encargado y Asistente; se asignarán a tu división.
               </p>
               <button
                 type="button"
