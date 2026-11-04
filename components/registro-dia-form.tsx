@@ -28,6 +28,7 @@ export function RegistroDiaForm() {
   const [clienteId, setClienteId] = useState<number | ''>('')
   const [servicioId, setServicioId] = useState<number | ''>('')
   const [descripcion, setDescripcion] = useState('')
+  const [facturable, setFacturable] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
   const { tiposDisponibles, servicios, cargandoServicios, sinAsignaciones, clientesVisibles } =
@@ -94,6 +95,7 @@ export function RegistroDiaForm() {
       cliente_id: clienteId ? Number(clienteId) : null,
       presupuesto_servicio_id: servicioId ? Number(servicioId) : null,
       descripcion: descripcion.trim(),
+      facturable,
       inicio,
       fin,
     })
@@ -108,6 +110,7 @@ export function RegistroDiaForm() {
     setHoraFin('')
     setServicioId('')
     setDescripcion('')
+    setFacturable(false)
     setMensaje({ tipo: 'ok', texto: `Bloque registrado (${duracion ?? 'horas'}). Queda pendiente de aprobación.` })
   }
 
@@ -249,6 +252,21 @@ export function RegistroDiaForm() {
           className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
         />
       </div>
+
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-background px-3 py-2.5 transition-colors hover:border-[#7c3aed]/50">
+        <input
+          type="checkbox"
+          checked={facturable}
+          onChange={(e) => setFacturable(e.target.checked)}
+          className="mt-0.5 h-4 w-4 flex-none cursor-pointer accent-[#7c3aed]"
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-foreground">Actividad facturable</span>
+          <span className="block text-xs leading-relaxed text-muted-foreground">
+            Marca la casilla si las horas se pueden facturar al cliente.
+          </span>
+        </span>
+      </label>
 
       {mensaje && (
         <div

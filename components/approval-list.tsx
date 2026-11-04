@@ -184,7 +184,6 @@ export function ApprovalList() {
   const [timeline, setTimeline] = useState<ObservacionTimeline[]>([])
   const [timelineCargando, setTimelineCargando] = useState(false)
   const [timelineError, setTimelineError] = useState<string | null>(null)
-  const [decisiones, setDecisiones] = useState<Record<number, boolean>>({})
   const [seleccionadas, setSeleccionadas] = useState<Set<number>>(new Set())
   const [confirmarMasivo, setConfirmarMasivo] = useState(false)
   const [modoSeleccion, setModoSeleccion] = useState(false)
@@ -339,12 +338,6 @@ export function ApprovalList() {
     void abrirDetallePorId(id, detalleQuery.accion, observacionId)
   }, [detalleQuery, usuario, abrirDetallePorId])
 
-  const decisionPara = (actividad: Actividad): boolean => decisiones[actividad.id] ?? facturableNormalizado(actividad.facturable) ?? true
-
-  const marcarFacturable = (id: number, valor: boolean) => {
-    setDecisiones((prev) => ({ ...prev, [id]: valor }))
-  }
-
   const registros = useMemo(() => {
     if (cargaAprobacionesOk) return aprobaciones
     if (esRevisor || !usuario) return historial
@@ -435,7 +428,6 @@ export function ApprovalList() {
         body: JSON.stringify({
           estado: 'APROBADA',
           revisado_por: usuario.id,
-          facturable: decisionPara(actividad),
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -624,7 +616,7 @@ export function ApprovalList() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-          body: JSON.stringify({ estado: 'APROBADA', revisado_por: usuario.id, facturable: decisionPara(actividad) }),
+          body: JSON.stringify({ estado: 'APROBADA', revisado_por: usuario.id }),
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
@@ -842,11 +834,9 @@ export function ApprovalList() {
           timelineError={timelineError}
           accionInicial={detalleAccion}
           observacionInicial={observacionInicial}
-          facturable={decisionPara(detalle)}
           clientes={clientes}
           procesando={procesando}
           feedback={feedback}
-          onFacturableChange={(valor) => marcarFacturable(detalle.id, valor)}
           onCerrar={() => setDetalle(null)}
           onAprobar={() => manejarAprobar(detalle)}
           onRechazar={(motivo) => manejarRechazar(detalle, motivo)}
@@ -884,11 +874,9 @@ function DetalleActividadModal({
   timelineError,
   accionInicial,
   observacionInicial,
-  facturable,
   clientes,
   procesando,
   feedback,
-  onFacturableChange,
   onCerrar,
   onAprobar,
   onRechazar,
@@ -909,11 +897,9 @@ function DetalleActividadModal({
   timelineError: string | null
   accionInicial: AccionInicial
   observacionInicial: number | null
-  facturable: boolean
   clientes: Array<{ id: number; nombre: string; area_id: number; activo: boolean }>
   procesando: string | null
   feedback: Feedback
-  onFacturableChange: (valor: boolean) => void
   onCerrar: () => void
   onAprobar: () => Promise<boolean>
   onRechazar: (motivo: string) => Promise<boolean>
@@ -1150,11 +1136,9 @@ function DetalleActividadModal({
             ) : (
               <DecisionPanel
                 actividad={actividad}
-                facturable={facturable}
                 modoDecision={modoDecision}
                 motivo={motivo}
                 procesando={procesando}
-                onFacturable={onFacturableChange}
                 onModo={setModoDecision}
                 onMotivo={setMotivo}
                 onConfirmar={() => {
@@ -1231,21 +1215,17 @@ function CorrectionForm({
 
 function DecisionPanel({
   actividad,
-  facturable,
   modoDecision,
   motivo,
   procesando,
-  onFacturable,
   onModo,
   onMotivo,
   onConfirmar,
 }: {
   actividad: Actividad
-  facturable: boolean
   modoDecision: ModoDecision
   motivo: string
   procesando: string | null
-  onFacturable: (valor: boolean) => void
   onModo: (modo: ModoDecision) => void
   onMotivo: (valor: string) => void
   onConfirmar: () => void
@@ -1254,7 +1234,6 @@ function DecisionPanel({
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-[#c4b5fd]" /><h3 className="text-xs font-semibold text-foreground">Revisión</h3></div>
       <p className="mt-1 text-[11px] leading-4 text-muted-foreground">Revisa la información y decide cómo continuar con esta actividad.</p>
-      <div className="mt-2.5"><p className="mb-1 text-[11px] font-medium text-foreground">Facturable</p><div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-0.5"><button type="button" onClick={() => onFacturable(true)} className={cn('flex-1 rounded-md px-1.5 py-1 text-[11px] font-medium', facturable ? 'bg-emerald-600 text-white' : 'text-muted-foreground hover:text-foreground')}>Sí</button><button type="button" onClick={() => onFacturable(false)} className={cn('flex-1 rounded-md px-1.5 py-1 text-[11px] font-medium', !facturable ? 'bg-zinc-600 text-white' : 'text-muted-foreground hover:text-foreground')}>No</button></div></div>
       {actividad.estado === 'PENDIENTE_APROBACION' && modoDecision && <div className="mt-2.5 rounded-lg border border-border bg-muted/20 p-2.5"><label className="mb-1 block text-[11px] font-medium text-foreground">{modoDecision === 'rechazar' ? 'Motivo de rechazo' : 'Observación para corregir'}<span className="text-rose-400"> *</span></label><textarea value={motivo} onChange={(event) => onMotivo(event.target.value)} rows={2} maxLength={2000} placeholder={modoDecision === 'rechazar' ? 'Explica por qué se rechaza...' : 'Indica qué debe corregirse...'} className="w-full resize-none rounded-lg border border-border bg-background px-2.5 py-1.5 text-[11px] text-foreground focus:border-[#7c3aed]/50 focus:outline-none" /><div className="mt-1.5 flex justify-end gap-1.5"><button type="button" onClick={() => onModo(null)} className="rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground">Cancelar</button><button type="button" onClick={onConfirmar} disabled={!motivo.trim() || procesando != null} className={cn('rounded-md px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50', modoDecision === 'rechazar' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-sky-600 hover:bg-sky-700')}>{procesando ? 'Procesando...' : modoDecision === 'rechazar' ? 'Confirmar rechazo' : 'Enviar solicitud'}</button></div></div>}
       {actividad.estado === 'CORRECCION_SOLICITADA' && <div className="mt-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 p-2.5 text-[11px] text-sky-300">La actividad está esperando la corrección del trabajador.</div>}
       {actividad.estado === 'APROBADA' && <div className="mt-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5 text-[11px] text-emerald-300">La actividad ya fue aprobada.</div>}
