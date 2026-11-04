@@ -15,6 +15,7 @@ export function ActivityForm() {
   const [clienteId, setClienteId] = useState<number | ''>('')
   const [servicioId, setServicioId] = useState<number | ''>('')
   const [descripcion, setDescripcion] = useState('')
+  const [facturable, setFacturable] = useState(false)
   const [cargando, setCargando] = useState(false)
   const { tiposDisponibles, servicios, cargandoServicios, sinAsignaciones, clientesVisibles } =
     useCatalogosActividad(clienteId)
@@ -48,6 +49,7 @@ export function ActivityForm() {
       cliente_id: clienteId ? Number(clienteId) : null,
       presupuesto_servicio_id: servicioId ? Number(servicioId) : null,
       descripcion: descripcion.trim(),
+      facturable,
     })
     setCargando(false)
     if (resultado.ok) {
@@ -55,6 +57,7 @@ export function ActivityForm() {
       setClienteId('')
       setServicioId('')
       setDescripcion('')
+      setFacturable(false)
     }
   }
 
@@ -157,6 +160,21 @@ export function ActivityForm() {
           className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
         />
       </div>
+
+      <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-background px-3 py-2.5 transition-colors hover:border-[#7c3aed]/50">
+        <input
+          type="checkbox"
+          checked={facturable}
+          onChange={(e) => setFacturable(e.target.checked)}
+          className="mt-0.5 h-4 w-4 flex-none cursor-pointer accent-[#7c3aed]"
+        />
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-foreground">Actividad facturable</span>
+          <span className="block text-xs leading-relaxed text-muted-foreground">
+            Marca la casilla si las horas se pueden facturar al cliente.
+          </span>
+        </span>
+      </label>
 
       <div className="flex flex-col gap-3 border-t border-border/70 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-relaxed text-muted-foreground">
