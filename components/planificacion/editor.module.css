@@ -1,0 +1,28 @@
+.editor { --linea: rgba(255,255,255,.065); color: #e9e5f4; background: #14131d; border: 1px solid rgba(170,150,210,.18); border-radius: 20px; overflow: hidden; box-shadow: 0 14px 50px #0002; min-width: 0; }
+.boton, .icono, .primario { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(180,163,212,.16); border-radius: 10px; background: #ffffff04; color: #d8d2e7; font-size: 12px; font-weight: 500; padding: 8px 11px; min-height: 34px; transition: background .15s, border-color .15s; white-space: nowrap; }
+.icono { padding: 7px; width: 34px; flex-shrink: 0; }
+.primario { background: linear-gradient(125deg,#7c3aed,#9333ea); color: white; border-color: #a78bfa66; box-shadow: 0 3px 14px #7c3aed26; }
+.boton:hover, .icono:hover { background: #a78bfa15; border-color: #a78bfa55; }
+.primario:hover { filter: brightness(1.12); }
+.editor button:disabled, .inspector button:disabled { opacity: .45; cursor: not-allowed; }
+.editor button:focus-visible, .inspector button:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 2px; }
+.input { display: block; width: 100%; min-width: 0; border: 1px solid rgba(180,163,212,.16); border-radius: 9px; background: #ffffff05; padding: 8px 9px; color: #e5dff0; outline: none; font-size: 12px; color-scheme: dark; }
+.input:focus { border-color: #a78bfa88; box-shadow: 0 0 0 2px #8b5cf61a; }
+.input option { background: #211c2e; color: #eee; }
+.campo { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: #aaa3bc; }
+.inspector { width: 292px; flex: 0 0 292px; background: linear-gradient(150deg,#1d1928,#17151f); border-left: 1px solid var(--linea); height: 100%; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.scroll { overflow: auto; height: 100%; min-height: 0; scrollbar-width: thin; scrollbar-color: #514365 #17141f; overscroll-behavior: auto; position: relative; flex: 1; min-width: 0; }
+.fila { height: 44px; display: flex; position: relative; }
+.izquierda { position: sticky; left: 0; z-index: 12; flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-right: 1px solid #b5a4d526; background: #191620; }
+.fila:hover .izquierda { background: #211b2b; }
+.seleccionada .izquierda { background: #4a2c69; box-shadow: inset 3px 0 #b68aff; }
+.grupo .izquierda { background: #211b2c; font-weight: 600; }
+.celda { height: 44px; position: relative; flex-shrink: 0; border-bottom: 1px solid #ffffff03; }
+.fila:hover .celda { background-color: #a78bfa05; }
+.seleccionada .celda { background-color: #a78bfa0a; }
+.menu { position: fixed; z-index: 150; width: 220px; padding: 5px; border: 1px solid #a78bfa40; border-radius: 12px; background: #231c30; box-shadow: 0 16px 48px #0008; }
+.menu button { display: flex; width: 100%; padding: 9px 10px; border-radius: 7px; text-align: left; font-size: 12px; gap: 8px; align-items: center; }
+.menu button:hover { background: #a78bfa20; }
+.drop .izquierda { box-shadow: inset 0 3px #c4b5fd; background: #3a2750; }
+@media (max-width: 1100px) { .inspector { position: absolute; right: 0; top: 0; bottom: 0; z-index: 40; width: min(320px,90%); box-shadow: -12px 0 40px #0006; max-height: none; } }
+@media (prefers-reduced-motion: reduce) { .editor *, .inspector * { transition: none !important; scroll-behavior: auto !important; } }

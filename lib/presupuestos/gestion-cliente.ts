@@ -1,6 +1,7 @@
 import type { RowDataPacket } from 'mysql2'
 
 import pool from '@/lib/db'
+import { listarCronogramaCliente, leerConfiguracionCronograma, type ConfiguracionCronograma, type TareaCronograma } from './cronograma-cliente'
 
 /**
  * Gestión integral a NIVEL DE CLIENTE.
@@ -161,7 +162,11 @@ export type GestionCliente = {
     motivo: string | null
   }[]
   desviaciones: Desviacion[]
+  /** Cronograma del Excel: solo lectura, en semanas relativas. */
   planificacion: FilaPlan[]
+  /** Cronograma manual del cliente: editable y en fechas de calendario. */
+  cronograma: TareaCronograma[]
+  cronogramaConfig: ConfiguracionCronograma | null
   candidatos: Candidato[]
   permisos: { puedeGestionar: boolean; motivo: string }
 }
@@ -240,7 +245,7 @@ export async function obtenerGestionCliente(
   // justo lo que se notaba al pulsar "Ver": la tarjeta se quedaba en "Cargando el
   // presupuesto del cliente..." durante segundos.
   //
-  // Ahora son dos tandas: está, y la de abajo con las ocho restantes en
+  // Ahora son dos tandas: está, y la de abajo con las nueve restantes en
   // paralelo. El tiempo total es el de la consulta más lenta de cada tanda, no
   // la suma de todas.
   const [presupuestos] = await pool.query<
@@ -278,8 +283,14 @@ export async function obtenerGestionCliente(
     horasComplementariasSinConfirmar: n(p.horas_complementarias_sin_confirmar),
     asignacionesSinConfirmar: Number(p.asignaciones_sin_confirmar),
   }))
-  const ids = presupuestos.map((p) => p.id)
   const vigente = presupuestos[0]?.id ?? null
+  // Solo la versión vigente alimenta la ficha del cliente. Antes se usaban todos
+  // los presupuestos del cliente y, cuando existía un v1 aprobado y un v2 en
+  // revisión, se pintaban los servicios y el cronograma de ambos: los mismos
+  // servicios aparecían dos veces (con horas distintas) y el cronograma duplicaba
+  // cada etapa. El historial de versiones se conserva en `presupuestos`, pero los
+  // indicadores y las bolsas se leen de la versión que manda.
+  const ids = vigente === null ? [] : [vigente]
   const tienePresupuestos = ids.length > 0
   const marcas = ids.map(() => '?').join(',')
 
@@ -372,16 +383,16 @@ export async function obtenerGestionCliente(
     }
   }
 
-  // --- segunda tanda: siete consultas en paralelo --------------------------
+  // --- segunda tanda: consultas en paralelo --------------------------------
   //
-  // Ninguna necesita el resultado de otra. Todas dependen de los ids de los
-  // presupuestos, así que tienen que esperar a la primera tanda.
+  // Ninguna necesita el resultado de otra. Las del presupuesto dependen de los
+  // ids de la primera tanda; el cronograma manual y los candidatos no.
   //
-  // Si el cliente no tiene presupuestos, las seis primeras no tendrían nada que
-  // devolver, así que se quedan en null y sus listas salen vacías: es el mismo
-  // resultado que saltárselas. La de candidatos va siempre porque solo depende
-  // del área del cliente.
-  const [serviciosRes, consumoRes, equipoRes, registroRes, detalleRes, sinResolverRes, planRes, candidatosRes] =
+  // Si el cliente no tiene presupuestos, las del presupuesto no tendrían nada
+  // que devolver, así que se quedan en null y sus listas salen vacías: es el
+  // mismo resultado que saltárselas. El cronograma y los candidatos van siempre
+  // porque solo dependen del cliente y de su área.
+  const [serviciosRes, consumoRes, equipoRes, registroRes, detalleRes, sinResolverRes, planRes, cronogramaRes, candidatosRes] =
     await Promise.all([
       tienePresupuestos
         ? pool.query<
@@ -524,6 +535,9 @@ export async function obtenerGestionCliente(
             ids
           )
         : null,
+      // El cronograma manual no depende del presupuesto: existe aunque el
+      // cliente todavía no tenga Excel. Si la tabla aún no se creó, devuelve [].
+      listarCronogramaCliente(clienteId),
       // Personal activo de todas las áreas de la empresa, para que el jefe
       // pueda asignar asistentes que pertenezcan a otra división.
       pool.query<
@@ -720,6 +734,8 @@ export async function obtenerGestionCliente(
     sinResolver,
     desviaciones,
     planificacion,
+    cronograma: cronogramaRes,
+    cronogramaConfig: await leerConfiguracionCronograma(clienteId),
     candidatos,
     permisos: { puedeGestionar, motivo: motivoPermiso },
   }

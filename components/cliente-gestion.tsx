@@ -20,6 +20,8 @@ import { palabras } from '@/lib/presupuestos/nombres'
 
 import { useAuth } from '@/lib/auth-context'
 
+import { PanelCronogramaCliente, type TareaCronograma } from './cronograma-cliente'
+
 
 
 type Tab = 'equipo' | 'servicios' | 'planificacion' | 'desviaciones'
@@ -183,6 +185,9 @@ type Gestion = {
   desviaciones: Desviacion[]
 
   planificacion: FilaPlan[]
+
+  cronograma: TareaCronograma[]
+  cronogramaConfig: { fechaInicio: string; meses: number } | null
 
   candidatos: Candidato[]
 
@@ -348,37 +353,22 @@ export function ClienteGestion({
 
 
 
-  // La pestaña de Planificación depende de los datos, así que la lista se arma
+  // Planificación ya no depende de que el Excel traiga cronograma: es el
+  // espacio donde el usuario construye el suyo. La referencia del Excel, si
+  // existe, se muestra dentro del mismo panel y no como una pestaña aparte.
+  const pestanas: readonly [Tab, string, typeof UsersRound][] = [
 
-  // aquí y no en el JSX. Si al recargar el Excel deja de traer cronograma, la
+    ['equipo', 'Equipo', UsersRound],
 
-  // pestaña sigue seleccionada en el estado aunque ya no exista: por eso la
+    ['servicios', 'Servicios', FileSpreadsheet],
 
-  // sección efectiva se recorta contra la lista en vez de confiar en `tab`.
+    ['planificacion', 'Planificación', CalendarDays],
 
-  const hayCronograma = (datos?.planificacion.length ?? 0) > 0
+    ['desviaciones', 'Desviaciones', AlertTriangle],
 
-  const pestanas = useMemo<readonly [Tab, string, typeof UsersRound][]>(() => {
+  ]
 
-    const conCronograma: [Tab, string, typeof UsersRound][] = [
-
-      ['equipo', 'Equipo', UsersRound],
-
-      ['servicios', 'Servicios', FileSpreadsheet],
-
-      ['planificacion', 'Planificación', CalendarDays],
-
-      ['desviaciones', 'Desviaciones', AlertTriangle],
-
-    ]
-
-    if (!hayCronograma) return conCronograma.filter(([clave]) => clave !== 'planificacion')
-
-    return conCronograma
-
-  }, [hayCronograma])
-
-  const tabActiva = pestanas.some(([clave]) => clave === tab) ? tab : 'equipo'
+  const tabActiva = tab
 
 
 
@@ -570,11 +560,8 @@ export function ClienteGestion({
 
 
 
-          {/* "Planificación" solo existe si el Excel trajo cronograma. Muchas
-
-              cotizaciones no lo tienen: mostrarla vacía sugeriría que falta
-
-              algo por rellenar cuando el documento nunca lo trajo. */}
+          {/* Planificación está siempre disponible: el usuario puede crear su
+              propio cronograma aunque el Excel no traiga la hoja de Gantt. */}
 
           <div className="flex flex-wrap gap-1.5 border-b border-border pb-2" role="tablist" aria-label="Secciones de gestión integral">
 
@@ -616,7 +603,21 @@ export function ClienteGestion({
 
 
 
-          {tabActiva === 'planificacion' && <PanelCronograma datos={datos} />}
+          {tabActiva === 'planificacion' && (
+            <PanelCronogramaCliente
+              clienteId={datos.cliente.id}
+              clienteNombre={datos.cliente.nombre}
+              planificacion={datos.planificacion}
+              cronograma={datos.cronograma}
+              servicios={datos.servicios.filter(s => s.origen !== 'CONSOLIDADO')}
+              configuracion={datos.cronogramaConfig}
+              presupuestoId={datos.presupuestoVigente}
+              responsables={datos.candidatos.map(c => ({ id: c.id, nombre: c.nombre }))}
+              participantesServicio={datos.candidatos.filter(c => c.area_id === datos.cliente.areaId).map(c => ({ id: c.id, nombre: c.nombre }))}
+              puedeEditar={datos.permisos.puedeGestionar && usuario?.rol !== 'socio'}
+              onActualizado={cargar}
+            />
+          )}
 
 
 
@@ -654,9 +655,9 @@ export function ClienteGestion({
 
             {datos.permisos.motivo} Las bolsas salen del Excel del cliente.
 
-            {hayCronograma &&
+            {datos.planificacion.length > 0 &&
 
-              ' El cronograma usa las semanas relativas del Excel, no fechas de calendario.'}
+              ' La referencia del Excel usa semanas relativas; tu cronograma usa fechas de calendario.'}
 
           </p>
 
@@ -1658,122 +1659,6 @@ function SelectorArea({
 }
 
 
-
-function PanelCronograma({ datos }: { datos: Gestion }) {
-  const filas = datos.planificacion
-
-  // El orden y la duración pertenecen al cronograma original del Excel.
-  // No inferimos fechas ni asociaciones con bolsas a partir de las tareas.
-  const grupos = useMemo(() => {
-    const resultado: { clave: string; etapa: string; tareas: { fila: FilaPlan; indice: number }[] }[] = []
-    filas.forEach((fila, indice) => {
-      const etapa = fila.etapa?.trim() || 'Otras tareas'
-      const ultimo = resultado[resultado.length - 1]
-      if (!ultimo || ultimo.etapa !== etapa) {
-        resultado.push({ clave: `${indice}-${etapa}`, etapa, tareas: [] })
-      }
-      resultado[resultado.length - 1].tareas.push({ fila, indice })
-    })
-    return resultado
-  }, [filas])
-
-  const maxSemana = useMemo(() => Math.max(
-    1,
-    ...filas.flatMap(f => [f.semanaInicio ?? 0, f.semanaFin ?? 0])
-      .filter(n => Number.isFinite(n) && n > 0)
-  ), [filas])
-  const meses = Math.ceil(maxSemana / 4)
-  const anchoTarea = 330
-  const anchoSemana = 32
-  const minimo = anchoTarea + maxSemana * anchoSemana
-  const plantilla = `repeat(${maxSemana}, minmax(${anchoSemana}px, 1fr))`
-
-  if (filas.length === 0) {
-    return <section className={`${PANEL} overflow-hidden`}>
-      <CabeceraPanel icono={<CalendarDays size={19}/>} titulo="Planificación" descripcion="Cronograma del presupuesto importado" />
-      <p className="px-4 py-8 text-center text-xs text-[#9aa2b8]">Este presupuesto no contiene tareas de planificación.</p>
-    </section>
-  }
-
-  return (
-    <section className={`${PANEL} min-w-0 overflow-hidden`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <CalendarDays size={18} className="shrink-0 text-violet-300" />
-          <div>
-            <h3 className="text-[13px] font-semibold text-[#e8e9f3]">Planificación</h3>
-            <p className="text-[10px] text-[#9ba5bc]">Cronograma del presupuesto · semanas relativas</p>
-          </div>
-        </div>
-        <span className="text-[11px] text-[#aab2c4]">{filas.length} tareas</span>
-      </div>
-
-      <div className="min-w-0 overflow-x-auto [scrollbar-width:thin]">
-        <div className="w-full" style={{ minWidth: minimo }}>
-          <div className="flex border-b border-border bg-[#18181f] text-[10px] text-[#abb3c7]">
-            <div className="sticky left-0 z-20 flex shrink-0 items-end border-r border-border bg-[#18181f] px-4 pb-2 font-medium" style={{ width: anchoTarea }}>
-              Actividad
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="grid border-b border-border/50 text-violet-300" style={{ gridTemplateColumns: plantilla }}>
-                {Array.from({ length: meses }, (_, mes) => (
-                  <div key={mes} className="py-1.5 text-center font-medium"
-                    style={{ gridColumn: `${mes * 4 + 1} / span ${Math.min(4, maxSemana - mes * 4)}` }}>
-                    Mes {mes + 1}
-                  </div>
-                ))}
-              </div>
-              <div className="grid" style={{ gridTemplateColumns: plantilla }}>
-                {Array.from({ length: maxSemana }, (_, semana) => (
-                  <div key={semana} className={`py-1.5 text-center ${semana % 4 === 3 ? 'border-r border-border/50' : ''}`}>
-                    {semana + 1}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {grupos.map(grupo => (
-            <div key={grupo.clave}>
-              <div className="border-b border-violet-500/10 bg-violet-500/[0.07] px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
-                {grupo.etapa}
-              </div>
-              {grupo.tareas.map(({ fila, indice }) => {
-                const inicio = fila.semanaInicio ?? fila.semanaFin
-                const fin = fila.semanaFin ?? fila.semanaInicio
-                const valido = inicio != null && fin != null && Number.isFinite(inicio) && Number.isFinite(fin) && inicio >= 1 && fin >= inicio
-                const desde = valido ? Math.floor(inicio) : 1
-                const hasta = valido ? Math.min(maxSemana, Math.floor(fin)) : desde
-                return (
-                  <div key={indice} className="flex min-h-10 border-b border-border/40 last:border-b-0 hover:bg-white/[0.025]">
-                    <div className="sticky left-0 z-10 flex shrink-0 items-center gap-2 border-r border-border bg-card px-4 py-2"
-                      style={{ width: anchoTarea }}>
-                      <span className="min-w-0 flex-1 text-[11px] leading-snug text-[#e0e4ef]" title={fila.subetapa}>
-                        {fila.subetapa}
-                      </span>
-                      {fila.horas > 0 && <span className="shrink-0 text-[10px] tabular-nums text-[#8995ac]" title="Horas planificadas">{horas(fila.horas)}</span>}
-                    </div>
-                    <div className="relative grid min-w-0 flex-1 items-center" style={{ gridTemplateColumns: plantilla }}>
-                      {Array.from({ length: maxSemana }, (_, semana) => (
-                        <span key={semana} className={`h-full ${semana % 4 === 3 ? 'border-r border-border/40' : ''}`} />
-                      ))}
-                      {valido && <span className="z-[1] mx-0.5 h-3 rounded-full bg-violet-500/80"
-                        style={{ gridColumn: `${desde} / span ${hasta - desde + 1}`, gridRow: 1 }}
-                        title={`${fila.subetapa} · semana ${desde}${hasta !== desde ? ` a ${hasta}` : ''}${fila.horas > 0 ? ` · ${horas(fila.horas)} planificadas` : ''}`} />}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
-      <p className="border-t border-border/60 px-4 py-2.5 text-[10px] text-[#98a2b7]">
-        Las semanas corresponden al Excel, no a fechas del calendario.
-      </p>
-    </section>
-  )
-}
 
 function PanelDesviaciones({ datos }: { datos: Gestion }) {
 
