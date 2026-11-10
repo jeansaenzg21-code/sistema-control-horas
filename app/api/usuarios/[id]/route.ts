@@ -97,8 +97,12 @@ async function soportaRol(rol: string): Promise<boolean> {
 }
 
 async function getUsuarioDeEmpresa(id: number, empresaId: number) {
+  // Los administradores tienen area_id NULL y no cuelgan de ninguna empresa por
+  // área. Se incluyen para que otro administrador pueda editarlos o eliminarlos.
   const [rows] = await pool.query(
-    `${SELECT_USUARIO} WHERE u.id = ? AND a.empresa_id = ?`,
+    `${SELECT_USUARIO}
+      WHERE u.id = ?
+        AND (a.empresa_id = ? OR (u.area_id IS NULL AND u.rol IN ('ADMINISTRACION', 'ADMIN')))`,
     [id, empresaId]
   )
   return (rows as Array<Record<string, unknown>>)[0] || null
@@ -144,6 +148,7 @@ export async function PUT(
     const valores: unknown[] = []
     let areaJefeParaAsignar: number | null = null
     let rolNuevo: string | null = null
+    let esAdminNuevo = false
 
     if (nombre != null) { campos.push('nombre = ?'); valores.push(String(nombre).trim()) }
     if (correo != null) { campos.push('correo = ?'); valores.push(String(correo).trim()) }
@@ -153,6 +158,7 @@ export async function PUT(
       if (!rolNuevo) {
         return NextResponse.json({ error: 'El rol solicitado no es válido.' }, { status: 400 })
       }
+      esAdminNuevo = rolNuevo === 'ADMINISTRACION'
       if (rolNuevo === 'SOCIO' && !(await soportaRol('SOCIO'))) {
         return NextResponse.json(
           { error: 'Falta habilitar el rol SOCIO en la base de datos. Ejecuta sql/socio_solo_lectura.sql.' },
@@ -190,7 +196,7 @@ export async function PUT(
       }
       campos.push('rol = ?'); valores.push(rolNuevo)
     }
-    if (area_id != null && adminUsuario) {
+    if (area_id != null && adminUsuario && !esAdminNuevo) {
       const nuevoArea = Number(area_id)
       const [areas] = await pool.query(
         'SELECT id FROM areas WHERE id = ? AND empresa_id = ? AND activo = TRUE',
@@ -220,6 +226,24 @@ export async function PUT(
       }
       campos.push('area_id = ?'); valores.push(nuevoArea)
     }
+    if (esAdminNuevo) {
+      // El administrador administra todas las divisiones: no pertenece a
+      // ninguna y no puede colgar de un supervisor.
+      campos.push('area_id = NULL')
+      campos.push('supervisor_id = NULL')
+    } else if (rolNuevo != null && area_id == null && usuarioObjetivo?.area_id == null) {
+      // Al revocar el perfil de administrador hay que devolverlo a una división
+      // real. Si no se indicó una, se usa la primera activa de la empresa.
+      const [areasDisponibles] = await pool.query(
+        'SELECT id FROM areas WHERE empresa_id = ? AND activo = TRUE ORDER BY id LIMIT 1',
+        [context.empresaId]
+      )
+      const areaDefecto = Number((areasDisponibles as Array<{ id: number }>)[0]?.id)
+      if (!areaDefecto) {
+        return NextResponse.json({ error: 'No hay divisiones activas para asignar al usuario.' }, { status: 400 })
+      }
+      campos.push('area_id = ?'); valores.push(areaDefecto)
+    }
     if (cargo != null) { campos.push('cargo = ?'); valores.push(String(cargo).trim() || null) }
     if (especialidad != null) { campos.push('especialidad = ?'); valores.push(especialidad) }
     if (activo != null && (adminUsuario || jefeUsuario)) {
@@ -239,7 +263,7 @@ export async function PUT(
     }
 
     const intentaCambiarJefe = String(usuarioObjetivo?.rol) === 'JEFE_AREA'
-      && (rolNuevo === 'PERSONAL' || (area_id != null && Number(area_id) !== Number(usuarioObjetivo?.area_id)) || activo === false)
+      && (rolNuevo === 'PERSONAL' || rolNuevo === 'ADMINISTRACION' || (area_id != null && Number(area_id) !== Number(usuarioObjetivo?.area_id)) || activo === false)
     if (intentaCambiarJefe && await tieneTablaProyectos()) {
       const [proyectos] = await pool.query<RowDataPacket[]>(
         'SELECT COUNT(*) AS total FROM proyectos WHERE jefe_id = ? AND activo = TRUE',
@@ -309,14 +333,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Sólo puedes administrar colaboradores de tu área.' }, { status: 403 })
     }
     if (String(usuarioObjetivo.rol) === 'ADMINISTRACION' && Boolean(usuarioObjetivo.activo)) {
+      // El administrador no pertenece a un área, así que el recuento es global:
+      // nunca debe quedar la empresa sin un administrador activo.
       const [administradores] = await pool.query<RowDataPacket[]>(
         `SELECT COUNT(*) AS total
-         FROM usuarios u
-         INNER JOIN areas ar ON ar.id = u.area_id
-         WHERE u.rol = 'ADMINISTRACION'
-           AND u.activo = TRUE
-           AND ar.empresa_id = ?`,
-        [context.empresaId],
+         FROM usuarios
+         WHERE rol = 'ADMINISTRACION'
+           AND activo = TRUE`,
       )
       if (Number(administradores[0]?.total ?? 0) <= 1) {
         return NextResponse.json(

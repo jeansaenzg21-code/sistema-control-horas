@@ -34,6 +34,10 @@ export async function GET(request: Request) {
 
     const areaJefe = esJefeDeArea(context.user) ? context.user.area_id : null
     const filtroArea = areaJefe != null ? ' AND a.id = ?' : ''
+    // El administrador es el único que gestiona el estado de las divisiones, así
+    // que también es el único que necesita ver las deshabilitadas para poder
+    // volver a habilitarlas.
+    const filtroActivo = esAdmin(context.user) ? '' : ' AND a.activo = TRUE'
     const consultaConJefe = `
       SELECT a.id, a.empresa_id, a.nombre, a.descripcion, a.activo, a.jefe_id,
         jefe.nombre AS jefe_nombre,
@@ -41,15 +45,15 @@ export async function GET(request: Request) {
         (SELECT COUNT(*) FROM usuarios u WHERE u.area_id = a.id AND u.activo = TRUE) AS total_usuarios
       FROM areas a
       LEFT JOIN usuarios jefe ON jefe.id = a.jefe_id AND jefe.area_id = a.id AND jefe.activo = TRUE
-      WHERE a.empresa_id = ? AND a.activo = TRUE${filtroArea}
-      ORDER BY a.nombre`
+      WHERE a.empresa_id = ?${filtroActivo}${filtroArea}
+      ORDER BY a.activo DESC, a.nombre`
     const consultaSinJefe = `
       SELECT a.id, a.empresa_id, a.nombre, a.descripcion, a.activo,
         NULL AS jefe_id, NULL AS jefe_nombre, NULL AS jefe_rol,
         (SELECT COUNT(*) FROM usuarios u WHERE u.area_id = a.id AND u.activo = TRUE) AS total_usuarios
       FROM areas a
-      WHERE a.empresa_id = ? AND a.activo = TRUE${filtroArea}
-      ORDER BY a.nombre`
+      WHERE a.empresa_id = ?${filtroActivo}${filtroArea}
+      ORDER BY a.activo DESC, a.nombre`
     const params: Array<number> = [context.empresaId]
     if (areaJefe != null) params.push(areaJefe)
     const [rows] = await pool.query(
@@ -132,7 +136,7 @@ export async function PUT(request: Request) {
     }
 
     const [areas] = await pool.query(
-      'SELECT id FROM areas WHERE id = ? AND empresa_id = ? AND activo = TRUE LIMIT 1',
+      'SELECT id FROM areas WHERE id = ? AND empresa_id = ? LIMIT 1',
       [areaId, context.empresaId]
     )
     if ((areas as unknown[]).length === 0) {
@@ -165,6 +169,12 @@ export async function PUT(request: Request) {
     if (body.descripcion !== undefined) {
       campos.push('descripcion = ?')
       valores.push(String(body.descripcion ?? '').trim() || null)
+    }
+
+    if (body.activo !== undefined) {
+      const activoNuevo = body.activo === true || body.activo === 1 || body.activo === '1' || body.activo === 'true'
+      campos.push('activo = ?')
+      valores.push(activoNuevo)
     }
 
     if (body.jefe_id !== undefined) {
@@ -215,7 +225,7 @@ export async function PUT(request: Request) {
       let jefeAnterior: number | null = null
       if (body.jefe_id !== undefined) {
         const [filaArea] = await conexion.query<RowDataPacket[]>(
-          'SELECT jefe_id FROM areas WHERE id = ? AND empresa_id = ? AND activo = TRUE FOR UPDATE',
+          'SELECT jefe_id FROM areas WHERE id = ? AND empresa_id = ? FOR UPDATE',
           [areaId, context.empresaId]
         )
         jefeAnterior = filaArea[0]?.jefe_id == null ? null : Number(filaArea[0].jefe_id)
@@ -276,7 +286,7 @@ export async function DELETE(request: Request) {
     }
 
     const [areas] = await pool.query(
-      'SELECT id FROM areas WHERE id = ? AND empresa_id = ? AND activo = TRUE LIMIT 1',
+      'SELECT id FROM areas WHERE id = ? AND empresa_id = ? LIMIT 1',
       [areaId, context.empresaId]
     )
     if ((areas as unknown[]).length === 0) {

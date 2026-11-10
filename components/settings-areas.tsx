@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Plus, Search, Settings, Trash2, Upload, UserRound, Users } from 'lucide-react'
-import { useAreas } from '@/lib/areas-context'
+import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Plus, Power, Search, Settings, Trash2, Upload, UserRound, Users } from 'lucide-react'
+import { useAreas, type Area } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 import { SettingsUsers } from './settings-users'
 import { SettingsImportarPersonal } from './settings-importar-personal'
@@ -33,10 +33,12 @@ function normalizarBusqueda(texto: string): string {
 
 export function SettingsAreas() {
   const { areas, cargando, error: errorAreas, crearArea, actualizarArea, eliminarArea } = useAreas()
-  const { usuarios, cargarUsuarios } = useAuth()
+  const { usuarios, usuario: actual, cargarUsuarios } = useAuth()
+  const esAdmin = actual?.rol === 'admin'
   const [areaSeleccionada, setAreaSeleccionada] = useState<number | null>(null)
   const [creando, setCreando] = useState(false)
   const [guardandoArea, setGuardandoArea] = useState(false)
+  const [cambiandoEstado, setCambiandoEstado] = useState<number | null>(null)
   const [errorArea, setErrorArea] = useState('')
   const [guardandoJefe, setGuardandoJefe] = useState(false)
   const [errorJefe, setErrorJefe] = useState('')
@@ -130,6 +132,22 @@ export function SettingsAreas() {
     setExitoJefe('')
   }
 
+  const alternarActivo = async (division: Area, activar: boolean) => {
+    if (!esAdmin) return
+    const confirmado = window.confirm(
+      activar
+        ? `¿Habilitar la división "${division.nombre}"? Volverá a estar disponible para la empresa.`
+        : `¿Deshabilitar la división "${division.nombre}"? Sus usuarios y datos se conservan, pero dejará de ofrecerse para nuevos registros.`
+    )
+    if (!confirmado) return
+    setCambiandoEstado(division.id)
+    const resultado = await actualizarArea(division.id, { activo: activar })
+    if (!resultado.ok) {
+      window.alert(resultado.error || 'No se pudo cambiar el estado de la división.')
+    }
+    setCambiandoEstado(null)
+  }
+
   const manejarEliminar = async (id: number, nombre: string) => {
     const confirmado = window.confirm(
       `¿Eliminar la división "${nombre}" y todos sus registros?\n\nSe eliminarán sus usuarios, actividades, clientes, proyectos y presupuestos. Esta acción no se puede deshacer.`
@@ -157,7 +175,16 @@ export function SettingsAreas() {
             Volver
           </button>
           <div>
-            <h2 className="text-sm font-semibold text-foreground">{area.nombre}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-foreground">{area.nombre}</h2>
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                area.activo
+                  ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                  : 'border border-rose-500/30 bg-rose-500/10 text-rose-400'
+              }`}>
+                {area.activo ? 'Habilitada' : 'Deshabilitada'}
+              </span>
+            </div>
             <p className="text-sm text-muted-foreground">{area.descripcion || 'Sin descripción'}</p>
           </div>
         </div>
@@ -166,6 +193,32 @@ export function SettingsAreas() {
           <div className="mb-3 flex items-center gap-2">
             <Settings size={16} className="text-muted-foreground" />
             <h3 className="text-sm font-semibold text-foreground">Configuración de la división</h3>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
+            <div>
+              <p className="text-sm font-medium text-foreground">Estado de la división</p>
+              <p className="text-xs text-muted-foreground">
+                {area.activo
+                  ? 'Disponible para clientes, usuarios y presupuestos.'
+                  : 'Oculta para nuevos registros; conserva sus datos.'}
+              </p>
+            </div>
+            {esAdmin && (
+              <button
+                type="button"
+                onClick={() => void alternarActivo(area, !area.activo)}
+                disabled={cambiandoEstado === area.id}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  area.activo
+                    ? 'border-rose-500/30 text-rose-400 hover:bg-rose-500/10'
+                    : 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                }`}
+              >
+                <Power size={14} />
+                {area.activo ? 'Deshabilitar' : 'Habilitar'}
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -486,7 +539,7 @@ export function SettingsAreas() {
          {areas.map((area) => {
            const countUsuarios = usuarios.filter((u) => u.area_id === area.id && u.rol === 'personal').length
            return (
-            <div key={area.id} className="flex flex-col rounded-xl border border-border bg-card p-3.5">
+            <div key={area.id} className={`flex flex-col rounded-xl border border-border bg-card p-3.5 ${area.activo ? '' : 'opacity-75'}`}>
               <div className="flex items-start justify-between gap-2">
                 <button
                   type="button"
@@ -496,15 +549,38 @@ export function SettingsAreas() {
                   <h3 className="truncate text-sm font-semibold text-foreground transition-colors hover:text-[#c4b5fd]">
                     {area.nombre}
                   </h3>
+                  {!area.activo && (
+                    <span className="mt-1 inline-block rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-400">
+                      Deshabilitada
+                    </span>
+                  )}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setAreaSeleccionada(area.id)}
-                  aria-label={`Configurar ${area.nombre}`}
-                  className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <Settings size={16} />
-                </button>
+                <div className="flex shrink-0 items-center gap-1">
+                  {esAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => void alternarActivo(area, !area.activo)}
+                      disabled={cambiandoEstado === area.id}
+                      aria-label={area.activo ? `Deshabilitar ${area.nombre}` : `Habilitar ${area.nombre}`}
+                      title={area.activo ? 'Deshabilitar división' : 'Habilitar división'}
+                      className={`rounded-md p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                        area.activo
+                          ? 'text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400'
+                          : 'text-emerald-400 hover:bg-emerald-500/10'
+                      }`}
+                    >
+                      <Power size={15} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAreaSeleccionada(area.id)}
+                    aria-label={`Configurar ${area.nombre}`}
+                    className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Settings size={16} />
+                  </button>
+                </div>
               </div>
               {area.descripcion && (
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">{area.descripcion}</p>
@@ -530,7 +606,7 @@ export function SettingsAreas() {
 
       {importando && (
         <SettingsImportarPersonal
-          areas={areas.map((a) => ({ id: a.id, nombre: a.nombre }))}
+          areas={areas.filter((a) => a.activo).map((a) => ({ id: a.id, nombre: a.nombre }))}
           onClose={() => setImportando(false)}
         />
       )}

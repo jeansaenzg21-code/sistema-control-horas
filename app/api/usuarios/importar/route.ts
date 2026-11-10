@@ -174,8 +174,11 @@ export async function POST(request: Request) {
         )
         const existente = (existentes as Array<{ id: number; rol: string; area_id: number | null }>)[0]
         if (existente) {
+          const rolActual = String(existente.rol)
+          // Un administrador no pertenece a ninguna división: la importación de
+          // RRHH no debe devolverlo a un área ni cambiar su rol.
+          if (rolActual === 'ADMINISTRACION' || rolActual === 'ADMIN') { omitidos++; continue }
           try {
-            const rolActual = String(existente.rol)
             const puedeActualizarRol = rolActual !== 'ADMINISTRACION'
             const nuevoRol = puedeActualizarRol && rol === 'JEFE_AREA' ? 'JEFE_AREA' : puedeActualizarRol && rol === 'SUPERVISOR' && rolActual === 'PERSONAL' ? 'SUPERVISOR' : rolActual
             const columnasActualizacion = [cargoColumn ? 'cargo' : 'especialidad', 'area_id']

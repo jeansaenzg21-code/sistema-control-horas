@@ -5,8 +5,8 @@
 // Sigue el mismo patrón que la pantalla de administradores (crear, promover,
 // revocar), con dos diferencias que no son estilísticas:
 //
-//   - Pide DIVISIÓN. `usuarios.area_id` es NOT NULL, así que un socio tiene que
-//     estar en un área. No le da ningún permiso sobre ella: el bloqueo de
+//   - Pide DIVISIÓN. Solo el administrador queda fuera de las áreas; un socio
+//     sigue necesitando una. No le da ningún permiso sobre ella: el bloqueo de
 //     escritura no depende del área.
 //   - "Revocar" devuelve a `personal`, no borra nada. Un socio pasa a ver solo sus
 //     propias horas, que es lo que tenía antes de darle el rol.
@@ -291,7 +291,7 @@ export function SettingsSocios() {
                   ))}
                 </select>
                 <p className="mt-1.5 text-xs text-muted-foreground">
-                  Obligatoria porque la base la exige. No otorga permisos: el socio ve toda la empresa
+                  Obligatoria para el perfil de socio. No otorga permisos: el socio ve toda la empresa
                   sea cual sea su división.
                 </p>
               </div>

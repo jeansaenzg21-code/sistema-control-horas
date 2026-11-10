@@ -29,8 +29,22 @@ interface AreasContextValue {
   error: string | null
   cargarAreas: () => Promise<void>
   crearArea: (datos: { nombre: string; descripcion?: string }) => Promise<{ ok: boolean; error?: string }>
-  actualizarArea: (id: number, cambios: { nombre?: string; descripcion?: string; jefe_id?: number | null }) => Promise<{ ok: boolean; error?: string }>
+  actualizarArea: (id: number, cambios: { nombre?: string; descripcion?: string; jefe_id?: number | null; activo?: boolean }) => Promise<{ ok: boolean; error?: string }>
   eliminarArea: (id: number) => Promise<{ ok: boolean; error?: string }>
+}
+
+function normalizarArea(raw: Record<string, unknown>): Area {
+  return {
+    id: Number(raw.id),
+    empresa_id: Number(raw.empresa_id),
+    nombre: String(raw.nombre ?? ''),
+    descripcion: raw.descripcion == null ? null : String(raw.descripcion),
+    activo: Boolean(Number(raw.activo ?? 0)),
+    jefe_id: raw.jefe_id == null ? null : Number(raw.jefe_id),
+    jefe_nombre: raw.jefe_nombre == null ? null : String(raw.jefe_nombre),
+    jefe_rol: raw.jefe_rol == null ? null : String(raw.jefe_rol),
+    total_usuarios: Number(raw.total_usuarios ?? 0),
+  }
 }
 
 const AreasContext = createContext<AreasContextValue | null>(null)
@@ -53,7 +67,7 @@ export function AreasProvider({ children }: { children: ReactNode }) {
       const res = await fetch('/api/areas', opcionesApi())
       if (res.ok) {
         const data = await res.json()
-        setAreas(Array.isArray(data) ? data : [])
+        setAreas(Array.isArray(data) ? data.map(normalizarArea) : [])
         setError(null)
       } else {
         const data = await res.json().catch(() => ({}))
@@ -91,7 +105,7 @@ export function AreasProvider({ children }: { children: ReactNode }) {
     }
   }, [empresaId, cargarAreas])
 
-  const actualizarArea = useCallback(async (id: number, cambios: { nombre?: string; descripcion?: string; jefe_id?: number | null }) => {
+  const actualizarArea = useCallback(async (id: number, cambios: { nombre?: string; descripcion?: string; jefe_id?: number | null; activo?: boolean }) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
     try {
       const res = await fetch('/api/areas', opcionesApi({ method: 'PUT', body: { id, ...cambios } }))

@@ -255,7 +255,7 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
               <span className="mb-1.5 block text-xs font-medium text-foreground">División *</span>
               <select required value={formulario.area_id} onChange={(e) => setFormulario((f) => ({ ...f, area_id: e.target.value ? Number(e.target.value) : '' }))} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-[#7c3aed]/30">
                 <option value="">Selecciona una división...</option>
-                {areas.map((area) => <option key={area.id} value={area.id}>{area.nombre}</option>)}
+                {areas.filter((area) => area.activo).map((area) => <option key={area.id} value={area.id}>{area.nombre}</option>)}
               </select>
             </label>
 

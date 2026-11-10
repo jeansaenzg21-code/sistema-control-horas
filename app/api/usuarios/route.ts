@@ -114,7 +114,12 @@ export async function GET(request: Request) {
       return NextResponse.json(personal)
     }
 
-    let query = `${SELECT_USUARIOS} WHERE a.empresa_id = ?`
+    // Los administradores no pertenecen a una división (area_id NULL), pero sí
+    // deben aparecer en el listado de la empresa activa: son quienes gestionan
+    // todas sus áreas. El resto de perfiles sigue saliendo por su área.
+    let query = `${SELECT_USUARIOS}
+      WHERE (a.empresa_id = ?
+         OR (u.area_id IS NULL AND u.rol IN ('ADMINISTRACION', 'ADMIN')))`
     const params: number[] = [context.empresaId]
     if (esJefeDeArea(context.user) && context.user.area_id != null) {
       query += ' AND u.area_id = ?'
@@ -190,14 +195,21 @@ export async function POST(request: Request) {
       )
     }
 
-    const [areaRows] = await pool.query(
-      'SELECT id FROM areas WHERE empresa_id = ? AND activo = TRUE ORDER BY id',
-      [context.empresaId]
-    )
-    const areas = areaRows as Array<{ id: number }>
-    const areaSolicitada = area_id ? Number(area_id) : areas[0]?.id
-    if (!areaSolicitada || !areas.some((area) => area.id === areaSolicitada)) {
-      return NextResponse.json({ error: 'La división indicada no pertenece a la empresa activa.' }, { status: 400 })
+    // El administrador administra todas las divisiones, así que no pertenece a
+    // ninguna: se guarda con area_id NULL. Los demás perfiles sí necesitan una
+    // división activa de la empresa.
+    const esRolAdmin = rolDb === 'ADMINISTRACION'
+    let areaSolicitada: number | null = null
+    if (!esRolAdmin) {
+      const [areaRows] = await pool.query(
+        'SELECT id FROM areas WHERE empresa_id = ? AND activo = TRUE ORDER BY id',
+        [context.empresaId]
+      )
+      const areas = areaRows as Array<{ id: number }>
+      areaSolicitada = area_id ? Number(area_id) : areas[0]?.id
+      if (!areaSolicitada || !areas.some((area) => area.id === areaSolicitada)) {
+        return NextResponse.json({ error: 'La división indicada no pertenece a la empresa activa.' }, { status: 400 })
+      }
     }
 
     const [existe] = await pool.query(
@@ -235,7 +247,7 @@ export async function POST(request: Request) {
             areaSolicitada,
             cargoLimpio,
             especialidadLimpia,
-            rolDb === 'JEFE_AREA' ? null : supervisor_id || null,
+            rolDb === 'JEFE_AREA' || esRolAdmin ? null : supervisor_id || null,
           ]
         )
         id = result.insertId
@@ -260,7 +272,7 @@ export async function POST(request: Request) {
           areaSolicitada,
           cargoLimpio,
           especialidadLimpia,
-          supervisor_id || null,
+          esRolAdmin ? null : supervisor_id || null,
         ]
       )
       id = result.insertId

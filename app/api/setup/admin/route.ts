@@ -51,25 +51,6 @@ export async function POST(request: Request) {
         await conexion.rollback()
         return NextResponse.json({ error: 'No existe una empresa configurada.' }, { status: 400 })
       }
-      const empresaId = Number((empresas as Array<{ id: number }>)[0].id)
-
-      const [areas] = await conexion.query(
-        `SELECT id
-         FROM areas
-         WHERE empresa_id = ? AND nombre = ? AND activo = TRUE
-         ORDER BY id
-         LIMIT 1`,
-        [empresaId, 'Administración']
-      )
-      if ((areas as unknown[]).length === 0) {
-        await conexion.rollback()
-        return NextResponse.json(
-          { error: 'No existe el área Administración para la empresa configurada.' },
-          { status: 400 }
-        )
-      }
-      const areaId = Number((areas as Array<{ id: number }>)[0].id)
-
       // La lectura con FOR UPDATE sobre `usuarios` bloquea el hueco aunque la
       // tabla este vacia, que es justo el caso que importa.
       const [existe] = await conexion.query('SELECT id FROM usuarios LIMIT 1 FOR UPDATE')
@@ -90,10 +71,12 @@ export async function POST(request: Request) {
       // Hash con el costo vigente (12) para los hashes nuevos.
       const hash = await hashearPassword(String(password))
 
+      // El administrador administra todas las divisiones, así que no pertenece a
+      // ninguna: `area_id` queda NULL.
       const [result] = await conexion.query(
         `INSERT INTO usuarios (nombre, correo, usuario, password_hash, rol, area_id, activo)
-         VALUES (?, ?, ?, ?, 'ADMINISTRACION', ?, TRUE)`,
-        [nombreLimpio, correoLimpio, usuarioLimpio, hash, areaId]
+         VALUES (?, ?, ?, ?, 'ADMINISTRACION', NULL, TRUE)`,
+        [nombreLimpio, correoLimpio, usuarioLimpio, hash]
       )
 
       await conexion.commit()
