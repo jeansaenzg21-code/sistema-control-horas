@@ -1,0 +1,7 @@
+# Docker exige finales de línea LF en Dockerfile y compose; evitamos que
+# Git los convierta a CRLF en checkouts de Windows.
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+docker-compose.yml text eol=lf
+docker-compose.test.yml text eol=lf
+.env.example text eol=lf
