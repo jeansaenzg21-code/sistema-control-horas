@@ -2,9 +2,9 @@
 //
 // Reglas (decididas por el negocio):
 //
-// - El presupuesto cuelga del CLIENTE, no del proyecto (ver cabecera de
-//   sql/presupuestos.sql). El vínculo con proyecto es opcional: sirve para
-//   organizar y para medir desviaciones, no para dar de alta el alcance.
+// - El presupuesto cuelga del CLIENTE, no del proyecto. El vínculo con proyecto
+//   es opcional: sirve para organizar y para medir desviaciones, no para dar de
+//   alta el alcance.
 // - El JEFE DEL ÁREA del cliente puede hacer todo lo que afecte a su cliente:
 //   importar, aprobar, activar bolsas y repartir horas. Es quien responde por el
 //   alcance contratado, y cargar el Excel ya ES la decisión de aprobarse: por eso

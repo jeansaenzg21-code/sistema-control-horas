@@ -186,7 +186,7 @@ export async function POST(request: Request) {
     const code = (error as { code?: string }).code
     if (code === 'ER_NO_SUCH_TABLE') {
       return NextResponse.json(
-        { error: 'Falta aplicar la migración sql/migraciones/0011_inventario_laptops.sql.' },
+        { error: 'No se pudo importar el inventario: la base de datos no tiene la estructura necesaria. Contacta al administrador del sistema.' },
         { status: 503 }
       )
     }
@@ -194,8 +194,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'La base de datos todavía exige códigos únicos. Aplica la migración ' +
-            'sql/migraciones/0011_inventario_laptops_duplicados.sql para permitir duplicados.',
+            'No se pudo completar la importación: la base de datos no admite códigos duplicados. ' +
+            'Revisa los códigos o contacta al administrador del sistema.',
         },
         { status: 503 }
       )

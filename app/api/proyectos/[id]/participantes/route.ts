@@ -16,7 +16,7 @@ export async function POST(
   try {
     const context = await getProyectoContexto(request)
     if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status })
-    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'Falta aplicar la migración de proyectos.' }, { status: 503 })
+    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'La gestión de proyectos no está disponible: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     const proyectoId = idValido((await params).id)
     if (proyectoId == null) return NextResponse.json({ error: 'Proyecto no válido.' }, { status: 400 })
     if (!(await puedeEditarProyecto(context.user, proyectoId, context.empresaId))) {
@@ -81,7 +81,7 @@ export async function DELETE(
   try {
     const context = await getProyectoContexto(request)
     if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status })
-    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'Falta aplicar la migración de proyectos.' }, { status: 503 })
+    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'La gestión de proyectos no está disponible: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     const proyectoId = idValido((await params).id)
     if (proyectoId == null) return NextResponse.json({ error: 'Proyecto no válido.' }, { status: 400 })
     if (!(await puedeEditarProyecto(context.user, proyectoId, context.empresaId))) {

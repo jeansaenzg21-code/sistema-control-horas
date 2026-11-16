@@ -175,7 +175,7 @@ export async function POST(request: Request) {
     }
     if (rolDb === 'SOCIO' && !(await soportaRol('SOCIO'))) {
       return NextResponse.json(
-        { error: 'Falta habilitar el rol SOCIO en la base de datos. Ejecuta sql/socio_solo_lectura.sql.' },
+        { error: 'No se puede asignar el rol SOCIO: la base de datos no está actualizada. Contacta al administrador del sistema.' },
         { status: 503 }
       )
     }
@@ -184,13 +184,13 @@ export async function POST(request: Request) {
     }
     if (rolDb === 'JEFE_AREA' && !(await tieneColumnaJefeArea())) {
       return NextResponse.json(
-        { error: 'Falta aplicar la migración de jefe de área. Ejecuta sql/areas_jefe.sql.' },
+        { error: 'No se puede asignar un jefe de área: la base de datos no está actualizada. Contacta al administrador del sistema.' },
         { status: 503 }
       )
     }
     if (rolDb === 'JEFE_AREA' && !(await soportaRolJefeArea())) {
       return NextResponse.json(
-        { error: 'Falta habilitar el rol JEFE_AREA. Ejecuta sql/jefes_area.sql.' },
+        { error: 'No se puede asignar el rol JEFE_AREA: la base de datos no está actualizada. Contacta al administrador del sistema.' },
         { status: 503 }
       )
     }

@@ -8,7 +8,6 @@ import { PoolConnection, RowDataPacket } from 'mysql2/promise'
 // comportamiento actual del sistema web no cambia.
 
 const TOLERANCIA_FUTURO_MS = 5 * 60 * 1000
-const ANTIGUEDAD_MAXIMA_DIAS = 30
 
 let columnaDisponible: boolean | null = null
 
@@ -40,13 +39,9 @@ export function validarMarcaTiempoCliente(valor: unknown, etiqueta: string): Res
   if (fecha.getTime() > Date.now() + TOLERANCIA_FUTURO_MS) {
     return { ok: false, error: `La ${etiqueta} no puede estar en el futuro.` }
   }
-  const antiguedad = Date.now() - fecha.getTime()
-  if (antiguedad > ANTIGUEDAD_MAXIMA_DIAS * 24 * 60 * 60 * 1000) {
-    return {
-      ok: false,
-      error: `La ${etiqueta} supera los ${ANTIGUEDAD_MAXIMA_DIAS} días permitidos para registrar una actividad.`,
-    }
-  }
+  // No se pone tope de antigüedad hacia el pasado: se permite registrar horas de
+  // cualquier día anterior (por ejemplo, cargar la semana el fin de semana).
+  // Solo se sigue rechazando una marca en el futuro.
   return { ok: true, fecha }
 }
 

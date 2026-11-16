@@ -91,7 +91,7 @@ export async function GET(
   try {
     const context = await getProyectoContexto(request)
     if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status })
-    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'Falta aplicar la migración de proyectos.' }, { status: 503 })
+    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'La gestión de proyectos no está disponible: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     const id = idValido((await params).id)
     if (id == null) return NextResponse.json({ error: 'Proyecto no válido.' }, { status: 400 })
     if (!(await puedeAccederProyecto(context.user, id, context.empresaId))) {
@@ -113,7 +113,7 @@ export async function PUT(
   try {
     const context = await getProyectoContexto(request)
     if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status })
-    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'Falta aplicar la migración de proyectos.' }, { status: 503 })
+    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'La gestión de proyectos no está disponible: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     const id = idValido((await params).id)
     if (id == null) return NextResponse.json({ error: 'Proyecto no válido.' }, { status: 400 })
     if (!(await puedeEditarProyecto(context.user, id, context.empresaId))) {
@@ -245,7 +245,7 @@ export async function DELETE(
     const context = await getProyectoContexto(request)
     if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status })
     if (!esAdministrador(context.user)) return NextResponse.json({ error: 'Sólo administración puede eliminar proyectos.' }, { status: 403 })
-    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'Falta aplicar la migración de proyectos.' }, { status: 503 })
+    if (!(await proyectosDisponibles())) return NextResponse.json({ error: 'La gestión de proyectos no está disponible: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     const id = idValido((await params).id)
     if (id == null) return NextResponse.json({ error: 'Proyecto no válido.' }, { status: 400 })
     const [result] = await pool.query(

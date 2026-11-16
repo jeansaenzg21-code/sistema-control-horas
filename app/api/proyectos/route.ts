@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     const context = await getProyectoContexto(request)
     if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status })
     if (!(await proyectosDisponibles())) {
-      return NextResponse.json({ error: 'Falta aplicar la migración de proyectos. Ejecuta sql/proyectos.sql.' }, { status: 503 })
+      return NextResponse.json({ error: 'La gestión de proyectos no está disponible: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     }
 
     const admin = esAdministrador(context.user)
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
     const context = await getProyectoContexto(request)
     if ('error' in context) return NextResponse.json({ error: context.error }, { status: context.status })
     if (!(await proyectosDisponibles())) {
-      return NextResponse.json({ error: 'Falta aplicar la migración de proyectos. Ejecuta sql/proyectos.sql.' }, { status: 503 })
+      return NextResponse.json({ error: 'La gestión de proyectos no está disponible: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     }
 
     const admin = esAdministrador(context.user)

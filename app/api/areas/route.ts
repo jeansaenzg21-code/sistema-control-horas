@@ -146,7 +146,7 @@ export async function PUT(request: Request) {
     const tieneJefeArea = await tieneColumnaJefeArea()
     if (body.jefe_id !== undefined && !tieneJefeArea) {
       return NextResponse.json(
-        { error: 'Falta aplicar la migración de jefe de área. Ejecuta sql/areas_jefe.sql.' },
+        { error: 'No se puede asignar un jefe de área: la base de datos no está actualizada. Contacta al administrador del sistema.' },
         { status: 503 }
       )
     }

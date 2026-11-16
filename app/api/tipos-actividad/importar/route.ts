@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     if (!(await columnaExiste('tipos_actividad', 'codigo'))) {
       return NextResponse.json(
-        { error: 'Falta preparar la base de datos. Ejecuta sql/actividades_codigo.sql.' },
+        { error: 'No se pueden usar códigos de actividad: la base de datos no está actualizada. Contacta al administrador del sistema.' },
         { status: 503 }
       )
     }

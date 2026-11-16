@@ -111,7 +111,7 @@ export async function POST(request: Request) {
       soportaRolJefeArea(),
     ])
     if (!cargoColumn && !especialidadColumn) {
-      return NextResponse.json({ error: 'Falta preparar la base de datos. Ejecuta sql/cargos.sql.' }, { status: 503 })
+      return NextResponse.json({ error: 'No se puede importar usuarios: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     }
 
     const areaIdDeFila = (fila: FilaImportacion): number | null => {
@@ -166,7 +166,7 @@ export async function POST(request: Request) {
         const areaYaTieneJefe = jefesPorArea.get(areaIdFila) === true
         const areaTieneJefeEnImportacion = tipo !== 'JEFE' && infoArea.jefe
         const rol = clasificarRolPorCargo(cargo, { areaYaTieneJefe, areaTieneJefeEnImportacion })
-        if (rol === 'JEFE_AREA' && (!jefeColumn || !rolJefe)) { errores.push({ fila: numFila, error: 'Aplica las migraciones de jefe de área antes de importar cargos de jefe.' }); continue }
+        if (rol === 'JEFE_AREA' && (!jefeColumn || !rolJefe)) { errores.push({ fila: numFila, error: 'No se puede importar un jefe de área: la base de datos no está actualizada.' }); continue }
 
         const [existentes] = await pool.query(
           'SELECT id, rol, area_id FROM usuarios WHERE usuario = ? OR (? <> \'\' AND correo = ?) LIMIT 1',
