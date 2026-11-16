@@ -382,6 +382,70 @@ Cambio conservado de la tarea anterior:
 - Logs: salida estándar, rotada por el driver `json-file` (10 MB × 3).
 - Caché de Next (`.next/cache`) es opcional y reconstruible; no se monta.
 
+### 13.1 Esquema y migraciones
+
+El repositorio **no incluye** el esquema ni un sistema de migraciones; la base
+debe existir y estar creada **antes** de arrancar la aplicación. Pasos:
+
+1. Crear la base y el usuario de aplicación (§6.3).
+2. Cargar el esquema en la base de destino (fichero `.sql` entregado por
+   separado, o restauración de un respaldo — ver §13.2). Para cargar un esquema
+   sin datos:
+
+   ```bash
+   mysql -h <HOST> -u <USUARIO> -p <BASE> < esquema.sql
+   ```
+
+   El volcado del proyecto **no respeta el orden de claves foráneas**, por lo
+   que conviene cargarlo con las comprobaciones desactivadas:
+
+   ```sql
+   SET FOREIGN_KEY_CHECKS = 0;
+   -- ... CREATE TABLE ... / INSERT ...
+   SET FOREIGN_KEY_CHECKS = 1;
+   ```
+
+3. Verificar que existen las 31 tablas y que la aplicación conecta:
+   `curl -fsS http://127.0.0.1:3000/api/salud` → `200 {"ok":true,...}`.
+
+> **Limitación preexistente:** el script `npm run migrar` apunta a
+> `scripts/migrar.js`, que **no existe** en el repositorio. Hasta que se
+> incorpore, los cambios de esquema se aplican manualmente como en el paso 2.
+>
+> Toda migración debe probarse primero sobre una **copia** de la base
+> (nunca directamente en producción) y aplicarse tras tomar un respaldo (§13.2).
+
+### 13.2 Respaldos y restauración
+
+La aplicación no escribe datos persistentes fuera de MySQL, así que el respaldo
+de la base **es** el respaldo del sistema. Procedimiento recomendado (ejecutar
+en el host de MySQL o donde haya conectividad):
+
+```bash
+# Respaldo consistente sin bloquear la operación
+STAMP=$(date +%Y%m%d-%H%M%S)
+mysqldump --single-transaction --routines --triggers --events \
+  -h <HOST> -u <USUARIO> -p <BASE> | gzip > "respaldo-${BASE}-${STAMP}.sql.gz"
+
+# Verificación de integridad y registro del hash
+sha256sum "respaldo-${BASE}-${STAMP}.sql.gz" | tee "respaldo-${BASE}-${STAMP}.sha256"
+```
+
+Restauración (siempre sobre una base de prueba primero):
+
+```bash
+gunzip -c respaldo-<BASE>-<STAMP>.sql.gz | mysql -h <HOST> -u <USUARIO> -p <BASE>
+```
+
+Buenas prácticas:
+
+- Programar respaldos periódicos (p. ej. `cron` diario) con **retención** y
+  copia **fuera del servidor** (almacenamiento distinto).
+- Verificar cada respaldo por `sha256` y probar una **restauración** completa
+  antes de confiar en él.
+- Antes de cada actualización o migración: respaldo + tag de imagen anterior
+  (§9 y §10).
+
 ## 14. Pruebas locales (datos de prueba)
 
 Solo en un equipo de desarrollo. **No** usa la base de producción:
@@ -523,10 +587,15 @@ forman parte del bundle de producción.
 Validación funcional de ambas fases (entorno aislado, ver §16.3): **66/66
 comprobaciones correctas** — `typecheck`, `lint` (0 errores), `build` y pruebas
 de API (login, sesión, permisos, CRUD, actividades, notificaciones,
-excepciones, horarios, importaciones Excel y SSE). Se registró además un
-**defecto preexistente** ajeno a estas fases: `POST /api/notificaciones`
-responde 400 cuando el cuerpo incluye `mensaje` no vacío (`validarTexto`
-devuelve el texto y el llamador lo trata como error).
+excepciones, horarios, importaciones Excel y SSE).
+
+**Fase 3 (corrección puntual).** Durante la validación se detectó un
+**defecto preexistente**: `POST /api/notificaciones` respondía 400 cuando el
+cuerpo incluía un `mensaje` no vacío, porque `validarTexto` devolvía el propio
+texto (en lugar de `null`) en el caso válido y el llamador lo interpretaba como
+error. Se corrigió en `app/api/notificaciones/route.ts` (commit `be53831`), sin
+cambios de UI ni de otras funcionalidades, y se añadieron pruebas de regresión
+(`tests/notificaciones.test.mjs`, `npm test`): **13/13 correctas**.
 
 ## 16. Estado de validación y verificaciones pendientes
 
@@ -572,12 +641,12 @@ Quedan a cargo del ingeniero de sistemas, en el servidor Ubuntu de destino:
    rollback.
 10. Confirmar que `SETUP_TOKEN` se retira o rota después de la instalación.
 
-### 16.3 Validación funcional de Fases 1 y 2 (2026-11-15)
+### 16.3 Validación funcional de Fases 1, 2 y 3 (2026-11-15)
 
-Para verificar que la actualización de dependencias no alteró comportamiento,
-se levantó un entorno **aislado** (proyecto Compose `sch-verify` y volumen
-`sch_verify_db`, distintos de los de test existentes), con MySQL 8.4 en
-`127.0.0.1:3308` y la imagen `sistema-control-horas:fase2` en
+Para verificar que la actualización de dependencias y la corrección puntual no
+alteraron comportamiento, se levantó un entorno **aislado** (proyecto Compose
+`sch-verify` y volumen `sch_verify_db`, distintos de los de test existentes),
+con MySQL 8.4 en `127.0.0.1:3308` y la imagen `sistema-control-horas:fase3` en
 `127.0.0.1:3002`, usando **datos ficticios** (nunca el respaldo real):
 
 1. Esquema + datos ficticios cargados con `FOREIGN_KEY_CHECKS=0` (31 tablas).
@@ -587,7 +656,11 @@ se levantó un entorno **aislado** (proyecto Compose `sch-verify` y volumen
    ciclo de actividad (iniciar/pausar/continuar/finalizar y bloque cerrado →
    `PENDIENTE_APROBACION`), aprobaciones, notificaciones, excepciones, horarios,
    importaciones Excel (`tipos-actividad`, `usuarios`, `laptops`) y SSE.
-4. Comportamientos confirmados como correctos: `GET /api/horarios` y
+4. Pruebas de regresión de notificaciones (`npm test`,
+   `tests/notificaciones.test.mjs`): **13/13 correctas** — mensaje válido,
+   mensaje ausente/vacío, mensaje inválido (espacios, no-texto, demasiado
+   largo), autenticación (401) y permisos (403).
+5. Comportamientos confirmados como correctos: `GET /api/horarios` y
    `GET /api/excepciones` son admin-only; un usuario SOCIO recibe **401** al
    escribir (guard de solo lectura en `lib/auth.ts`); `POST /api/laptops/importar`
    exige el perfil de Sistemas.
