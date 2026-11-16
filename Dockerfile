@@ -4,7 +4,7 @@
 #
 # Node 24 LTS:
 #   - Es la misma version mayor que usa el entorno de desarrollo (24.22.2).
-#   - Next 16.3.6 exige >=20.9.0; el resto de dependencias exige como maximo
+#   - Next 16.4.6 exige >=20.9.0; el resto de dependencias exige como maximo
 #     >=20.18.1 (shadcn/undici), por lo que 24 cumple todo el arbol.
 #   - node:24-alpine mantiene la imagen pequena y el lockfile ya incluye los
 #     binarios musl (sharp y @tailwindcss/oxide) necesarios en Alpine.

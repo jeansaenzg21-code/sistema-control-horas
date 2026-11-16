@@ -434,8 +434,19 @@ sha256sum "respaldo-${BASE}-${STAMP}.sql.gz" | tee "respaldo-${BASE}-${STAMP}.sh
 Restauración (siempre sobre una base de prueba primero):
 
 ```bash
+# Si el respaldo viene comprimido (.sql.gz)
 gunzip -c respaldo-<BASE>-<STAMP>.sql.gz | mysql -h <HOST> -u <USUARIO> -p <BASE>
+
+# Si el respaldo entregado es un .sql sin comprimir
+mysql -h <HOST> -u <USUARIO> -p <BASE> < respaldo-entregado.sql
 ```
+
+> **Restauración del respaldo entregado.** El ingeniero de sistemas recibirá un
+> respaldo SQL por separado (no incluido en el repositorio). Para restaurarlo:
+> 1) crear la base y el usuario (§6.3); 2) cargar el archivo con el comando
+> anterior; 3) si el volcado **no respeta el orden de claves foráneas**, cargarlo
+> con `SET FOREIGN_KEY_CHECKS = 0;` al inicio y `= 1;` al final (§13.1);
+> 4) verificar las 31 tablas y `GET /api/salud` (§13.1, paso 3).
 
 Buenas prácticas:
 
