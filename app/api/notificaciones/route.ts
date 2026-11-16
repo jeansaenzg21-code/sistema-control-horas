@@ -11,7 +11,7 @@ function validarTexto(valor: unknown, nombre: string, maximo: number): string | 
   const texto = valor.trim()
   if (!texto) return `${nombre} es obligatorio.`
   if (texto.length > maximo) return `${nombre} es demasiado largo.`
-  return texto
+  return null
 }
 
 function validarUrl(valor: unknown): { ok: true; url: string | null } | { ok: false; error: string } {
@@ -93,9 +93,9 @@ export async function POST(request: Request) {
     }
     let mensaje: string | null = null
     if (body.mensaje != null && body.mensaje !== '') {
-      const mensajeValidado = validarTexto(body.mensaje, 'El mensaje', 2000)
-      if (mensajeValidado) {
-        return NextResponse.json({ error: mensajeValidado }, { status: 400 })
+      const errorMensaje = validarTexto(body.mensaje, 'El mensaje', 2000)
+      if (errorMensaje) {
+        return NextResponse.json({ error: errorMensaje }, { status: 400 })
       }
       mensaje = String(body.mensaje).trim()
     }
