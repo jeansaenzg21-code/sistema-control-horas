@@ -466,23 +466,79 @@ con `typecheck`, `lint`, `build` y pruebas funcionales. Mientras tanto, el
 riesgo se reduce manteniendo Nginx/HTTPS, sin exponer el puerto de la app y
 restringiendo la superficie de importación de archivos.
 
-## 16. Verificaciones pendientes antes de producción
+### 15.2 Análisis de cadenas de dependencia (2026-11-15)
 
-En el equipo donde se preparó esto **no hay Docker ni WSL instalados**, por lo
-que no se pudieron ejecutar `docker build`, `docker run` ni `docker compose`.
-Estas pruebas quedan a cargo del ingeniero:
+El conteo de `npm audit` se calcula sobre el árbol completo de `dependencies`.
+La inspección de las cadenas (`npm ls`) y del bundle real de producción
+(`.next/standalone/node_modules`) muestra que la mayoría de los avisos **no
+llegan a la imagen**:
 
-1. `docker build -t sistema-control-horas:test .`
-2. `docker compose -f docker-compose.test.yml up -d --build`
+- **`shadcn`** figura en `dependencies` pero solo se usa en tiempo de build
+  (`@import 'shadcn/tailwind.css'` en `app/globals.css`). Arrastra
+  `@modelcontextprotocol/sdk`, `express`, `body-parser`, `proxy-addr`
+  (crítica), `hono`, `qs`, `ip-address`, `fast-uri`, `systeminformation`,
+  `undici`, `zod`, `deepmerge`, `ts-morph` y `minimatch`. **Ninguno** aparece
+  en `.next/standalone`.
+- Los avisos que **sí** están en el runtime standalone son:
+  `next` (crítica), `sharp` (alta), `brace-expansion` (alta) y, vía
+  `exceljs`, `uuid` (moderada). `xlsx` (alta, sin fix) se usa en el cliente.
+
+Correcciones recomendadas, en este orden:
+
+1. Mover `shadcn` a `devDependencies` (elimina ~16 avisos, incluida una
+   crítica). El build de Docker usa `npm ci` completo, así que el import CSS
+   sigue funcionando.
+2. `npm audit fix` (sin `--force`) para `next` → 16.4.x, `sharp` → 0.35.5,
+   `source-map-js` → 1.2.2, `brace-expansion` → 5.0.13.
+3. `xlsx`: sin fix en npm; migrar la única importación cliente a
+   `read-excel-file` (ya presente) o `exceljs`.
+4. `exceljs`/`uuid`: dejar como está (el fix propuesto es incompatible).
+
+Ninguna de estas acciones se ha ejecutado todavía; el detalle y la aprobación
+corresponden al informe de seguridad entregado aparte.
+
+## 16. Estado de validación y verificaciones pendientes
+
+### 16.1 Validaciones completadas (Windows + Docker Desktop)
+
+Estas pruebas se ejecutaron con éxito en un equipo Windows con Docker Desktop,
+sobre una **copia** de la base de datos (nunca producción):
+
+1. `docker build` de la imagen multistage: **exitoso**.
+2. `docker compose up` con la aplicación Next.js y un **MySQL 8.4** en
+   contenedores: **exitoso**. La aplicación quedó conectada a la base.
+3. `GET /api/salud`: **HTTP 200** con `{"ok":true,"baseDeDatos":"conectada"}`.
+4. Respaldo de MySQL obtenido del proveedor de nube: **descargado y verificado
+   por SHA256** antes de usarlo.
+5. Restauración del respaldo: **31 tablas** restauradas correctamente en
+   MySQL 8.4.
+6. Aplicación conectada a la base restaurada: **interfaz operativa**, mostrando
+   correctamente los datos existentes.
+7. Cambios de Docker publicados en el repositorio Git.
+
+En conjunto, quedó cubierto el ciclo `build → compose → healthcheck → datos
+reales`. Esto valida los archivos de la sección 4, pero **no sustituye** la
+validación en el servidor de destino ni el endurecimiento de producción
+(sección 15).
+
+### 16.2 Verificaciones pendientes antes de producción
+
+Quedan a cargo del ingeniero de sistemas, en el servidor Ubuntu de destino:
+
+1. Construir la imagen versionada en el servidor:
+   `docker build -t sistema-control-horas:test .`
+2. `docker compose -f docker-compose.test.yml up -d --build` (MySQL desechable).
 3. Confirmar `healthy` y `200` en `http://127.0.0.1:3001/api/salud`.
-4. Probar login real contra MySQL de staging por HTTPS y verificar cookies
+4. Probar login real contra MySQL de staging por HTTPS y verificar las cookies
    `Secure; HttpOnly; SameSite=Lax` en DevTools.
 5. Confirmar que la imagen no contiene secretos:
    `docker run --rm --entrypoint sh sistema-control-horas:test -c "ls -la /app; env"`
 6. Validar Nginx + HTTPS y las rutas SSE (`/api/auth/stream`).
-7. Ejecutar análisis de vulnerabilidades de la imagen.
-8. Planificar la actualización de dependencias indicada en la sección 15.1.
-9. Validar respaldo/restauración de MySQL y el procedimiento de rollback.
+7. Ejecutar análisis de vulnerabilidades de la imagen (`trivy` / Docker Scout).
+8. Aplicar el plan de actualización de dependencias derivado del informe de
+   seguridad (secciones 15.1 y 15.2).
+9. Validar respaldo/restauración de MySQL en el servidor y el procedimiento de
+   rollback.
 10. Confirmar que `SETUP_TOKEN` se retira o rota después de la instalación.
 
 ## 17. Diagnóstico rápido
