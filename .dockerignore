@@ -1,0 +1,74 @@
+# ============================================================
+# Contexto de construccion de Docker
+# Objetivo: imagen pequena y sin secretos.
+# ============================================================
+
+# Secretos y configuracion local: NUNCA deben entrar al contexto ni a la imagen.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+secrets/
+secrets.*
+.envrc
+
+# Control de versiones y metadatos del repositorio
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+
+# Dependencias y artefactos de build locales (se regeneran dentro de la imagen)
+node_modules
+**/node_modules
+.next
+out
+build
+dist
+coverage
+.nyc_output
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Aplicaciones que no forman parte del servicio web
+timer
+extension
+
+# Documentacion, tests y utilidades que no necesita el runtime
+tests
+test
+scripts
+DEPLOYMENT.md
+README.md
+*.md
+!public/**/*.md
+
+# Archivos de datos/importacion locales (no deben viajar en la imagen)
+*.xlsx
+*.xls
+*.csv
+*.log
+public/downloads/*.exe
+public/downloads/*.msi
+public/downloads/*.dmg
+
+# Configuracion de Docker (no es necesario copiarla dentro de la imagen)
+Dockerfile
+Dockerfile.*
+.dockerignore
+docker-compose*.yml
+docker-compose*.yaml
+compose*.yml
+compose*.yaml
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini

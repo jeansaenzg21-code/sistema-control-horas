@@ -489,7 +489,11 @@ export function tokenDeRequest(request: Request): string | null {
 }
 
 function construirCookie(nombre: string, valor: string, expira: Date, maxAge: number | null): string {
-  const seguro = ''
+  // `Secure` hace que la cookie solo viaje por HTTPS, evitando que se filtre en
+  // texto plano. Se activa en produccion (donde el sitio va tras TLS) y puede
+  // forzarse con COOKIE_SECURE=true. En desarrollo se omite porque `next dev`
+  // sirve por HTTP y el navegador descartaria la cookie.
+  const seguro = process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true' ? '; Secure' : ''
   // HttpOnly en las dos: el JavaScript de la pagina no puede leer ninguna de las
   // dos credenciales, que es lo que evita que un XSS se lleve la sesion.
   const vida = maxAge == null ? `Expires=${expira.toUTCString()}` : `Max-Age=${maxAge}`

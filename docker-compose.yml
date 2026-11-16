@@ -1,0 +1,58 @@
+# ============================================================
+# Produccion: aplicacion Next.js + MySQL EXTERNO
+#
+# MySQL NO se incluye aqui: debe existir en el host o en otro servidor.
+# Toda la configuracion sensible se toma de .env en tiempo de ejecucion; no se
+# hornea ningun secreto en la imagen.
+#
+# Uso:
+#   cp .env.example .env    # completar credenciales reales (nunca commitear)
+#   docker compose build
+#   docker compose up -d
+# ============================================================
+name: sistema-control-horas
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_VERSION: "24"
+    image: ${APP_IMAGE:-sistema-control-horas:latest}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      # Por defecto solo escucha en loopback del host, para que Nginx sea el
+      # unico punto de entrada publico. Cambia APP_BIND_ADDR a 0.0.0.0 solo si
+      # publicaras el puerto directamente (no recomendado).
+      - "${APP_BIND_ADDR:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    extra_hosts:
+      # Permite usar DB_HOST=host.docker.internal para MySQL instalado en el
+      # host. En Docker Desktop ya existe; en Linux lo agrega esta linea.
+      - "host.docker.internal:host-gateway"
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/salud').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
