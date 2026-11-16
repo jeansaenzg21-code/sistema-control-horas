@@ -210,8 +210,8 @@ export function SettingsActividades() {
 
       {catalogo && !catalogo.conCodigo && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
-          Falta la columna <code className="font-mono">codigo</code>. Ejecuta{' '}
-          <code className="font-mono">sql/actividades_codigo.sql</code> para poder guardar códigos.
+          Los códigos de actividad no están disponibles: la base de datos no está actualizada.
+          Contacta al administrador del sistema.
         </p>
       )}
 

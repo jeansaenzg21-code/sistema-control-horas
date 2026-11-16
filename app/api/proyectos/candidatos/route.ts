@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
     if (!(await proyectosDisponibles())) {
-      return NextResponse.json({ error: 'Falta aplicar la migración de proyectos. Ejecuta sql/proyectos.sql.' }, { status: 503 })
+      return NextResponse.json({ error: 'La gestión de proyectos no está disponible: la base de datos no está actualizada. Contacta al administrador del sistema.' }, { status: 503 })
     }
 
     const [usuarios] = await pool.query<Candidato[]>(

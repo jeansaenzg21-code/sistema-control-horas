@@ -28,8 +28,8 @@ export async function GET(request: Request) {
 
     const params: (string | number)[] = [context.activa.id]
     // `codigo` llegó después de crear el catálogo por área. Se consulta solo si
-    // la columna existe, para que una instalación que no haya aplicado
-    // sql/actividades_codigo.sql siga funcionando sin dar error.
+    // la columna existe, para que una instalación con el esquema desactualizado
+    // siga funcionando sin dar error.
     const hayCodigo = await columnaExiste('tipos_actividad', 'codigo')
     const columnas = hayCodigo
       ? 'ta.id, ta.area_id, ta.nombre, ta.codigo, ta.activo, ta.es_general'
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     const hayCodigo = await columnaExiste('tipos_actividad', 'codigo')
     if (codigo && !hayCodigo) {
       return NextResponse.json(
-        { error: 'Falta preparar la base de datos. Ejecuta sql/actividades_codigo.sql.' },
+        { error: 'No se pueden usar códigos de actividad: la base de datos no está actualizada. Contacta al administrador del sistema.' },
         { status: 503 }
       )
     }

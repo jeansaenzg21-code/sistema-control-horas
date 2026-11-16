@@ -445,7 +445,7 @@ export async function confirmarAsignaciones(params: {
  *   del servicio es una tarea operativa posterior; el alcance contratado ya está
  *   cerrado con el Excel y no depende de eso.
  * - Que exista un proyecto vinculado. El cliente es el ancla y el presupuesto
- *   cuelga de él, no al revés (ver cabecera de sql/presupuestos.sql).
+ *   cuelga de él, no al revés.
  *
  * El presupuesto además llega ya APPROBADO desde la importación, asi que esta
  * función cubre sobre todo el caso de reimportar o de activar bolsas despues.

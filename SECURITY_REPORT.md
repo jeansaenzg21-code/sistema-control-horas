@@ -149,10 +149,11 @@ ausente/vacío; rechazo de espacios, no-texto y longitud excesiva; autenticació
 
 ## 8. Limitaciones y riesgos pendientes
 
-1. **Esquema/migraciones de base de datos (bloqueante para entrega):** el
-   repositorio no incluye el esquema ni `scripts/migrar.js` (el script `npm run
-   migrar` apunta a un archivo inexistente). El ingeniero de sistemas debe
-   obtener el esquema/volcado y cargarlo (ver DEPLOYMENT.md §13.1 y §13.2).
+1. **Esquema de base de datos:** el repositorio no incluye el esquema, pero el
+   despliegue se realiza restaurando el **respaldo SQL completo** entregado, que
+   ya contiene las 31 tablas del sistema (ver DEPLOYMENT.md §13.1 y §13.2). No
+   hay migraciones ni script `npm run migrar`; esa referencia se retiró por
+   obsoleta.
 2. **`xlsx` sin fix:** requiere migración de librería (fuera de alcance sin
    autorización). Riesgo acotado al navegador del usuario que importa.
 3. **`exceljs`/`uuid`:** sin fix compatible; riesgo real bajo en los flujos
@@ -174,8 +175,8 @@ ausente/vacío; rechazo de espacios, no-texto y longitud excesiva; autenticació
   aprobada, con pruebas de importación.
 - Mantener `shadcn` en `devDependencies`; cualquier herramienta de build no debe
   residir en `dependencies`.
-- Incorporar al repositorio el **esquema y migraciones versionadas** (idealmente
-  con el `migrar` funcional) y ejecutarlas en CI/despliegue.
+- Mantener versionado el **respaldo/esquema SQL de referencia** que se restaura
+  en el despliegue, para poder recrear la base sin depender del servidor actual.
 - Integrar `npm run typecheck`, `npm run lint` y `npm test` como verificación
   previa a cada entrega.
 - Añadir `trivy`/Docker Scout al pipeline y revisar la imagen antes de publicar.
@@ -195,8 +196,9 @@ ausente/vacío; rechazo de espacios, no-texto y longitud excesiva; autenticació
   rollback (§10), Nginx/HTTPS (§11), volúmenes/persistencia (§13), **esquema,
   migraciones y respaldos/restauración (§13.1 y §13.2)**, pruebas locales (§14)
   y seguridad (§15).
-- **Pendiente bloqueante:** esquema/migración de la base (§8.1). Resto de
-  verificaciones en el servidor de destino: DEPLOYMENT.md §16.2.
+- **Esquema:** se obtiene restaurando el respaldo SQL completo entregado; no hay
+  script de migración (§8.1). Resto de verificaciones en el servidor de destino:
+  DEPLOYMENT.md §16.2.
 
 ---
 

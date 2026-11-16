@@ -7,8 +7,8 @@ MySQL **fuera** del contenedor de la aplicación y Nginx como único punto de
 entrada público con HTTPS.
 
 > **Alcance:** los archivos de Docker no modifican el código ni la base de datos
-> existentes. El despliegue real, las migraciones y los respaldos los ejecuta el
-> ingeniero de sistemas.
+> existentes. El despliegue real, la restauración del respaldo SQL y los
+> respaldos posteriores los ejecuta el ingeniero de sistemas.
 
 ---
 
@@ -151,10 +151,10 @@ FLUSH PRIVILEGES;
 Ajustar los privilegios según lo que requiera la operación normal. No usar
 `root` para la aplicación ni exponer el puerto 3306 a Internet.
 
-> El repositorio **no incluye esquema ni migraciones**. La base debe existir y
-> estar migrada antes de arrancar. El script `npm run migrar` apunta a
-> `scripts/migrar.js`, que no existe en el repositorio (limitación preexistente,
-> ajena a Docker).
+> El repositorio **no incluye esquema ni migraciones**. El despliegue se realiza
+> restaurando el **respaldo SQL completo** que contiene las 31 tablas del
+> sistema, por lo que no hay un paso de migración que ejecutar antes de arrancar
+> (ver §13.1 y §13.2).
 
 ## 7. Construcción y arranque
 
@@ -384,20 +384,21 @@ Cambio conservado de la tarea anterior:
 
 ### 13.1 Esquema y migraciones
 
-El repositorio **no incluye** el esquema ni un sistema de migraciones; la base
-debe existir y estar creada **antes** de arrancar la aplicación. Pasos:
+El repositorio **no incluye** el esquema ni un sistema de migraciones. El
+despliegue se realiza restaurando el **respaldo SQL completo** entregado, que ya
+contiene las 31 tablas del sistema; no hay un script de migración que ejecutar.
+Pasos:
 
 1. Crear la base y el usuario de aplicación (§6.3).
-2. Cargar el esquema en la base de destino (fichero `.sql` entregado por
-   separado, o restauración de un respaldo — ver §13.2). Para cargar un esquema
-   sin datos:
+2. Restaurar el respaldo SQL completo en la base de destino (ver §13.2). Si en
+   su lugar se carga un esquema sin datos:
 
    ```bash
    mysql -h <HOST> -u <USUARIO> -p <BASE> < esquema.sql
    ```
 
-   El volcado del proyecto **no respeta el orden de claves foráneas**, por lo
-   que conviene cargarlo con las comprobaciones desactivadas:
+   El volcado entregado **puede no respetar el orden de claves foráneas**, por
+   lo que conviene cargarlo con las comprobaciones desactivadas:
 
    ```sql
    SET FOREIGN_KEY_CHECKS = 0;
@@ -408,12 +409,10 @@ debe existir y estar creada **antes** de arrancar la aplicación. Pasos:
 3. Verificar que existen las 31 tablas y que la aplicación conecta:
    `curl -fsS http://127.0.0.1:3000/api/salud` → `200 {"ok":true,...}`.
 
-> **Limitación preexistente:** el script `npm run migrar` apunta a
-> `scripts/migrar.js`, que **no existe** en el repositorio. Hasta que se
-> incorpore, los cambios de esquema se aplican manualmente como en el paso 2.
->
-> Toda migración debe probarse primero sobre una **copia** de la base
-> (nunca directamente en producción) y aplicarse tras tomar un respaldo (§13.2).
+> No existe un script `npm run migrar`: la referencia se retiró por obsoleta.
+> Cualquier cambio de esquema posterior al respaldo entregado se aplica
+> manualmente como en el paso 2, probándolo primero sobre una **copia** de la
+> base (nunca directamente en producción) y tras tomar un respaldo (§13.2).
 
 ### 13.2 Respaldos y restauración
 
@@ -454,8 +453,8 @@ Buenas prácticas:
   copia **fuera del servidor** (almacenamiento distinto).
 - Verificar cada respaldo por `sha256` y probar una **restauración** completa
   antes de confiar en él.
-- Antes de cada actualización o migración: respaldo + tag de imagen anterior
-  (§9 y §10).
+- Antes de cada actualización o cambio de esquema: respaldo + tag de imagen
+  anterior (§9 y §10).
 
 ## 14. Pruebas locales (datos de prueba)
 

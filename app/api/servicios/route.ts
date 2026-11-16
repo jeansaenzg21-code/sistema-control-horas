@@ -10,9 +10,9 @@ import { esJefeDeArea } from '@/lib/permisos'
  *
  * El servicio cuelga del cliente a DOS saltos:
  *   clientes -> presupuestos -> presupuesto_servicios
- * porque el presupuesto pertenece al cliente que contrata, no al proyecto
- * (ver cabecera de sql/presupuestos.sql). Por eso `cliente_id` es obligatorio y
- * no opcional: sin cliente no hay forma de saber de qué presupuesto salir.
+ * porque el presupuesto pertenece al cliente que contrata, no al proyecto. Por
+ * eso `cliente_id` es obligatorio y no opcional: sin cliente no hay forma de
+ * saber de qué presupuesto salir.
  *
  * Solo se devuelven las bolsas REALES: `activo = TRUE` y origen DETALLADO o
  * COMPLEMENTARIO. El origen CONSOLIDADO queda fuera a proposito: por regla del
