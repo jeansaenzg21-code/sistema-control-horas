@@ -459,12 +459,11 @@ para el runtime:
 | `exceljs` → `uuid` | moderada | El fix propuesto implica un cambio incompatible (`exceljs@3.4.0`). |
 | `shadcn`, `eslint`, MCP SDK | varias | Herramientas de desarrollo/CLI; no forman parte del flujo de la API. |
 
-No se aplicó `npm audit fix` porque implicaría actualizar dependencias y
-posiblemente alterar comportamiento fuera del alcance de Docker. **Antes de
-producción** se recomienda una tarea separada de actualización de dependencias,
-con `typecheck`, `lint`, `build` y pruebas funcionales. Mientras tanto, el
-riesgo se reduce manteniendo Nginx/HTTPS, sin exponer el puerto de la app y
-restringiendo la superficie de importación de archivos.
+Este análisis inicial quedó **ejecutado** el 2026-11-15 en dos fases
+controladas (ver §15.3). Mientras se completa la revisión de los avisos que
+requieren cambio incompatible, el riesgo se reduce manteniendo Nginx/HTTPS, sin
+exponer el puerto de la app y restringiendo la superficie de importación de
+archivos.
 
 ### 15.2 Análisis de cadenas de dependencia (2026-11-15)
 
@@ -496,6 +495,38 @@ Correcciones recomendadas, en este orden:
 
 Ninguna de estas acciones se ha ejecutado todavía; el detalle y la aprobación
 corresponden al informe de seguridad entregado aparte.
+
+### 15.3 Ejecución del plan de actualización (2026-11-15)
+
+Se aplicaron las acciones 1 y 2 del plan anterior en la rama
+`feature/security-hardening`, cada una validada antes de su commit y **sin**
+`--force`, sin bajadas de versión y sin cambios de UI/funcionalidad:
+
+| Fase | Cambio | Commit | `npm audit --omit=dev` |
+|---|---|---|---|
+| 1 | `shadcn` movido de `dependencies` a `devDependencies` | `f645470` | 24 → **6** |
+| 2 | `npm audit fix` compatible: `next` 16.3.6→16.4.6, `sharp` 0.35.4→0.35.5, `source-map-js` 1.2.1→1.2.2 (y ajustes transitivos) | `02cf033` | 6 → **3** |
+
+Resultado final en producción (`--omit=dev`): **3 avisos**, todos sin fix
+compatible:
+
+| Paquete | Severidad | Estado |
+|---|---|---|
+| `xlsx` | alta | Sin fix en npm. Se usa en el cliente; migrar a `read-excel-file`/`exceljs` es una tarea aparte. |
+| `exceljs` → `uuid` | moderada | El fix propuesto obliga a `exceljs@3.4.0` (incompatible). Se deja como está. |
+
+Quedan fuera del alcance de este cambio los avisos `deepmerge`, `minimatch`,
+`zod`, `@modelcontextprotocol/*`, `hono`, `express`, `undici`, etc.: son
+dependencias de **desarrollo/CLI** (varias ya retiradas al subir `shadcn`) y no
+forman parte del bundle de producción.
+
+Validación funcional de ambas fases (entorno aislado, ver §16.3): **66/66
+comprobaciones correctas** — `typecheck`, `lint` (0 errores), `build` y pruebas
+de API (login, sesión, permisos, CRUD, actividades, notificaciones,
+excepciones, horarios, importaciones Excel y SSE). Se registró además un
+**defecto preexistente** ajeno a estas fases: `POST /api/notificaciones`
+responde 400 cuando el cuerpo incluye `mensaje` no vacío (`validarTexto`
+devuelve el texto y el llamador lo trata como error).
 
 ## 16. Estado de validación y verificaciones pendientes
 
@@ -535,11 +566,31 @@ Quedan a cargo del ingeniero de sistemas, en el servidor Ubuntu de destino:
    `docker run --rm --entrypoint sh sistema-control-horas:test -c "ls -la /app; env"`
 6. Validar Nginx + HTTPS y las rutas SSE (`/api/auth/stream`).
 7. Ejecutar análisis de vulnerabilidades de la imagen (`trivy` / Docker Scout).
-8. Aplicar el plan de actualización de dependencias derivado del informe de
-   seguridad (secciones 15.1 y 15.2).
+8. Confirmar en el servidor los avisos residuales de `npm audit --omit=dev`
+   (§15.3): solo `xlsx` y `exceljs`/`uuid`, sin fix compatible.
 9. Validar respaldo/restauración de MySQL en el servidor y el procedimiento de
    rollback.
 10. Confirmar que `SETUP_TOKEN` se retira o rota después de la instalación.
+
+### 16.3 Validación funcional de Fases 1 y 2 (2026-11-15)
+
+Para verificar que la actualización de dependencias no alteró comportamiento,
+se levantó un entorno **aislado** (proyecto Compose `sch-verify` y volumen
+`sch_verify_db`, distintos de los de test existentes), con MySQL 8.4 en
+`127.0.0.1:3308` y la imagen `sistema-control-horas:fase2` en
+`127.0.0.1:3002`, usando **datos ficticios** (nunca el respaldo real):
+
+1. Esquema + datos ficticios cargados con `FOREIGN_KEY_CHECKS=0` (31 tablas).
+2. `GET /api/salud` → 200 `{"ok":true,"baseDeDatos":"conectada"}`.
+3. Suite de API (Node, `fetch`): **66/66 correctas**, cubriendo login/cookies,
+   sesión, matriz de permisos por rol (admin/jefe/personal/socio/TI), CRUD,
+   ciclo de actividad (iniciar/pausar/continuar/finalizar y bloque cerrado →
+   `PENDIENTE_APROBACION`), aprobaciones, notificaciones, excepciones, horarios,
+   importaciones Excel (`tipos-actividad`, `usuarios`, `laptops`) y SSE.
+4. Comportamientos confirmados como correctos: `GET /api/horarios` y
+   `GET /api/excepciones` son admin-only; un usuario SOCIO recibe **401** al
+   escribir (guard de solo lectura en `lib/auth.ts`); `POST /api/laptops/importar`
+   exige el perfil de Sistemas.
 
 ## 17. Diagnóstico rápido
 
