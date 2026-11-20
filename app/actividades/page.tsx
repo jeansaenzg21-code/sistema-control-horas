@@ -53,7 +53,7 @@ type ResumenDia = {
 }
 
 export default function Actividades() {
-  const { actividadActual, cargandoActividad, historial, totalHistorial } = useActividad()
+  const { actividadActual, cargandoActividad, historial, totalHistorial, enRefrigerio } = useActividad()
   const { usuario, empresaActiva, cargando } = useAuth()
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('registrar')
@@ -190,6 +190,11 @@ export default function Actividades() {
 
         {pestana === 'registrar' ? (
           <>
+            {enRefrigerio && (
+              <p role="status" className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm font-medium text-amber-200">
+                Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). La actividad se pausa y podrás reanudarla a las 2:00 p. m.
+              </p>
+            )}
             <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs capitalize text-muted-foreground">{fechaHoy}</p>

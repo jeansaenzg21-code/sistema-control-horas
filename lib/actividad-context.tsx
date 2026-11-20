@@ -13,6 +13,7 @@ import { useAuth } from './auth-context'
 import { veTodaLaEmpresa } from './permisos'
 import { ControlStream, crearStreamSse } from './sse'
 import { opcionesApi } from '@/lib/api-cliente'
+import { esHorarioRefrigerio } from './refrigerio'
 
 export interface Actividad {
   id: number
@@ -51,6 +52,7 @@ interface ActividadContextValue {
   alertasCada: number
   alertaVisible: boolean
   tiempoPausaMs: number | null
+  enRefrigerio: boolean
   configurarAlertas: (minutos: number) => void
   iniciarActividad: (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; presupuesto_servicio_id?: number | null; descripcion?: string; facturable?: boolean | null; inicio?: string; fin?: string }) => Promise<{ ok: boolean; error?: string }>
   pausarActividad: () => Promise<void>
@@ -84,6 +86,8 @@ export function ActivityProvider({ children }: { children: ReactNode }) {
   })
   const [alertaVisible, setAlertaVisible] = useState(false)
   const [tiempoPausaMs, setTiempoPausaMs] = useState<number | null>(null)
+  const [enRefrigerio, setEnRefrigerio] = useState(false)
+  const pausaRefrigerioEnCurso = useRef(false)
   const actividadRef = useRef<Actividad | null>(null)
   const inicioRef = useRef<number>(Date.now())
   const cargaInicialRef = useRef(false)
@@ -321,16 +325,17 @@ const streamRef = useRef<ControlStream | null>(null)
     }
   }, [empresaId, usuario, cargarHistorial])
 
-  const pausarActividad = useCallback(async () => {
+  const pausar = useCallback(async (porRefrigerio: boolean) => {
     if (!usuario) return
     const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
-    if (!actual) return
+    if (!actual || actual.estado !== 'EN_CURSO') return
     try {
       const res = await fetch(`/api/actividades/${actual.id}/pausar`, opcionesApi({
         method: 'POST',
-        body: { usuario_id: usuario.id },
+        body: { usuario_id: usuario.id, refrigerio: porRefrigerio },
       }))
       if (!res.ok) {
+        if (porRefrigerio && res.status === 400) void cargarActividadActual(usuario.id)
         console.warn('[actividad] No se pudo pausar:', res.status)
         return
       }
@@ -347,7 +352,30 @@ const streamRef = useRef<ControlStream | null>(null)
     }
   }, [usuario, cargarActividadActual])
 
+  const pausarActividad = useCallback(() => pausar(false), [pausar])
+
+  useEffect(() => {
+    if (!usuario || !empresaId) return
+    const comprobar = () => {
+      const refrigerio = esHorarioRefrigerio()
+      setEnRefrigerio(refrigerio)
+      if (!refrigerio || actividadRef.current?.estado !== 'EN_CURSO' || pausaRefrigerioEnCurso.current) return
+      pausaRefrigerioEnCurso.current = true
+      void pausar(true).finally(() => { pausaRefrigerioEnCurso.current = false })
+    }
+    comprobar()
+    const intervalo = window.setInterval(comprobar, 10_000)
+    window.addEventListener('focus', comprobar)
+    document.addEventListener('visibilitychange', comprobar)
+    return () => {
+      window.clearInterval(intervalo)
+      window.removeEventListener('focus', comprobar)
+      document.removeEventListener('visibilitychange', comprobar)
+    }
+  }, [usuario, empresaId, pausar])
+
   const reanudarActividad = useCallback(async () => {
+    if (esHorarioRefrigerio()) return
     if (!usuario) return
     const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
     if (!actual) return
@@ -427,6 +455,7 @@ const streamRef = useRef<ControlStream | null>(null)
         alertasCada,
         alertaVisible,
         tiempoPausaMs,
+        enRefrigerio,
         configurarAlertas,
         iniciarActividad,
         pausarActividad,

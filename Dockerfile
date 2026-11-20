@@ -18,10 +18,7 @@ WORKDIR /app
 
 # ---------- Dependencias ----------
 FROM base AS deps
-# Se copia la dependencia local "shared" antes de npm ci porque package.json la
-# referencia como file:./shared y npm la resuelve durante la instalacion.
 COPY package.json package-lock.json ./
-COPY shared ./shared
 RUN npm ci --no-audit --no-fund
 
 # ---------- Build ----------

@@ -67,7 +67,6 @@ services:
       DB_PASSWORD: test_app_password
       DB_NAME: paredescano_test
       SETUP_TOKEN: test-setup-token
-      WIDGET_SYNC_ENABLED: "false"
       COOKIE_SECURE: "true"
     ports:
       - "127.0.0.1:${TEST_APP_PORT:-3001}:3000"

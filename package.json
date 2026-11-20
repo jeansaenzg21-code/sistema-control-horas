@@ -8,13 +8,11 @@
   "scripts": {
     "dev": "next dev",
     "dev:web": "next dev",
-    "dev:widget": "npm run tauri --prefix timer -- dev",
-    "build:widget": "npm run tauri --prefix timer -- build",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint app components lib shared/src proxy.ts",
-    "test": "node --test tests/notificaciones.test.mjs"
+    "lint": "eslint app components lib proxy.ts",
+    "test": "node --test tests/notificaciones.test.mjs tests/refrigerio.test.mjs tests/cumplimiento.test.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.5",
@@ -24,7 +22,6 @@
     "lucide-react": "^1.16.0",
     "mysql2": "^3.23.3",
     "next": "^16.3.6",
-    "paredes-cano-shared": "file:./shared",
     "pino": "^10.4.0",
     "react": "^19",
     "react-dom": "^19",

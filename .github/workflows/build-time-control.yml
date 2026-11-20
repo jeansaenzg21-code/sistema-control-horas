@@ -40,7 +40,6 @@ jobs:
           DB_PASSWORD: build-only
           DB_NAME: time_control_build
           TZ: America/Lima
-          WIDGET_SYNC_ENABLED: 'false'
 
       - name: Assemble standalone package
         shell: bash

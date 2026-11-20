@@ -1,12 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Building2, Globe, ListChecks, Monitor, ShieldCheck, User, UserRound, Users, Eye } from 'lucide-react'
+import { Building2, Globe, ListChecks, ShieldCheck, User, UserRound, Users, Eye } from 'lucide-react'
 import { MainLayout } from '@/components/main-layout'
 import { SettingsAreas } from '@/components/settings-areas'
 import { SettingsActividades } from '@/components/settings-actividades'
 import { SettingsCompany } from '@/components/settings-company'
-import { SettingsWidget } from '@/components/settings-widget'
 import { SettingsAdmins } from '@/components/settings-admins'
 import { SettingsJefes } from '@/components/settings-jefes'
 import { SettingsSocios } from '@/components/settings-socios'
@@ -16,14 +15,14 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
 
-type Pestana = 'areas' | 'actividades' | 'empresa' | 'widget' | 'admins' | 'jefes' | 'socios' | 'mi_area' | 'perfil'
+type Pestana = 'areas' | 'actividades' | 'empresa' | 'admins' | 'jefes' | 'socios' | 'mi_area' | 'perfil'
 
 export default function Configuracion() {
   const { usuario } = useAuth()
   const esAdmin = usuario?.rol === 'admin'
   const esJefeArea = usuario?.rol === 'jefe_area'
   const esSocio = usuario?.rol === 'socio'
-  const [pestana, setPestana] = useState<Pestana>('widget')
+  const [pestana, setPestana] = useState<Pestana>('perfil')
 
   useEffect(() => {
     if (usuario) {
@@ -45,7 +44,6 @@ export default function Configuracion() {
       ? [
           { id: 'mi_area', etiqueta: 'Usuarios de mi área', icono: <Users size={17} /> },
           { id: 'perfil', etiqueta: 'Mi perfil', icono: <User size={17} /> },
-          { id: 'widget', etiqueta: 'Widget de escritorio', icono: <Monitor size={17} /> },
         ]
       : esSocio
         ? [
@@ -53,11 +51,10 @@ export default function Configuracion() {
           ]
         : [
             { id: 'perfil', etiqueta: 'Mi perfil', icono: <User size={17} /> },
-            { id: 'widget', etiqueta: 'Widget de escritorio', icono: <Monitor size={17} /> },
           ]
 
   return (
-    <MainLayout title="Configuración" subtitle={esAdmin ? 'Administra las divisiones, empresa y usuarios de tu consultoría' : esJefeArea ? 'Administra los usuarios y datos de tu área' : esSocio ? 'Configuración de la empresa (solo lectura)' : 'Administra tu perfil y widget de escritorio'}>
+    <MainLayout title="Configuración" subtitle={esAdmin ? 'Administra las divisiones, empresa y usuarios de tu consultoría' : esJefeArea ? 'Administra los usuarios y datos de tu área' : esSocio ? 'Configuración de la empresa (solo lectura)' : 'Administra tu perfil'}>
       <div className="space-y-5">
         <div className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3">
           <div>
@@ -99,7 +96,6 @@ export default function Configuracion() {
           {pestana === 'socios' && <SettingsSocios />}
           {pestana === 'mi_area' && <SettingsUsuariosArea />}
           {pestana === 'perfil' && <SettingsProfile />}
-          {pestana === 'widget' && <SettingsWidget />}
         </fieldset>
       </div>
     </MainLayout>
