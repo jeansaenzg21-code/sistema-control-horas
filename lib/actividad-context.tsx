@@ -304,6 +304,7 @@ const streamRef = useRef<ControlStream | null>(null)
 
   const iniciarActividad = useCallback(async (datos: { usuario_id: number; tipo_actividad_id: number; cliente_id?: number | null; proyecto_id?: number | null; presupuesto_servicio_id?: number | null; descripcion?: string; facturable?: boolean | null; inicio?: string; fin?: string }) => {
     if (!empresaId) return { ok: false, error: 'No hay una empresa activa.' }
+    if (esHorarioRefrigerio()) return { ok: false, error: 'Es hora de refrigerio. Podrás registrar actividades a las 2:00 p. m.' }
     try {
       const res = await fetch('/api/actividades', opcionesApi({ method: 'POST', body: datos }))
       const data = await res.json()

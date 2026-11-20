@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { notifyActivityChange } from '@/lib/events'
+import { esHorarioRefrigerio } from '@/lib/refrigerio'
 
 export async function POST(
   request: Request,
@@ -27,8 +28,7 @@ export async function POST(
     if (Number(actividades[0].usuario_id) !== user.id) return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     if (actividades[0].estado !== 'PAUSADA') return NextResponse.json({ error: 'La actividad no está pausada.' }, { status: 400 })
 
-    const [hora] = await pool.query("SELECT CURTIME() >= '13:00:00' AND CURTIME() < '14:00:00' AS refrigerio")
-    if (Number((hora as Array<{ refrigerio: number }>)[0].refrigerio)) {
+    if (esHorarioRefrigerio()) {
       return NextResponse.json({ error: 'Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). Podrás reanudar a las 2:00 p. m.' }, { status: 409 })
     }
 

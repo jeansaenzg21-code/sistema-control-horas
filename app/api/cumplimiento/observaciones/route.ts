@@ -159,7 +159,7 @@ async function obtenerDestino(
      FROM usuarios u
      INNER JOIN areas ar ON ar.id = u.area_id
      WHERE u.id = ?
-       AND u.rol = 'PERSONAL'
+       AND u.rol IN ('PERSONAL', 'JEFE_AREA')
        AND u.activo = TRUE
        AND ar.empresa_id = ?
      LIMIT 1`,

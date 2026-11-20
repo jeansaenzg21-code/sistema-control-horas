@@ -50,7 +50,7 @@ function MatrizContenido() {
 
   const divisionFija = usuario?.rol === 'jefe_area' && usuario?.area_id != null
   const colaboradores = usuarios.filter(
-    (u) => u.rol === 'personal' && u.activo && (!areaId || String(u.area_id) === areaId),
+    (u) => (u.rol === 'personal' || u.rol === 'jefe_area') && u.activo && (!areaId || String(u.area_id) === areaId),
   )
 
   const pasarMes = (delta: number) => {

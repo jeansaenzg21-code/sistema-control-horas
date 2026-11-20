@@ -138,6 +138,7 @@ export async function GET(request: Request) {
     const [porArea] = await pool.query<RowDataPacket[]>(
       `SELECT ar.id AS area_id, ar.nombre AS area_nombre,
               COUNT(*) AS registros,
+              SUM(CASE WHEN a.estado = 'PENDIENTE_APROBACION' THEN 1 ELSE 0 END) AS pendientes,
               COALESCE(SUM(${HORAS}), 0) AS horas,
               COALESCE(SUM(CASE WHEN a.estado = 'APROBADA' AND a.facturable = 1 THEN ${HORAS} ELSE 0 END), 0) AS horas_facturadas,
               COALESCE(SUM(CASE WHEN a.estado = 'RECHAZADA' OR (a.estado = 'APROBADA' AND a.facturable = 0) THEN ${HORAS} ELSE 0 END), 0) AS horas_no_facturadas
@@ -201,6 +202,7 @@ export async function GET(request: Request) {
       por_area: porArea.map((r) => ({
         area_id: Number(r.area_id ?? 0) || null,
         area_nombre: String(r.area_nombre),
+        pendientes: Number(r.pendientes),
         horas: Number(r.horas),
         horas_facturadas: Number(r.horas_facturadas),
         horas_no_facturadas: Number(r.horas_no_facturadas),

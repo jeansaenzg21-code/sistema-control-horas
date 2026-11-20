@@ -6,6 +6,7 @@ import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { useCatalogosActividad } from '@/lib/use-catalogos-actividad'
 import { cn, fechaLocalISO } from '@/lib/utils'
+import { cruzaRefrigerio } from '@/lib/refrigerio'
 import { ProgresoServicio } from './servicio-progreso'
 import { ClienteSearch } from './cliente-search'
 
@@ -18,7 +19,7 @@ import { ClienteSearch } from './cliente-search'
  * en curso y admite varios bloques para el mismo día.
  */
 export function RegistroDiaForm() {
-  const { iniciarActividad } = useActividad()
+  const { iniciarActividad, enRefrigerio } = useActividad()
   const { usuario } = useAuth()
   const [fecha, setFecha] = useState('')
   const [hoy, setHoy] = useState('')
@@ -71,14 +72,24 @@ export function RegistroDiaForm() {
 
   // La hora de fin nunca puede ser anterior (ni igual) a la de inicio.
   const finInvalido = horaInicio !== '' && horaFin !== '' && minutos !== null && minutos <= 0
+  const cruzaHorarioRefrigerio = fecha !== '' && horaInicio !== '' && horaFin !== '' && !finInvalido
+    && cruzaRefrigerio(new Date(`${fecha}T${horaInicio}:00`), new Date(`${fecha}T${horaFin}:00`))
 
   const puedeEnviar =
-    tipoActividadId !== '' && fecha !== '' && horaInicio !== '' && horaFin !== '' && !finInvalido && !cargando
+    tipoActividadId !== '' && fecha !== '' && horaInicio !== '' && horaFin !== '' && !finInvalido && !cruzaHorarioRefrigerio && !enRefrigerio && !cargando
 
   const manejarEnvio = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!usuario) return
     setMensaje(null)
+    if (enRefrigerio) {
+      setMensaje({ tipo: 'error', texto: 'Es hora de refrigerio. Podrás registrar a las 2:00 p. m.' })
+      return
+    }
+    if (cruzaHorarioRefrigerio) {
+      setMensaje({ tipo: 'error', texto: 'El bloque incluye el refrigerio fijo de 1:00 p. m. a 2:00 p. m. Separa el tiempo trabajado.' })
+      return
+    }
 
     if (minutos == null || minutos <= 0) {
       setMensaje({ tipo: 'error', texto: 'La hora de fin no puede ser anterior a la hora de inicio.' })
@@ -160,6 +171,9 @@ export function RegistroDiaForm() {
             <p className="mt-1.5 text-[11px] leading-relaxed text-rose-300">
               La hora de fin no puede ser anterior a la hora de inicio.
             </p>
+          )}
+          {cruzaHorarioRefrigerio && (
+            <p className="mt-1.5 text-xs text-amber-300">El horario de refrigerio (1:00–2:00 p. m.) no se puede registrar. Divide el bloque en dos.</p>
           )}
         </div>
 
@@ -283,7 +297,9 @@ export function RegistroDiaForm() {
       <div className="flex flex-col gap-3 border-t border-border/70 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Clock size={14} />
-          {duracion ? (
+          {enRefrigerio ? (
+            'Refrigerio fijo de 1:00 p. m. a 2:00 p. m. No se pueden registrar actividades.'
+          ) : duracion ? (
             <>
               Duración del bloque: <span className="font-semibold text-foreground">{duracion}</span>
             </>
