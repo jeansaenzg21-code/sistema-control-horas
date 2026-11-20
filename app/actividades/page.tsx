@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { CalendarCheck, Clock, ListChecks, MessageSquare, Play } from 'lucide-react'
+import { CalendarCheck, Clock, Coffee, ListChecks, MessageSquare, Play, X } from 'lucide-react'
 import { MainLayout } from '@/components/main-layout'
 import { ActivityCard } from '@/components/activity-card'
 import { ActivityForm } from '@/components/activity-form'
@@ -58,7 +58,12 @@ export default function Actividades() {
   const router = useRouter()
   const [pestana, setPestana] = useState<Pestana>('registrar')
   const [modoRegistro, setModoRegistro] = useState<ModoRegistro>('tiempo-real')
+  const [avisoRefrigerioAbierto, setAvisoRefrigerioAbierto] = useState(false)
   const [hoy, setHoy] = useState(() => fechaLocalISO(new Date()))
+
+  useEffect(() => {
+    setAvisoRefrigerioAbierto(enRefrigerio)
+  }, [enRefrigerio])
 
   // La tarjeta se calcula para el dia de HOY. Si la aplicacion queda abierta
   // pasada la medianoche, el estado cambia de fecha y la consulta se renueva
@@ -169,6 +174,28 @@ export default function Actividades() {
       title="Actividades"
       subtitle="Registra tu tiempo y consulta tus registros"
     >
+      {enRefrigerio && avisoRefrigerioAbierto && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm" role="presentation">
+          <div role="dialog" aria-modal="true" aria-labelledby="titulo-refrigerio" aria-describedby="detalle-refrigerio" className="relative w-full max-w-md rounded-3xl border border-amber-400/30 bg-card p-7 text-center shadow-2xl shadow-amber-500/10 sm:p-9">
+            <button type="button" onClick={() => setAvisoRefrigerioAbierto(false)} aria-label="Cerrar aviso de refrigerio" className="absolute right-4 top-4 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <X size={20} />
+            </button>
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-amber-400/15 text-amber-300">
+              <Coffee size={40} aria-hidden="true" />
+            </div>
+            <h2 id="titulo-refrigerio" className="mt-6 text-2xl font-bold text-foreground">¡Es hora de refrigerio!</h2>
+            <p id="detalle-refrigerio" className="mt-3 text-sm leading-relaxed text-muted-foreground">
+              De 1:00 p. m. a 2:00 p. m. el cronómetro se pausa y no es posible registrar ni reanudar actividades.
+            </p>
+            <p className="mt-6 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200">
+              El registro estará disponible nuevamente a las 2:00 p. m.
+            </p>
+            <button type="button" onClick={() => setAvisoRefrigerioAbierto(false)} className="mt-6 w-full rounded-xl bg-[#7c3aed] px-4 py-3 text-sm font-semibold text-white hover:bg-[#6d28d9]">
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
       <div className="space-y-5">
         <div className="flex gap-1 border-b border-border">
           {pestañas.map((p) => (
@@ -192,7 +219,7 @@ export default function Actividades() {
           <>
             {enRefrigerio && (
               <p role="status" className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm font-medium text-amber-200">
-                Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). La actividad se pausa y podrás reanudarla a las 2:00 p. m.
+                Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). {actividadActual ? 'El cronómetro se pausa.' : ''} No puedes registrar ni reanudar actividades hasta las 2:00 p. m.
               </p>
             )}
             <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">

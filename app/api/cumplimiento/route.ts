@@ -178,12 +178,12 @@ export async function GET(request: Request) {
       return { inicio, fin }
     })
 
-    // ---- 2. Colaboradores (rol PERSONAL, activos) ----
+    // ---- 2. Colaboradores y jefes de área activos ----
     let queryColab = `SELECT u.id, u.nombre, u.cargo,
         COALESCE(ar.nombre, '') AS area_nombre
        FROM usuarios u
        LEFT JOIN areas ar ON ar.id = u.area_id
-       WHERE u.rol = 'PERSONAL' AND u.activo = TRUE AND ar.empresa_id = ?`
+       WHERE u.rol IN ('PERSONAL', 'JEFE_AREA') AND u.activo = TRUE AND ar.empresa_id = ?`
     const paramsColab: (string | number)[] = [context.activa.id]
 
     if (usuarioId) {
@@ -249,7 +249,7 @@ export async function GET(request: Request) {
        INNER JOIN usuarios u ON u.id = a.usuario_id
        INNER JOIN areas ar ON ar.id = u.area_id
        LEFT JOIN clientes c ON c.id = a.cliente_id
-       WHERE ar.empresa_id = ? AND DATE_FORMAT(a.inicio, '%Y-%m-%d') BETWEEN ? AND ? AND u.rol = 'PERSONAL' AND u.activo = TRUE`
+       WHERE ar.empresa_id = ? AND DATE_FORMAT(a.inicio, '%Y-%m-%d') BETWEEN ? AND ? AND u.rol IN ('PERSONAL', 'JEFE_AREA') AND u.activo = TRUE`
     const paramsRegistros: (string | number)[] = [context.activa.id, desde, hasta]
     if (areaId) {
       registrosQuery += ' AND u.area_id = ?'

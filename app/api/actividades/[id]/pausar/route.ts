@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { notifyActivityChange } from '@/lib/events'
+import { esHorarioRefrigerio } from '@/lib/refrigerio'
 
 export async function POST(
   request: Request,
@@ -35,10 +36,14 @@ export async function POST(
         return NextResponse.json({ error: 'La actividad no está en curso.' }, { status: 400 })
       }
 
-      // El límite de las 13:00 no se pierde si el equipo se despierta unos minutos tarde.
+      // Se traduce las 13:00 de Perú a la zona horaria de MySQL, que puede ser
+      // distinta. Si el navegador despertó tarde, la pausa arranca a las 13:00.
+      const inicioPausa = porRefrigerio && esHorarioRefrigerio()
+        ? "GREATEST(inicio, DATE_ADD(TIMESTAMP(DATE(UTC_TIMESTAMP() - INTERVAL 5 HOUR), '18:00:00'), INTERVAL TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) SECOND))"
+        : 'NOW()'
       await conexion.query(
         `INSERT INTO pausas (actividad_id, inicio)
-         SELECT id, ${porRefrigerio ? "IF(CURTIME() >= '13:00:00' AND CURTIME() < '14:00:00', GREATEST(inicio, TIMESTAMP(CURDATE(), '13:00:00')), NOW())" : 'NOW()'}
+         SELECT id, ${inicioPausa}
          FROM actividades WHERE id = ?`,
         [id]
       )

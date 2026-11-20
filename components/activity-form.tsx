@@ -9,7 +9,7 @@ import { ProgresoServicio } from './servicio-progreso'
 import { ClienteSearch } from './cliente-search'
 
 export function ActivityForm() {
-  const { iniciarActividad } = useActividad()
+  const { iniciarActividad, enRefrigerio } = useActividad()
   const { usuario } = useAuth()
   const [tipoActividadId, setTipoActividadId] = useState<number | ''>('')
   const [clienteId, setClienteId] = useState<number | ''>('')
@@ -17,6 +17,7 @@ export function ActivityForm() {
   const [descripcion, setDescripcion] = useState('')
   const [facturable, setFacturable] = useState(false)
   const [cargando, setCargando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const { tiposDisponibles, servicios, cargandoServicios, sinAsignaciones, clientesVisibles } =
     useCatalogosActividad(clienteId)
 
@@ -37,11 +38,12 @@ export function ActivityForm() {
     if (clienteOutsourcing && servicioOutsourcing) setServicioId(servicioOutsourcing.id)
   }, [clienteOutsourcing, servicioOutsourcing])
 
-  const puedeEnviar = tipoActividadId !== '' && !cargando
+  const puedeEnviar = tipoActividadId !== '' && !cargando && !enRefrigerio
 
   const manejarEnvio = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!puedeEnviar || !usuario) return
+    setError(null)
     setCargando(true)
     const resultado = await iniciarActividad({
       usuario_id: usuario.id,
@@ -52,13 +54,15 @@ export function ActivityForm() {
       facturable,
     })
     setCargando(false)
-    if (resultado.ok) {
-      setTipoActividadId('')
-      setClienteId('')
-      setServicioId('')
-      setDescripcion('')
-      setFacturable(false)
+    if (!resultado.ok) {
+      setError(resultado.error || 'No se pudo iniciar la actividad.')
+      return
     }
+    setTipoActividadId('')
+    setClienteId('')
+    setServicioId('')
+    setDescripcion('')
+    setFacturable(false)
   }
 
   return (
@@ -178,7 +182,7 @@ export function ActivityForm() {
 
       <div className="flex flex-col gap-3 border-t border-border/70 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          La fecha y hora se registran automáticamente. Solo puede existir una actividad activa.
+          {enRefrigerio ? 'Refrigerio fijo de 1:00 p. m. a 2:00 p. m. No se pueden iniciar actividades.' : 'La fecha y hora se registran automáticamente. Solo puede existir una actividad activa.'}
         </p>
         <button
           type="submit"
@@ -193,6 +197,7 @@ export function ActivityForm() {
           {cargando ? 'Iniciando...' : 'Iniciar actividad'}
         </button>
       </div>
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
     </form>
   )
 }

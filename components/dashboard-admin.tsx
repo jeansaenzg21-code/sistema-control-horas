@@ -17,7 +17,7 @@ type Area = { id: number; nombre: string }
 type Usuario = { id: number; nombre: string; rol: string; area_id: number | null; area_nombre: string | null; activo: number | boolean; cargo?: string | null }
 type ClienteCartera = { id: number; area_id: number; area_nombre: string; horasContratadas: number; horasConsumidas: number; horasDisponibles: number; horasExcedidas: number; estado: string; nombre: string }
 type CarteraRespuesta = { clientes: ClienteCartera[]; totales: { clientes: number; contratadas: number; consumidas: number; disponibles: number; excedidas: number; porAprobar: number } }
-type FilaFacturableArea = { area_id?: number | null; area_nombre: string; horas?: number; horas_facturadas?: number; horas_no_facturadas?: number; horas_facturables?: number; horas_no_facturables?: number }
+type FilaFacturableArea = { area_id?: number | null; area_nombre: string; horas?: number; pendientes?: number; horas_facturadas?: number; horas_no_facturadas?: number; horas_facturables?: number; horas_no_facturables?: number }
 type Resumen = { por_area?: FilaFacturableArea[]; totales: { registros: number; horas: number; horas_facturadas: number; horas_no_facturadas: number }; por_usuario: Array<{ usuario_id: number; nombre: string; cargo: string | null; area_nombre: string; registros: number; horas: number; horas_facturadas?: number; horas_no_facturadas?: number; horas_facturables?: number; horas_no_facturables?: number }>; por_estado?: Array<{ estado: string; registros: number; horas: number }> }
 type Aprobacion = { id: number; estado: string; usuario_nombre: string; usuario_id: number; revisado_por: number | null; revisado_en: string | null; area_nombre: string; area_id: number }
 type Cumplimiento = { resumen: { cobertura: number; colaboradores: number; cumplen: number; cumplen_parcial: number; no_cumplen: number } }
@@ -133,11 +133,14 @@ export function DashboardAdministrador() {
   }, [areas, bolsaPorArea, clientes])
   const pendientesPorArea = useMemo(() => {
     const m = new Map<number, number>()
-    for (const a of aprobaciones) if (a.estado === 'PENDIENTE_APROBACION') m.set(a.area_id, (m.get(a.area_id) ?? 0) + 1)
+    for (const a of resumen?.por_area ?? []) {
+      if (a.area_id != null) m.set(a.area_id, Number(a.pendientes) || 0)
+    }
     return m
-  }, [aprobaciones])
+  }, [resumen])
   const horasPorArea = useMemo(() => {
     const m = new Map<string, { horas: number; registros: number; personas: number }>()
+    const idsPorNombre = new Map((resumen?.por_area ?? []).map((a) => [a.area_nombre?.trim() || 'Sin área', a.area_id ?? null]))
     for (const u of resumen?.por_usuario ?? []) {
       const clave = u.area_nombre?.trim() || 'Sin área'
       const actual = m.get(clave) ?? { horas: 0, registros: 0, personas: 0 }
@@ -152,7 +155,7 @@ export function DashboardAdministrador() {
       return { id: a.id, nombre: a.nombre, ...agg, porcentaje: total === 0 ? 0 : Math.round((agg.horas / total) * 100) }
     })
     for (const [nombre, agg] of m) {
-      if (!areas.some((a) => a.nombre.trim() === nombre)) porArea.push({ id: null, nombre, ...agg, porcentaje: total === 0 ? 0 : Math.round((agg.horas / total) * 100) })
+      if (!areas.some((a) => a.nombre.trim() === nombre)) porArea.push({ id: idsPorNombre.get(nombre) ?? null, nombre, ...agg, porcentaje: total === 0 ? 0 : Math.round((agg.horas / total) * 100) })
     }
     const filtradas = mostrarAreasSinActividad
       ? porArea
@@ -339,7 +342,7 @@ export function DashboardAdministrador() {
         <div className="grid items-stretch gap-2 xl:grid-cols-[minmax(0,1.45fr)_minmax(310px,1fr)]">
           <section className={`${superficie} flex min-h-0 flex-col`}>
             <div className="flex items-center justify-between gap-2 border-b border-border/50 px-3 py-2.5">
-              <div><h2 className="flex items-center gap-2 text-[13px] font-semibold"><BarChart3 size={15} className="text-violet-400"/> Actividad por áreas</h2><p className="text-[10px] text-muted-foreground">Participación en el tiempo registrado y pendientes</p></div>
+              <div><h2 className="flex items-center gap-2 text-[13px] font-semibold"><BarChart3 size={15} className="text-violet-400"/> Actividad por áreas</h2><p className="text-[10px] text-muted-foreground">Participación en el tiempo registrado y pendientes de aprobación del período</p></div>
               <button type="button" onClick={() => setMostrarAreasSinActividad(v=>!v)} className="shrink-0 rounded-md border border-border px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground">{mostrarAreasSinActividad ? 'Solo relevantes' : 'Todas las áreas'}</button>
             </div>
             <div className="grid grid-cols-[minmax(0,1.4fr)_5.7rem_minmax(0,1fr)_3rem] gap-2 border-b border-border/40 bg-muted/15 px-3 py-2 text-[10px] text-muted-foreground"><span>Área</span><span className="text-right">Horas</span><span>Participación</span><span className="text-right">Pend.</span></div>
@@ -354,7 +357,7 @@ export function DashboardAdministrador() {
               })}
               {!horasPorArea.length && <p className="px-3 py-6 text-center text-xs text-muted-foreground">Sin actividad para el período.</p>}
             </div>
-            <div className="flex justify-between border-t border-border/50 px-3 py-2 text-[11px] font-semibold"><span>Total empresa</span><span className="tabular-nums">{formatoHoras(totalHorasAreas)} · {pendientesTotal} pendientes</span></div>
+            <div className="flex justify-between border-t border-border/50 px-3 py-2 text-[11px] font-semibold"><span>Total empresa</span><span className="tabular-nums">{formatoHoras(totalHorasAreas)} · {pendientes} pendientes</span></div>
           </section>
           <section className={`${superficie} flex min-h-0 flex-col`}>
             <div className="border-b border-border/50 px-3 py-2.5"><h2 className="flex items-center gap-2 text-[13px] font-semibold"><AlertTriangle size={15} className="text-amber-400"/> Alertas prioritarias</h2><p className="text-[10px] text-muted-foreground">Situaciones que requieren atención</p></div>

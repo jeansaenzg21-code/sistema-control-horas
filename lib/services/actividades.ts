@@ -14,6 +14,7 @@ import { columnaExiste } from '@/lib/esquema'
 import { notifyActivityChange } from '@/lib/events'
 import { notificarRevisoresActividad } from '@/lib/notificaciones'
 import { notificarBolsaHorasPorId } from '@/lib/bolsa-alertas'
+import { cruzaRefrigerio, esHorarioRefrigerio } from '@/lib/refrigerio'
 
 async function tieneColumnaProyecto(): Promise<boolean> {
   return (await columnaExiste('actividades', 'proyecto_id')) && (await estructuraProyectosDisponible())
@@ -66,6 +67,12 @@ export async function crearActividad(
     if (inicioCliente && finCliente && finCliente.getTime() <= inicioCliente.getTime()) {
       return NextResponse.json(
         { error: 'La hora de fin no puede ser anterior a la hora de inicio.' },
+        { status: 400 }
+      )
+    }
+    if (inicioCliente && finCliente && cruzaRefrigerio(inicioCliente, finCliente)) {
+      return NextResponse.json(
+        { error: 'El bloque incluye el refrigerio fijo de 1:00 p. m. a 2:00 p. m. Registra por separado el tiempo trabajado antes y después.' },
         { status: 400 }
       )
     }
@@ -303,20 +310,20 @@ if (tipoValido.length === 0) {
         }
       }
 
+      // Aplica a cronómetro y a registros cerrados. Se comprueba después de la
+      // idempotencia para que un reintento móvil no cree otro registro ni falle.
+      if (esHorarioRefrigerio()) {
+        await conexion.rollback()
+        return NextResponse.json(
+          { error: 'Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). Podrás registrar actividades a las 2:00 p. m.' },
+          { status: 409 }
+        )
+      }
+
       // Un bloque ya cerrado (con `fin`) no compite por el cupo de "actividad
       // activa": se puede anotar la jornada de hoy aunque el cronómetro esté
       // andando, y se pueden anotar varios bloques del mismo día.
       if (!esBloqueCerrado) {
-        const [hora] = await conexion.query<RowDataPacket[]>(
-          "SELECT CURTIME() >= '13:00:00' AND CURTIME() < '14:00:00' AS refrigerio"
-        )
-        if (Number(hora[0].refrigerio)) {
-          await conexion.rollback()
-          return NextResponse.json(
-            { error: 'Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). Podrás iniciar a las 2:00 p. m.' },
-            { status: 409 }
-          )
-        }
         // Dentro de la transacción y con el usuario bloqueado, este SELECT ve la
         // commits de cualquier alta concurrente de ese mismo usuario.
         const [activas] = await conexion.query<RowDataPacket[]>(
