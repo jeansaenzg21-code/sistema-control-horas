@@ -82,7 +82,6 @@ function mapEmpresa(row: Record<string, unknown>): EmpresaSesion {
  */
 const ESCRITURA_PERMITIDA_A_SOLO_LECTURA: { metodo: string; ruta: RegExp }[] = [
   { metodo: 'POST', ruta: /^\/api\/auth\// },
-  { metodo: 'DELETE', ruta: /^\/api\/widget\/sync$/ },
   { metodo: 'PUT', ruta: /^\/api\/notificaciones$/ },
 ]
 
@@ -473,7 +472,7 @@ export function leerCookieAcceso(request: Request): string | null {
 /**
  * Credencial de acceso de la peticion, venga por donde venga.
  *
- * La app movil y el widget mandan `Authorization: Bearer`. La web manda la
+ * La app móvil manda `Authorization: Bearer`. La web manda la
  * cookie HttpOnly `pc_token`. Esta funcion sirve para las rutas que, ademas de
  * autenticar, necesitan la credencial misma (por ejemplo para localizar la fila
  * de `sesiones` y cambiarle la empresa). El token que devuelve es el ORIGINAL:

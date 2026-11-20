@@ -163,26 +163,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  useEffect(() => {
-    // El widget es el temporizador de registro. Ni el admin ni el socio
-    // registran horas, así que no se les ofrece ni se les sincroniza.
-    if (!usuario || !empresaActiva || usuario.rol === 'admin' || usuario.rol === 'socio') return
-
-    const controller = new AbortController()
-    void fetch('/api/widget/sync', opcionesApi({
-      method: 'POST',
-      body: {
-        usuarioId: usuario.id,
-        usuario: usuario.usuario,
-        nombre: usuario.nombre,
-        rol: usuario.rol,
-      },
-      signal: controller.signal,
-    })).catch(() => {})
-
-    return () => controller.abort()
-  }, [usuario, empresaActiva])
-
   // Renovacion ANTICIPADA y escalonada.
   //
   // Sin esto el token solo se renueva cuando una peticion recibe un 401. Si los
@@ -306,7 +286,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     fetch('/api/auth/session', opcionesApi({ method: 'DELETE' })).catch(() => {})
-    fetch('/api/widget/sync', { method: 'DELETE' }).catch(() => {})
     setUsuario(null)
     setUsuarios([])
     setEmpresaActiva(null)

@@ -15,7 +15,7 @@ entrada público con HTTPS.
 ## 1. Arquitectura
 
 ```
-Navegador / App móvil / Widget
+Navegador / App móvil
              |
              | HTTPS 443
              v
@@ -326,7 +326,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host  $host;
 
-        # SSE (/api/auth/stream, /api/actividades/stream): sin buffering y con
+        # SSE (/api/actividades/stream): sin buffering y con
         # timeouts largos para que la conexión no se corte.
         proxy_buffering off;
         proxy_cache off;
@@ -376,9 +376,6 @@ Cambio conservado de la tarea anterior:
 - **MySQL externo**: sus respaldos y volúmenes son responsabilidad del DBA.
 - **Aplicación**: no escribe datos persistentes. Las importaciones de Excel se
   procesan en memoria.
-- `/tmp/.paredes-cano-widget-sync.json`: archivo efímero de sincronización del
-  widget (expira en 12 h). Se pierde al recrear el contenedor; el widget vuelve
-  a sincronizar al iniciar sesión. No requiere volumen.
 - Logs: salida estándar, rotada por el driver `json-file` (10 MB × 3).
 - Caché de Next (`.next/cache`) es opcional y reconstruible; no se monta.
 
@@ -507,8 +504,7 @@ cap_drop:
   - ALL
 ```
 
-No se aplica por defecto para no romper escrituras de caché de Next ni la
-sincronización temporal del widget.
+No se aplica por defecto para no romper escrituras de caché de Next.
 
 Comandos de revisión (ejecutar en el servidor):
 
@@ -643,7 +639,7 @@ Quedan a cargo del ingeniero de sistemas, en el servidor Ubuntu de destino:
    `Secure; HttpOnly; SameSite=Lax` en DevTools.
 5. Confirmar que la imagen no contiene secretos:
    `docker run --rm --entrypoint sh sistema-control-horas:test -c "ls -la /app; env"`
-6. Validar Nginx + HTTPS y las rutas SSE (`/api/auth/stream`).
+6. Validar Nginx + HTTPS y las rutas SSE (`/api/actividades/stream`).
 7. Ejecutar análisis de vulnerabilidades de la imagen (`trivy` / Docker Scout).
 8. Confirmar en el servidor los avisos residuales de `npm audit --omit=dev`
    (§15.3): solo `xlsx` y `exceljs`/`uuid`, sin fix compatible.

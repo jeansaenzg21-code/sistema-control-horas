@@ -4,7 +4,7 @@ import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
 import { esJefeDeArea, esSocio } from '@/lib/permisos'
 import { diasEnMes, formatoFecha } from '@/lib/fechas'
-import { datosFaltantesActividad, textoDatosFaltantes } from '@/lib/cumplimiento'
+import { datosFaltantesActividad, evaluarRegistrosDia, textoDatosFaltantes } from '@/lib/cumplimiento'
 import type {
   CumplimientoReporte,
   DiaCumplimiento,
@@ -57,10 +57,10 @@ function calcularEstado(exigibles: number, cobertura: number, incompletos: numbe
   return 'NO_CUMPLE'
 }
 
-function construirObservacion(reportados: number, pendientesDias: number, incompletos: number, semanasPendientes: number): string {
+function construirObservacion(registros: number, reportados: number, pendientesDias: number, incompletos: number, semanasPendientes: number): string {
   const partes: string[] = []
   if (reportados === 0) {
-    partes.push('No registró horas en el período.')
+    partes.push(registros > 0 ? 'No tiene horas finalizadas en días exigibles.' : 'No registró horas en el período.')
   } else if (pendientesDias > 0) {
     partes.push(`Faltan ${pendientesDias} día(s) por reportar`)
   }
@@ -285,6 +285,7 @@ export async function GET(request: Request) {
 
       for (const d of dias) {
         let stato: EstadoDia
+        let tieneHoras = false
         if (feriadosGlobales.has(d.fecha) || feriadosPorUsuario.get(colab.id)?.has(d.fecha)) {
           stato = 'feriado'
         } else if (vacacionesPorUsuario.get(colab.id)?.has(d.fecha)) {
@@ -293,9 +294,10 @@ export async function GET(request: Request) {
           stato = 'no_exigible'
         } else {
           const regsDia = registrosPorUsuarioYFecha.get(`${colab.id}|${d.fecha}`) ?? []
-          const completos = regsDia.filter((r) => datosFaltantesActividad(r).length === 0)
-          if (completos.length > 0) stato = 'reportado'
-          else if (regsDia.length > 0) stato = 'incompleto'
+          const evaluacion = evaluarRegistrosDia(regsDia)
+          tieneHoras = evaluacion.reportado
+          if (evaluacion.incompleto) stato = 'incompleto'
+          else if (tieneHoras) stato = 'reportado'
           else stato = 'pendiente'
         }
 
@@ -306,12 +308,13 @@ export async function GET(request: Request) {
           sem.exigibles++
           reportesPorSemana.set(d.semana_index, sem)
         }
-        if (stato === 'reportado') {
+        if (tieneHoras) {
           reportados++
           const sem = reportesPorSemana.get(d.semana_index) ?? { exigibles: 0, reportados: 0 }
           sem.reportados++
           reportesPorSemana.set(d.semana_index, sem)
-        } else if (stato === 'pendiente') {
+        }
+        if (stato === 'pendiente') {
           pendientesDias++
         } else if (stato === 'incompleto') {
           incompletosDias++
@@ -360,8 +363,8 @@ export async function GET(request: Request) {
       const semanasPendientes = semanasExigidas - semanasReportadas
 
       const cobertura = exigibles === 0 ? 100 : redondear1((reportados / exigibles) * 100)
-      const estado = calcularEstado(exigibles, cobertura, incompletosRegistros, semanasPendientes, reportados)
-      const observacion = construirObservacion(reportados, pendientesDias, incompletosRegistros, semanasPendientes)
+      const estado = calcularEstado(exigibles, cobertura, incompletosRegistros + incompletosDias, semanasPendientes, reportados)
+      const observacion = construirObservacion(registrosDelUsuario.length, reportados, pendientesDias, incompletosRegistros, semanasPendientes)
 
       colaboradores.push({
         id: colab.id,

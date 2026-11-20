@@ -3,7 +3,6 @@ import nextVitals from 'eslint-config-next/core-web-vitals'
 const ignores = [
   '.next/**',
   'node_modules/**',
-  'timer/**',
   'next-env.d.ts',
 ]
 

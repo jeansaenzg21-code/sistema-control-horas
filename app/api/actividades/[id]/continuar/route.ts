@@ -27,6 +27,11 @@ export async function POST(
     if (Number(actividades[0].usuario_id) !== user.id) return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     if (actividades[0].estado !== 'PAUSADA') return NextResponse.json({ error: 'La actividad no está pausada.' }, { status: 400 })
 
+    const [hora] = await pool.query("SELECT CURTIME() >= '13:00:00' AND CURTIME() < '14:00:00' AS refrigerio")
+    if (Number((hora as Array<{ refrigerio: number }>)[0].refrigerio)) {
+      return NextResponse.json({ error: 'Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). Podrás reanudar a las 2:00 p. m.' }, { status: 409 })
+    }
+
     await pool.query('UPDATE pausas SET fin = NOW() WHERE actividad_id = ? AND fin IS NULL', [id])
     await pool.query("UPDATE actividades SET estado = 'EN_CURSO' WHERE id = ?", [id])
     notifyActivityChange(user.id)

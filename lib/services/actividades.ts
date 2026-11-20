@@ -307,6 +307,16 @@ if (tipoValido.length === 0) {
       // activa": se puede anotar la jornada de hoy aunque el cronómetro esté
       // andando, y se pueden anotar varios bloques del mismo día.
       if (!esBloqueCerrado) {
+        const [hora] = await conexion.query<RowDataPacket[]>(
+          "SELECT CURTIME() >= '13:00:00' AND CURTIME() < '14:00:00' AS refrigerio"
+        )
+        if (Number(hora[0].refrigerio)) {
+          await conexion.rollback()
+          return NextResponse.json(
+            { error: 'Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). Podrás iniciar a las 2:00 p. m.' },
+            { status: 409 }
+          )
+        }
         // Dentro de la transacción y con el usuario bloqueado, este SELECT ve la
         // commits de cualquier alta concurrente de ese mismo usuario.
         const [activas] = await conexion.query<RowDataPacket[]>(

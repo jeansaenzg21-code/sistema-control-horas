@@ -36,30 +36,6 @@ export function notifyActivityChange(usuarioId: number): void {
   }
 }
 
-type AuthListener = (tipo: 'login' | 'logout') => void
-const globalForAuthEvents = globalThis as unknown as {
-  __pcAuthListeners?: Set<AuthListener>
-}
-
-const authListeners: Set<AuthListener> =
-  globalForAuthEvents.__pcAuthListeners ?? new Set()
-globalForAuthEvents.__pcAuthListeners = authListeners
-
-export function subscribeAuthChanges(listener: AuthListener): () => void {
-  authListeners.add(listener)
-  return () => {
-    authListeners.delete(listener)
-  }
-}
-
-export function notifyAuthChange(tipo: 'login' | 'logout'): void {
-  for (const listener of authListeners) {
-    try {
-      listener(tipo)
-    } catch {}
-  }
-}
-
 // --- cambios en la cartera de clientes ------------------------------------
 //
 // Crear, editar o borrar un cliente cambia la cartera: /api/clientes/cartera

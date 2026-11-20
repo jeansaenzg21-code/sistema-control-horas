@@ -16,7 +16,7 @@ function formatearTiempo(ms: number): string {
 }
 
 export function ActivityCard() {
-  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad, tiempoPausaMs } =
+  const { actividadActual, pausarActividad, reanudarActividad, finalizarActividad, tiempoPausaMs, enRefrigerio } =
     useActividad()
   const [tick, setTick] = useState(0)
 
@@ -104,8 +104,9 @@ export function ActivityCard() {
           <div className="flex w-full gap-2 sm:w-auto">
             <button
               onClick={pausada ? reanudarActividad : pausarActividad}
+              disabled={pausada && enRefrigerio}
               className={cn(
-                'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors sm:flex-none',
+                'flex flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none',
                 pausada
                   ? 'border-[#7c3aed]/40 bg-[#7c3aed]/15 text-[#c4b5fd] hover:bg-[#7c3aed]/25'
                   : 'border-border bg-muted text-foreground hover:border-[#7c3aed]/40',

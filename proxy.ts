@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server'
 
-// Orígenes desde los que se puede llamar a la API. Incluye el escritorio
-// (Tauri) y la vista previa web de la app móvil (npx expo start --web).
+// Orígenes desde los que se puede llamar a la API. Incluye la vista previa web
+// de la app móvil (npx expo start --web).
 // Para probar la app móvil desde el navegador en otro equipo se agregan sus
 // orígenes en la variable ORIGENES_MOVIL, separados por coma.
 const ORIGENES_POR_DEFECTO = [
-  'tauri://localhost',
-  'http://tauri.localhost',
-  'http://localhost:5173',
   'http://localhost:8081',
   'http://127.0.0.1:8081',
 ]

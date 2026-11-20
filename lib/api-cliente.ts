@@ -10,8 +10,7 @@
  *      peticion.
  *   2. No pone ninguna cabecera `Authorization`: el token no sale del servidor.
  *
- * La app movil y el widget de escritorio siguen usando Bearer y su propio
- * almacenamiento (shared/src/api.ts y timer/src/App.tsx). Este cliente es solo
+ * La app móvil usa Bearer y su propio almacenamiento. Este cliente es solo
  * para el navegador.
  */
 

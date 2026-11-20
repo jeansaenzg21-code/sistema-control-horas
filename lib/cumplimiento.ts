@@ -125,6 +125,30 @@ export function datosFaltantesActividad(r: {
   return codigos
 }
 
+/** Una actividad cerrada con tiempo efectivo cuenta como día trabajado aunque
+ * tenga datos pendientes de completar para su revisión. */
+export function tieneHorasRegistradas(r: {
+  fin: Date | string | null
+  duracion_segundos: number
+  pausa_segundos: number
+}): boolean {
+  return r.fin != null && Number(r.duracion_segundos) - Number(r.pausa_segundos) > 0
+}
+
+export function evaluarRegistrosDia(registros: Array<{
+  cliente_id: number | null
+  descripcion: string | null
+  fin: Date | string | null
+  facturable: unknown
+  duracion_segundos: number
+  pausa_segundos: number
+}>): { reportado: boolean; incompleto: boolean } {
+  return {
+    reportado: registros.some(tieneHorasRegistradas),
+    incompleto: registros.some((r) => !tieneHorasRegistradas(r) || datosFaltantesActividad(r).length > 0),
+  }
+}
+
 export function textoDatosFaltantes(codigos: string[]): string {
   if (codigos.length === 1) return `Falta ${codigos[0]}`
   return `Faltan ${codigos.join(' y ')}`
