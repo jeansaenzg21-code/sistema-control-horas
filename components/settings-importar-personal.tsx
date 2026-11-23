@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { NOMBRES_DIAS } from '@/lib/dias'
+import { normalizarDni } from '@/lib/dni'
 
 interface Props {
   areas: Array<{ id: number; nombre: string }>
@@ -27,6 +28,7 @@ interface FilaParseada {
   correo: string
   usuario: string
   contrasena: string
+  dni?: string
   cargo: string
   area_nombre?: string
   horario: Array<{ dia_semana: number; hora_inicio: string; hora_fin: string }>
@@ -185,8 +187,8 @@ function mapearBaseDatos(filas: unknown[][]): FilaParseada[] {
 
     const correoOriginal = indices.correo >= 0 ? textoCelda(fila[indices.correo]) : ''
     const correo = correoOriginal.includes('@') ? correoOriginal : ''
-    const dni = textoCelda(fila[indices.dni]).replace(/\s+/g, '')
-    if (!dni) throw new Error(`La fila ${numeroFila} no tiene DNI.`)
+    const dni = normalizarDni(fila[indices.dni])
+    if (!dni) throw new Error(`La fila ${numeroFila} debe tener un DNI válido de hasta ocho dígitos.`)
     if (dnisUsados.has(dni)) throw new Error(`El DNI ${dni} está repetido en el archivo.`)
     dnisUsados.add(dni)
     const cargo = indices.cargo >= 0 ? textoCelda(fila[indices.cargo]) : ''
@@ -194,6 +196,7 @@ function mapearBaseDatos(filas: unknown[][]): FilaParseada[] {
     lineas.push({
       nombre,
       correo,
+      dni,
       usuario: dni,
       contrasena: dni,
       cargo,
@@ -457,7 +460,7 @@ export function SettingsImportarPersonal({ areas, onClose }: Props) {
           {tipoArchivo === 'xlsx' && filas && (
             <div className="flex items-center gap-2 rounded-lg border border-[#7c3aed]/25 bg-[#7c3aed]/[0.06] px-3 py-2 text-[10px] text-muted-foreground">
               <KeyRound size={13} className="shrink-0 text-[#c4b5fd]" />
-              <span>El usuario y la contraseña inicial se toman del DNI de cada persona.</span>
+              <span>El DNI se conserva con ocho dígitos. Al reimportar, se corrige el usuario si coincide con la cuenta original y se conserva su contraseña actual.</span>
             </div>
           )}
 

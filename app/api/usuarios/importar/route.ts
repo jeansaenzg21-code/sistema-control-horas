@@ -6,12 +6,14 @@ import { NOMBRES_DIAS } from '@/lib/dias'
 import { horarioValido } from '@/lib/horarios'
 import { clasificarRolPorCargo, tipoCargo } from '@/lib/cargos'
 import { hashearPassword } from '@/lib/validacion-password'
+import { normalizarDni } from '@/lib/dni'
 
 interface FilaImportacion {
   nombre: string
   correo?: string
   usuario: string
   contrasena: string
+  dni?: string
   cargo?: string
   especialidad?: string
   area_id?: number
@@ -148,8 +150,13 @@ export async function POST(request: Request) {
       const numFila = Number.isInteger(numeroFila) && numeroFila > 0 ? numeroFila : i + 1
       try {
         const nombre = String(f.nombre ?? '').trim()
-        const usuario = String(f.usuario ?? '').trim()
-        const contrasena = String(f.contrasena ?? '')
+        const dni = normalizarDni(f.dni)
+        if (f.dni !== undefined && !dni) {
+          errores.push({ fila: numFila, error: 'El DNI debe contener hasta ocho dígitos.' })
+          continue
+        }
+        const usuario = dni ?? String(f.usuario ?? '').trim()
+        const contrasena = dni ?? String(f.contrasena ?? '')
         const correo = String(f.correo ?? '').trim()
         const cargo = cargoDeFila(f)
 
@@ -168,11 +175,40 @@ export async function POST(request: Request) {
         const rol = clasificarRolPorCargo(cargo, { areaYaTieneJefe, areaTieneJefeEnImportacion })
         if (rol === 'JEFE_AREA' && (!jefeColumn || !rolJefe)) { errores.push({ fila: numFila, error: 'No se puede importar un jefe de área: la base de datos no está actualizada.' }); continue }
 
+        const sinCeros = dni?.replace(/^0+(?=\d)/, '') ?? usuario
         const [existentes] = await pool.query(
-          'SELECT id, rol, area_id FROM usuarios WHERE usuario = ? OR (? <> \'\' AND correo = ?) LIMIT 1',
-          [usuario, correo, correo]
+          dni
+            ? `SELECT u.id, u.rol, u.usuario, u.nombre, u.correo, a.empresa_id
+               FROM usuarios u LEFT JOIN areas a ON a.id = u.area_id
+               WHERE u.usuario IN (?, ?) OR (? <> '' AND u.correo = ?)`
+            : `SELECT id, rol, usuario, nombre, correo, NULL AS empresa_id
+               FROM usuarios WHERE usuario = ? OR (? <> '' AND correo = ?) LIMIT 1`,
+          dni ? [usuario, sinCeros, correo, correo] : [usuario, correo, correo]
         )
-        const existente = (existentes as Array<{ id: number; rol: string; area_id: number | null }>)[0]
+        const coincidencias = existentes as Array<{
+          id: number; rol: string; usuario: string; nombre: string; correo: string | null; empresa_id: number | null
+        }>
+        if (dni && coincidencias.length > 1) {
+          errores.push({ fila: numFila, error: 'El DNI o el correo coincide con más de una cuenta. Revisa la fila.' })
+          continue
+        }
+        const existente = coincidencias[0]
+        const corregirDni = Boolean(dni && existente && existente.usuario === sinCeros && sinCeros !== usuario)
+        if (dni && existente && existente.empresa_id !== context.activa.id) {
+          errores.push({ fila: numFila, error: 'La cuenta coincidente no pertenece a la empresa activa.' })
+          continue
+        }
+        if (corregirDni && existente) {
+          const correoExistente = existente.correo?.trim().toLowerCase()
+          const mismoNombre = (valor: string) => valor.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-PE')
+          const coincide = correo && correoExistente
+            ? correo.toLowerCase() === correoExistente
+            : mismoNombre(nombre) === mismoNombre(existente.nombre)
+          if (!coincide) {
+            errores.push({ fila: numFila, error: 'No se pudo confirmar que el DNI sin ceros corresponda a esta persona.' })
+            continue
+          }
+        }
         if (existente) {
           const rolActual = String(existente.rol)
           // Un administrador no pertenece a ninguna división: la importación de
@@ -183,6 +219,7 @@ export async function POST(request: Request) {
             const nuevoRol = puedeActualizarRol && rol === 'JEFE_AREA' ? 'JEFE_AREA' : puedeActualizarRol && rol === 'SUPERVISOR' && rolActual === 'PERSONAL' ? 'SUPERVISOR' : rolActual
             const columnasActualizacion = [cargoColumn ? 'cargo' : 'especialidad', 'area_id']
             const valoresActualizacion: Array<string | number | null> = [cargo || null, areaIdFila]
+            if (corregirDni) { columnasActualizacion.push('usuario'); valoresActualizacion.push(usuario) }
             if (nuevoRol !== rolActual) { columnasActualizacion.push('rol'); valoresActualizacion.push(nuevoRol) }
             const conn = await pool.getConnection()
             try {
@@ -197,7 +234,7 @@ export async function POST(request: Request) {
             actualizados++
             if (nuevoRol === 'JEFE_AREA') { jefesAsignados++; jefesPorArea.set(areaIdFila, true) } else if (nuevoRol === 'SUPERVISOR') supervisoresAsignados++
           } catch {
-            errores.push({ fila: numFila, error: 'El usuario existe, pero no se pudo actualizar su cargo.' })
+            errores.push({ fila: numFila, error: 'El usuario existe, pero no se pudo actualizar su cuenta.' })
           }
           continue
         }
