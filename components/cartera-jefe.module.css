@@ -57,8 +57,6 @@
 @container cartera-jefe (max-width: 320px) {
   .distribution { grid-template-columns: minmax(0, 1fr); }
 }
-.table td.centeredColumn { border-bottom: 1px solid var(--border); }
-.table tr:nth-last-child(2) td.centeredColumn { border-bottom: 0; }
 .actionsColumn { width: 80px; }
 .actionsCell { padding: 8px 4px; text-align: center; vertical-align: middle; }
 @container cartera-jefe (max-width: 679px) {
@@ -82,7 +80,6 @@
     font-size: 11px;
     font-weight: 500;
   }
-  .table td.centeredColumn { border-bottom: 0; }
   .table td:empty { display: none; }
 }
 .clientScroll, .alertScroll {
@@ -93,3 +90,8 @@
 .clientScroll { max-height: 520px; }
 .alertScroll { max-height: 300px; }
 .alertScroll[data-expanded="true"] { max-height: 440px; }
+.table .clientGroup + .clientGroup { border-top: 1px solid var(--border); }
+.table .clientGroup:hover,
+.table .clientGroup:has(:focus-visible) {
+  background-color: color-mix(in srgb, var(--muted) 75%, var(--card));
+}

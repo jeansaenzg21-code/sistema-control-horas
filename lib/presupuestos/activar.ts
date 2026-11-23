@@ -289,14 +289,15 @@ export async function confirmarAsignacion(params: {
  */
 export async function confirmarAsignaciones(params: {
   asignacionIds: number[]
+  reasignacion?: { presupuestoId: number; usuarioAnteriorId: number }
   /** Persona a la que se le asignan las horas. */
   usuarioId: number
   /** Quién ejecuta la acción. Se valida contra el presupuesto. */
   actor: UsuarioConPermisos & { id: number }
   motivo: string
 }): Promise<ResultadoAccion> {
-  const { asignacionIds, usuarioId, actor, motivo } = params
-  if (!usuarioId) return { ok: false, error: 'Indica a quién se le asignan las horas.' }
+  const { asignacionIds, usuarioId, actor, motivo, reasignacion } = params
+  if (!Number.isInteger(usuarioId) || usuarioId <= 0) return { ok: false, error: 'Indica a quién se le asignan las horas.' }
 
   const unicos = [...new Set(asignacionIds.filter((id) => Number.isInteger(id) && id > 0))]
   if (unicos.length === 0) return { ok: false, error: 'La asignacion no es valida.' }
@@ -313,15 +314,18 @@ export async function confirmarAsignaciones(params: {
         servicio: string
         horas: string
         estado: string
+        usuario_id: number | null
+        cliente_id: number
       })[]
     >(
-      `SELECT a.id, a.servicio_id, a.horas, a.estado, s.presupuesto_id, s.nombre AS servicio
+      `SELECT a.id, a.servicio_id, a.horas, a.estado, a.usuario_id, s.presupuesto_id, s.nombre AS servicio, p.cliente_id
          FROM presupuesto_asignaciones a
          JOIN presupuesto_servicios s ON s.id = a.servicio_id
-        WHERE a.id IN (${unicos.map(() => '?').join(',')})`,
+         JOIN presupuestos p ON p.id = s.presupuesto_id
+        WHERE a.id IN (${unicos.map(() => '?').join(',')}) FOR UPDATE`,
       unicos
     )
-    if (filas.length === 0) {
+    if (filas.length !== unicos.length) {
       await db.rollback()
       return { ok: false, error: 'La asignación no existe.' }
     }
@@ -334,6 +338,43 @@ export async function confirmarAsignaciones(params: {
         await db.rollback()
         return { ok: false, error: permiso.error }
       }
+    }
+
+    if (reasignacion) {
+      const { presupuestoId, usuarioAnteriorId } = reasignacion
+      if (usuarioAnteriorId === usuarioId || filas.some((fila) =>
+        fila.presupuesto_id !== presupuestoId || fila.estado !== 'CONFIRMADA' || fila.usuario_id !== usuarioAnteriorId
+      )) {
+        await db.rollback()
+        return { ok: false, error: 'La asignación cambió o no pertenece a este presupuesto. Actualiza el detalle.' }
+      }
+      const clienteId = filas[0].cliente_id
+      const [destino] = await db.query<RowDataPacket[]>(
+        `SELECT u.id FROM usuarios u
+           JOIN areas a ON a.id = u.area_id
+           JOIN clientes c ON c.id = ?
+           JOIN areas ac ON ac.id = c.area_id AND ac.empresa_id = a.empresa_id
+          WHERE u.id = ? AND u.activo = TRUE AND u.rol IN ('PERSONAL','SUPERVISOR','JEFE_AREA')`,
+        [clienteId, usuarioId],
+      )
+      if (!destino.length) {
+        await db.rollback()
+        return { ok: false, error: 'Selecciona a una persona activa de la empresa del cliente.' }
+      }
+
+      // El registro de actividades toma el mismo bloqueo por usuario.
+      await db.query('SELECT id FROM usuarios WHERE id = ? FOR UPDATE', [usuarioAnteriorId])
+      const [registros] = await db.query<RowDataPacket[]>(
+        'SELECT id FROM actividades WHERE cliente_id = ? AND usuario_id = ? LIMIT 1 FOR UPDATE',
+        [clienteId, usuarioAnteriorId],
+      )
+      if (registros.length) {
+        await db.rollback()
+        return { ok: false, error: 'Esta persona ya tiene actividades registradas para el cliente.' }
+      }
+    } else if (filas.some((fila) => fila.estado === 'CONFIRMADA' && fila.usuario_id !== null && fila.usuario_id !== usuarioId)) {
+      await db.rollback()
+      return { ok: false, error: 'Usa Cambiar persona para modificar una asignación confirmada.' }
     }
 
     // No se puede superar la bolsa de NINGÚN servicio. Las asignaciones que se
@@ -394,6 +435,7 @@ export async function confirmarAsignaciones(params: {
         detalle: {
           asignacionIds: filas.filter((f) => f.presupuesto_id === presupuestoId).map((f) => f.id),
           usuarioId,
+          ...(reasignacion && { usuarioAnteriorId: reasignacion.usuarioAnteriorId }),
           horas: redondear(
             filas
               .filter((f) => f.presupuesto_id === presupuestoId)
@@ -417,7 +459,7 @@ export async function confirmarAsignaciones(params: {
     return {
       ok: true,
       mensaje:
-        filas.length === 1
+        reasignacion ? `${totalHoras} h reasignadas.` : filas.length === 1
           ? `${totalHoras} h asignadas.`
           : `${totalHoras} h asignadas en ${filas.length} bloques del Excel.`,
     }

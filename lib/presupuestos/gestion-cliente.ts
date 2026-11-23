@@ -42,6 +42,8 @@ export type FilaServicio = {
 
 export type FilaIntegrante = {
   usuarioId: number
+  asignacionIds: number[]
+  tieneRegistros: boolean
   nombre: string
   cargo: string | null
   /** Área de la persona, que puede no ser la del cliente. */
@@ -438,6 +440,7 @@ export async function obtenerGestionCliente(
               cargo: string | null
               categoria: string | null
               asignado: string
+              tiene_registros: number
               area_id: number | null
               area: string | null
             })[]
@@ -449,7 +452,8 @@ export async function obtenerGestionCliente(
                                                 WHERE presupuesto_id IN (${marcas}))
                         AND aa.usuario_id = a.usuario_id AND aa.estado = 'CONFIRMADA'
                         AND aa.categoria IS NOT NULL AND aa.categoria <> '') AS categoria,
-                    SUM(a.horas) AS asignado
+                    SUM(a.horas) AS asignado,
+                    EXISTS(SELECT 1 FROM actividades act WHERE act.cliente_id = ? AND act.usuario_id = a.usuario_id) AS tiene_registros
                FROM presupuesto_asignaciones a
                JOIN presupuesto_servicios s ON s.id = a.servicio_id
                JOIN usuarios u ON u.id = a.usuario_id
@@ -459,7 +463,7 @@ export async function obtenerGestionCliente(
                 AND s.origen <> 'CONSOLIDADO'
               GROUP BY a.usuario_id, u.nombre, u.cargo, u.area_id, ar.nombre
               ORDER BY SUM(a.horas) DESC`,
-            [...ids, ...ids]
+            [...ids, clienteId, ...ids]
           )
         : null,
       // Consumo por persona,同样 solo contra horas imputadas a una bolsa.
@@ -481,9 +485,9 @@ export async function obtenerGestionCliente(
       // Detalle por servicio, para el desplegable de cada persona.
       tienePresupuestos
         ? pool.query<
-            (RowDataPacket & { usuario_id: number; servicio_id: number; servicio: string; horas: string })[]
+            (RowDataPacket & { id: number; usuario_id: number; servicio_id: number; servicio: string; horas: string })[]
           >(
-            `SELECT a.usuario_id, s.id AS servicio_id, s.nombre AS servicio, a.horas
+            `SELECT a.id, a.usuario_id, s.id AS servicio_id, s.nombre AS servicio, a.horas
                FROM presupuesto_asignaciones a
                JOIN presupuesto_servicios s ON s.id = a.servicio_id
               WHERE a.estado = 'CONFIRMADA' AND a.usuario_id IS NOT NULL
@@ -606,6 +610,8 @@ export async function obtenerGestionCliente(
     const asignado = hayBolsasActivas ? n(f.asignado) : 0
     equipo.push({
       usuarioId: f.usuario_id,
+      asignacionIds: propio.map((x) => x.id),
+      tieneRegistros: Boolean(f.tiene_registros),
       nombre: f.nombre,
       cargo: f.cargo,
       area: f.area,

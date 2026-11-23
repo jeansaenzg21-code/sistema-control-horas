@@ -89,7 +89,12 @@ export async function POST(request: Request, ctx: Contexto) {
       if (asignacionIds.length === 0) {
         return NextResponse.json({ error: 'La asignacion no es valida.' }, { status: 400 })
       }
+      const anterior = cuerpo.usuario_anterior_id == null ? null : Number(cuerpo.usuario_anterior_id)
+      if (anterior !== null && (!Number.isInteger(anterior) || anterior <= 0)) {
+        return NextResponse.json({ error: 'La persona asignada no es válida.' }, { status: 400 })
+      }
       const r = await confirmarAsignaciones({
+        reasignacion: anterior === null ? undefined : { presupuestoId, usuarioAnteriorId: anterior },
         asignacionIds,
         usuarioId,
         actor: usuario,
