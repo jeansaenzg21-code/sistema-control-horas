@@ -579,7 +579,7 @@ export function ClienteGestion({
 
                 onClick={() => setTab(clave)}
 
-                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${tabActiva === clave ? 'bg-violet-500/25 text-[#e4d0ff] ring-1 ring-primary/50' : 'text-[#a4acc0] hover:bg-muted hover:text-white'}`}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${tabActiva === clave ? 'bg-violet-500/25 text-foreground ring-1 ring-primary/50' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
 
               >
 

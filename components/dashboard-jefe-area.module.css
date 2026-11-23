@@ -1,0 +1,88 @@
+.dashboard { display: grid; gap: 13px; container: jefe / inline-size; }
+.metrics { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 12px; }
+.metric, .panel { min-width: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--ad-panel,var(--card)); }
+.metric { display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px; }
+.metric h2, .metric p, .heading p { font-size: 13px; color: var(--muted-foreground); }
+.metric strong { display: block; font-size: clamp(20px,1.5vw,28px); font-weight: 720; letter-spacing: -.035em; line-height: 1.2; margin: 3px 0; }
+.icon { display: inline-grid; place-items: center; flex: 0 0 37px; width: 37px; aspect-ratio: 1; border-radius: 50%; color: var(--tone,var(--ad-accent-ink,#8b40cf)); background: color-mix(in srgb,var(--tone,var(--primary)) 19%,var(--card)); }
+.dashboard [data-tono="verde"] { --tone: #36d9a6; }
+.dashboard [data-tono="ambar"] { --tone: #ffc24a; }
+.dashboard [data-tono="rosa"] { --tone: #ff668b; }
+.body { display: grid; grid-template-columns: minmax(0,3fr) minmax(235px,1fr); gap: 12px; }
+.overview, .stack { display: grid; gap: 12px; min-width: 0; }
+.chartRow, .detailRow { display: grid; gap: 12px; }
+.chartRow { grid-template-columns: minmax(0,1.55fr) minmax(0,1fr); }
+.detailRow { grid-template-columns: minmax(0,1.25fr) minmax(0,1fr); }
+.panel { overflow: hidden; }
+.management {
+  background:
+    radial-gradient(ellipse at 106% 105%, color-mix(in srgb, var(--ad-accent-ink, #8b40cf) 14%, transparent), transparent 30%),
+    var(--ad-panel, var(--card));
+}
+:global(.dark) .management {
+  background:
+    radial-gradient(ellipse at 106% 105%, #451656 0%, transparent 26%),
+    var(--ad-panel, var(--card));
+}
+.heading { display: flex; align-items: center; gap: 9px; padding: 9px 12px; min-width: 0; }
+.heading h2 { font-size: clamp(15px,1.1vw,19px); font-weight: 670; line-height: 1.2; }
+.heading p { line-height: 1.25; margin-top: 3px; }
+.link { display: inline-flex; margin-inline-start: auto; flex: none; align-items: center; gap: 4px; text-align: center; border: 1px solid var(--border); border-radius: 10px; padding: 4px 7px; color: var(--muted-foreground); font-size: 12px; }
+.link:hover { background: var(--muted); color: var(--foreground); }
+.chart { display: block; width: 100%; min-height: 145px; max-height: 190px; padding: 0 7px 8px; }
+.chart line { stroke: var(--border); }
+.chart text { fill: var(--foreground); font-size: 11px; }
+.billing { display: flex; align-items: center; justify-content: space-around; gap: 10px; padding: 6px 12px 13px; }
+.ring { position: relative; display: grid; flex: 0 0 min(44%,145px); place-items: center; aspect-ratio: 1; border-radius: 50%; background: var(--muted); }
+.ring::before { content: ''; position: absolute; inset: 15%; border-radius: 50%; background: var(--card); }
+.ring > span { position: relative; text-align: center; font-size: 12px; }
+.ring strong { display: block; font-size: clamp(20px,1.65vw,28px); line-height: 1.1; }
+.billing ul { display: grid; gap: 9px; font-size: 13px; }
+.billing li { display: flex; align-items: center; gap: 6px; }
+.billing li i, .portfolio li > i { width: 9px; height: 9px; flex: none; border-radius: 50%; }
+.billing li strong { display: block; }
+.teamScroll { max-height: 320px; overflow: auto; }
+.team { width: 100%; min-width: 375px; font-size: 13px; text-align: left; }
+.team :is(th,td) { padding: 6px 9px; border-bottom: 1px solid var(--border); }
+.team th { position: sticky; top: 0; background: var(--ad-raised,var(--muted)); }
+.team :is(td,th):last-child { text-align: center; }
+.team td:nth-child(2) { white-space: nowrap; }
+.person { display: flex; align-items: center; gap: 6px; }
+.person :is(strong,small), .recent :is(strong,small) { display: block; }
+.person small, .recent small, .recent time { color: var(--muted-foreground); font-size: 11px; }
+.progress { display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
+.progress > span { width: clamp(24px,5vw,85px); height: 7px; border-radius: 99px; background: var(--muted); overflow: hidden; }
+.progress i { display: block; height: 100%; border-radius: inherit; background: var(--ad-chart-fill,var(--primary)); }
+.portfolio, .recent, .alerts { padding: 0 12px 8px; font-size: 13px; }
+.portfolio li, .recent li { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.portfolio li:last-child, .recent li:last-child { border: 0; }
+.portfolio li .progress, .recent time { margin-inline-start: auto; }
+.recent li > div { min-width: 0; }
+.recent small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent time { flex: none; }
+.alerts { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.alerts a { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: 11px; background: var(--ad-raised,var(--muted)); }
+.alerts .icon { width: 28px; }
+.alerts strong { color: var(--tone,var(--ad-accent-ink,var(--foreground))); }
+.shortcuts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; padding: 0 12px 12px; }
+.shortcuts a[data-tono="turquesa"] { --tone: #2ceadd; }
+.shortcuts a[data-tono="lavanda"] { --tone: #d6a5ff; }
+.shortcuts a[data-tono="celeste"] { --tone: #8cbdff; }
+.shortcuts a { display: grid; justify-items: center; align-content: center; gap: 5px; min-height: 70px; padding: 6px; border-radius: 11px; border: 1px solid var(--border); background: var(--ad-raised,var(--muted)); text-align: center; font-size: 13px; }
+.alerts a:hover, .shortcuts a:hover { border-color: var(--ad-selected-border,var(--primary)); }
+.empty { padding: 12px; text-align: center; color: var(--muted-foreground); font-size: 13px; }
+@container jefe (width < 1190px) {
+  .body { grid-template-columns: minmax(0,1fr); }
+  .shortcuts { grid-template-columns: repeat(4,minmax(0,1fr)); }
+}
+@container jefe (width < 780px) {
+  .metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .detailRow { grid-template-columns: minmax(0,1fr); }
+}
+@container jefe (width < 520px) {
+  .chartRow { grid-template-columns: minmax(0,1fr); }
+  .metrics, .shortcuts { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .metric { gap: 6px; }
+  .metric .icon { flex-basis: 28px; width: 28px; }
+  .metric .icon svg { width: 17px; }
+}

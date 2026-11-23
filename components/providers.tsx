@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { subscribeClientesChanges } from '@/lib/events'
 import { AuthProvider } from '@/lib/auth-context'
 import { AreasProvider } from '@/lib/areas-context'
 import { ClientesProvider } from '@/lib/clientes-context'
@@ -13,6 +14,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: { queries: { staleTime: 60_000, gcTime: 300_000, refetchOnWindowFocus: false } },
   }))
+  useEffect(() => subscribeClientesChanges(() => {
+    void queryClient.invalidateQueries({ queryKey: ['cartera-clientes'] })
+    void queryClient.invalidateQueries({ queryKey: ['presupuestos-cartera'] })
+  }), [queryClient])
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

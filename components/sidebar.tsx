@@ -2,6 +2,10 @@
 
 import {
   LayoutDashboard,
+  House,
+  Settings,
+  ChevronsLeft,
+  ChevronsRight,
   ListTodo,
   CheckCircle,
   BarChart3,
@@ -14,13 +18,13 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Logo } from './logo'
 import { useAuth, type Rol, type Usuario } from '@/lib/auth-context'
 import { puedeVerGestionLaptops, puedeVerInventarioLaptops } from '@/lib/permisos'
-import { ThemeToggle } from '@/components/theme-toggle'
 
 interface NavItem {
   label: string
@@ -52,10 +56,10 @@ const navItems: NavItem[] = [
   // El supervisor siempre estuvo aquí aunque tampoco pueda registrar horas: su
   // módulo es el de aprobaciones, al que entra desde este enlace.
   { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['personal', 'supervisor', 'jefe_area'] },
-  { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'supervisor', 'personal', 'jefe_area'] },
+  { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'supervisor', 'personal', 'jefe_area', 'socio'] },
   { label: 'Consolidación', href: '/consolidacion', icon: <BarChart3 size={19} />, roles: ROLES_CONSULTA },
   { label: 'Cumplimiento', href: '/cumplimiento', icon: <CalendarCheck size={19} />, roles: ROLES_CONSULTA },
-  { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ROLES_CONSULTA },
+  { label: 'Reportes', href: '/reportes', icon: <FileText size={19} />, roles: ['supervisor', 'jefe_area', 'admin', 'socio'] },
 ]
 
 // Menú TI: módulos demostrativos reservados a Fran Laureano. No son un rol:
@@ -67,6 +71,16 @@ const navItemsTI: NavItem[] = [
 ]
 
 export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }: SidebarProps) {
+  const [vistaRapida, setVistaRapida] = useState(false)
+  const puedeDesplegar = minimizada
+  const seleccionarModulo = () => {
+    setVistaRapida(false)
+    onCerrar()
+  }
+  const alternarMinimizado = () => {
+    setVistaRapida(false)
+    onAlternarMinimizado()
+  }
   const pathname = usePathname()
   const { usuario } = useAuth()
   const itemsVisibles = navItems.filter((item) => (
@@ -79,15 +93,19 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
   ))
 
   const renderItem = (item: NavItem) => {
+    const inicio = item.href === '/'
+    const label = inicio ? 'Inicio' : item.label
     const isActive =
       pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`))
     return (
       <Link
         key={item.href}
         href={item.href}
-        onClick={onCerrar}
-        title={minimizada ? item.label : undefined}
-        aria-label={minimizada ? item.label : undefined}
+        prefetch
+        onClick={seleccionarModulo}
+        title={minimizada ? label : undefined}
+        aria-label={minimizada ? label : undefined}
+        aria-current={isActive ? 'page' : undefined}
         className={cn(
           'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
           minimizada && 'md:justify-center md:px-0',
@@ -96,13 +114,10 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
             : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
         )}
       >
-        {isActive && (
-          <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[#7c3aed]" />
-        )}
         <span className={cn('transition-colors', isActive ? 'text-[#c4b5fd]' : 'text-muted-foreground group-hover:text-sidebar-accent-foreground')}>
-          {item.icon}
+          {inicio ? <House size={19} /> : item.icon}
         </span>
-        <span className={cn(minimizada && 'md:hidden')}>{item.label}</span>
+        <span className={cn(minimizada && 'md:hidden')}>{label}</span>
       </Link>
     )
   }
@@ -119,8 +134,24 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
       )}
 
       <aside
+        data-collapsed={minimizada}
+        data-preview={puedeDesplegar && vistaRapida ? true : undefined}
+        onPointerEnter={(event) => {
+          if (puedeDesplegar && event.pointerType === 'mouse') setVistaRapida(true)
+        }}
+        onPointerLeave={() => setVistaRapida(false)}
+        onFocus={(event) => {
+          if (puedeDesplegar && event.target.matches(':focus-visible')) setVistaRapida(true)
+        }}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setVistaRapida(false)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setVistaRapida(false)
+        }}
         className={cn(
           'no-print fixed inset-y-0 left-0 z-50 flex h-screen w-72 max-w-[85vw] flex-col border-r border-sidebar-border bg-sidebar transition-[width,transform] duration-200 md:max-w-none md:translate-x-0',
+          'admin-sidebar',
           minimizada ? 'md:w-[4.75rem]' : 'md:w-56',
           abierto ? 'translate-x-0' : '-translate-x-full',
         )}
@@ -128,6 +159,7 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
         <div
           className={cn(
             'flex items-center gap-3 border-b border-sidebar-border px-5 py-5',
+            'admin-sidebar-brand',
             minimizada && 'md:flex-col md:gap-2 md:px-1.5',
           )}
         >
@@ -140,7 +172,7 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
           </div>
           <button
             type="button"
-            onClick={onAlternarMinimizado}
+            onClick={alternarMinimizado}
             aria-label={minimizada ? 'Expandir menú' : 'Minimizar menú'}
             title={minimizada ? 'Expandir menú' : 'Minimizar menú'}
             className={cn(
@@ -189,7 +221,10 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
           )}
         </nav>
         <div className={cn('space-y-2 border-t border-sidebar-border px-3 py-3', minimizada && 'md:px-1.5')}>
-          <ThemeToggle />
+            <div className="admin-sidebar-footer">
+              <Link href="/configuracion" prefetch onClick={seleccionarModulo} aria-label="Configuración" aria-current={pathname === "/configuracion" ? "page" : undefined}><Settings size={23} /><span className={cn(minimizada && "md:hidden")}>Configuración</span></Link>
+              <button type="button" onClick={alternarMinimizado} aria-label={minimizada ? "Expandir menú" : "Minimizar menú"}>{minimizada ? <ChevronsRight size={17} /> : <ChevronsLeft size={17} />}</button>
+            </div>
           <button
             type="button"
             onClick={onCerrar}

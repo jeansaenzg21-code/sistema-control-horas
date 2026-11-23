@@ -1,13 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react'
 import type { ColaboradorCumplimiento, CumplimientoReporte } from '@/lib/cumplimiento'
 import type { CumplimientoObservacion } from '@/lib/observaciones-ui'
 import { normalizarEstadoAtencion, normalizarVisibilidad } from '@/lib/observaciones-ui'
 import { ResumenColaboradores } from '@/components/cumplimiento/resumen-colaboradores'
 import { ObservacionesCumplimientoPanel } from '@/components/cumplimiento/observaciones-panel'
 import { useAuth } from '@/lib/auth-context'
+import styles from '@/components/cumplimiento/cumplimiento.module.css'
 import { useAreas } from '@/lib/areas-context'
 
 
@@ -16,9 +17,6 @@ const NOMBRES_MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
-
-const estiloControl =
-  'h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/40 cursor-pointer'
 
 function filaObservacion(valor: unknown): CumplimientoObservacion | null {
   if (!valor || typeof valor !== 'object') return null
@@ -83,7 +81,6 @@ export default function CumplimientoResumen() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const divisionFija = usuario?.rol === 'jefe_area' && usuario?.area_id != null
   const colaboradores = usuarios.filter(
     (u) => (u.rol === 'personal' || u.rol === 'jefe_area') && u.activo && (!areaId || String(u.area_id) === areaId),
   )
@@ -162,45 +159,44 @@ export default function CumplimientoResumen() {
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className={styles.toolbar}>
+        <div className={styles.month}>
         <button
           onClick={() => pasarMes(-1)}
           aria-label="Mes anterior"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground transition-colors hover:border-[#7c3aed]/50 hover:text-[#7c3aed]"
+          className={styles.monthButton}
         >
           <ChevronLeft size={16} />
         </button>
-        <span className="min-w-[130px] text-center text-sm font-semibold text-foreground">
+        <span className={styles.monthLabel}>
+          <CalendarDays size={19} aria-hidden="true" />
           {NOMBRES_MESES[mes - 1]} {anio}
         </span>
         <button
           onClick={() => pasarMes(1)}
           aria-label="Mes siguiente"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground transition-colors hover:border-[#7c3aed]/50 hover:text-[#7c3aed]"
+          className={styles.monthButton}
         >
           <ChevronRight size={16} />
         </button>
 
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {divisionFija ? (
-            <span className="h-8 rounded-lg border border-border bg-muted/40 px-2 text-xs leading-8 text-foreground">
-              {areas.find((a) => a.id === usuario.area_id)?.nombre ?? 'Tu división'}
-            </span>
-          ) : (
-            <select value={areaId} onChange={(e) => { setAreaId(e.target.value); setUsuarioId('') }} className={estiloControl}>
+        </div>
+        {usuario?.rol !== 'jefe_area' && (
+        <div className={styles.filters}>
+            <select aria-label="División" value={areaId} onChange={(e) => { setAreaId(e.target.value); setUsuarioId('') }} className={styles.filter}>
               <option value="">Todas las divisiones</option>
               {areas.filter((a) => a.activo).map((a) => (
                 <option key={a.id} value={String(a.id)}>{a.nombre}</option>
               ))}
             </select>
-          )}
-          <select value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)} className={estiloControl}>
+          <select aria-label="Colaborador" value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)} className={styles.filter}>
             <option value="">Todos los colaboradores</option>
             {colaboradores.map((c) => (
               <option key={c.id} value={String(c.id)}>{c.nombre}</option>
             ))}
           </select>
         </div>
+        )}
       </div>
 
       {cargando && (

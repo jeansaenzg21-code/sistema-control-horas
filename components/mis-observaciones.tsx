@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '@/lib/auth-context'
 import {
   CalendarDays,
   CheckCircle2,
@@ -141,45 +143,48 @@ function urlAprobacion(accion: AccionMisObservacion, observacion: MisObservacion
   return `/aprobaciones?${query.toString()}`
 }
 
+const observacionesVacias: MisObservacion[] = []
+
+export function useMisObservaciones() {
+  const { empresaActiva, usuario } = useAuth()
+  const queryKey = ['mis-observaciones', empresaActiva?.id, usuario?.id]
+  const consulta = useQuery({
+    queryKey,
+    enabled: Boolean(empresaActiva && usuario && usuario.rol !== 'admin' && usuario.rol !== 'socio'),
+    staleTime: 30_000,
+    queryFn: async ({ signal }) => {
+      const res = await fetch('/api/observaciones/mis', { ...opcionesApi(), signal })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'No se pudieron cargar tus observaciones.')
+      return normalizarLista(data)
+    },
+  })
+  return { consulta, queryKey }
+}
+
 export function MisObservaciones() {
+  const { consulta, queryKey } = useMisObservaciones()
+  const queryClient = useQueryClient()
+  const observaciones = consulta.data ?? observacionesVacias
   const [filtro, setFiltro] = useState<Filtro>('pendientes')
   const [modulo, setModulo] = useState<'TODOS' | 'APROBACIONES' | 'CUMPLIMIENTO'>('TODOS')
-  const [observaciones, setObservaciones] = useState<MisObservacion[]>([])
   const [seleccionada, setSeleccionada] = useState<MisObservacion | null>(null)
   const [respuestaId, setRespuestaId] = useState<number | null>(null)
   const [respuesta, setRespuesta] = useState('')
   const [accionCargando, setAccionCargando] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
   useEffect(() => {
-    let vigente = true
-    const cargar = async () => {
-      setCargando(true)
-      setError(null)
-      try {
-        const res = await fetch('/api/observaciones/mis', opcionesApi())
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok) throw new Error(data.error || 'No se pudieron cargar tus observaciones.')
-        if (vigente) {
-          const lista = normalizarLista(data)
-          setObservaciones(lista)
-          const observacionQuery = new URLSearchParams(window.location.search).get('observacion')
-          const idQuery = observacionQuery ? Number(observacionQuery) : null
-          if (idQuery != null && Number.isInteger(idQuery)) {
-            setSeleccionada(lista.find((item) => item.id === idQuery) ?? null)
-          }
-        }
-      } catch (e) {
-        if (vigente) setError(e instanceof Error ? e.message : 'No se pudieron cargar tus observaciones.')
-      } finally {
-        if (vigente) setCargando(false)
-      }
+    const id = new URLSearchParams(window.location.search).get('observacion')
+    if (id && Number.isInteger(Number(id))) {
+      setSeleccionada(observaciones.find((item) => item.id === Number(id)) ?? null)
     }
-    void cargar()
-    return () => { vigente = false }
-  }, [])
+  }, [observaciones])
+
+  const actualizarAtencion = (id: number) => {
+    queryClient.setQueryData<MisObservacion[]>(queryKey, (prev) => prev?.map((item) =>
+      item.id === id ? { ...item, estado_atencion: 'ATENDIDA' } : item,
+    ))
+  }
 
   const marcarCumplimientoAtendida = async (observacion: MisObservacion) => {
     if (accionCargando != null) return
@@ -192,9 +197,7 @@ export function MisObservaciones() {
       }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'No se pudo marcar la observación como atendida.')
-      setObservaciones((prev) => prev.map((item) => item.id === observacion.id
-        ? { ...item, estado_atencion: 'ATENDIDA' }
-        : item))
+      actualizarAtencion(observacion.id)
       setFeedback('Observación marcada como atendida.')
     } catch (e) {
       setFeedback(e instanceof Error ? e.message : 'No se pudo marcar la observación como atendida.')
@@ -219,9 +222,7 @@ export function MisObservaciones() {
       }))
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'No se pudo enviar la respuesta.')
-      setObservaciones((prev) => prev.map((item) => item.id === observacion.id
-        ? { ...item, estado_atencion: 'ATENDIDA' }
-        : item))
+      actualizarAtencion(observacion.id)
       setRespuesta('')
       setRespuestaId(null)
       setFeedback('Respuesta enviada. La observación quedó atendida.')
@@ -238,6 +239,14 @@ export function MisObservaciones() {
     if (modulo !== 'TODOS' && observacion.modulo !== modulo) return false
     return true
   }), [filtro, modulo, observaciones])
+
+  if (consulta.isPending) return <p role="status" className="px-4 py-3 text-sm text-muted-foreground">Cargando observaciones…</p>
+  if (consulta.isError && !consulta.data) return (
+    <div role="alert" className="rounded-xl border border-rose-500/30 px-4 py-3 text-sm">
+      {consulta.error.message}{' '}
+      <button type="button" className="underline" onClick={() => void consulta.refetch()}>Reintentar</button>
+    </div>
+  )
 
   const pendientes = observaciones.filter((observacion) => observacion.estado_atencion === 'ABIERTA').length
 
@@ -272,11 +281,7 @@ export function MisObservaciones() {
       )}
 
       {feedback && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-300">{feedback}</div>}
-      {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 px-4 py-3 text-sm text-rose-300">{error}</div>}
-
-      {cargando ? (
-        <div className="space-y-2.5"><div className="h-24 animate-pulse rounded-xl bg-muted/60" /><div className="h-24 animate-pulse rounded-xl bg-muted/60" /></div>
-      ) : filtradas.length === 0 ? (
+      {filtradas.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-card/50 px-5 py-10 text-center"><Inbox size={28} className="mx-auto mb-2 text-muted-foreground" /><p className="text-sm text-muted-foreground">No hay observaciones para este filtro.</p></div>
       ) : (
         <div className="space-y-2.5">

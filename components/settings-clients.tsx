@@ -23,7 +23,9 @@ import { CarteraClientes } from './cartera-clientes'
 import { ClienteGestion } from './cliente-gestion'
 import type { ClienteCartera } from './cartera-ui'
 import { SettingsClientePresupuestos } from './settings-cliente-presupuestos'
-import { ImportarPresupuestosMasivo } from './importar-presupuestos-masivo'
+import dynamic from 'next/dynamic'
+
+const ImportarPresupuestosMasivo = dynamic(() => import('./importar-presupuestos-masivo').then((modulo) => modulo.ImportarPresupuestosMasivo))
 
 interface FormularioCliente {
   nombre: string
@@ -111,8 +113,9 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
       onCabecera(TITULO_CARPETA, SUBTITULO_CARPETA)
       return
     }
-    onCabecera(clienteAbierto.nombre, `${clienteAbierto.area_nombre} · gestión integral`)
-  }, [onCabecera, clienteAbierto])
+    onCabecera(clienteAbierto.nombre, usuario?.rol === 'jefe_area' && clienteAbierto.area_id === usuario.area_id
+      ? 'Gestión integral' : `${clienteAbierto.area_nombre} · gestión integral`)
+  }, [onCabecera, clienteAbierto, usuario?.rol, usuario?.area_id])
 
   const iniciarEdicion = useCallback((cliente: ClienteCartera) => {
     setFormulario({

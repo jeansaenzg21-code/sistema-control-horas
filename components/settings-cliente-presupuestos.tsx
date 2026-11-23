@@ -1,5 +1,7 @@
 'use client'
 
+import { notifyClientesChange } from '@/lib/events'
+
 // Sección de Presupuestos de la ficha de un cliente.
 //
 // El import es lo único que se puede hacer desde aquí por ahora. Aprobar,
@@ -124,6 +126,7 @@ export function SettingsClientePresupuestos({
           ? `Documento reimportado (versión ${cuerpo.version}). ${detalle}.`
           : `Importado como versión ${cuerpo.version}: ${detalle}.`
       )
+      notifyClientesChange()
       await cargar()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo importar el archivo.')

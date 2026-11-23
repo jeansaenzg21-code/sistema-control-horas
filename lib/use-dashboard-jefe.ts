@@ -1,69 +1,12 @@
 'use client'
 
-// Datos del panel del jefe de área.
-//
-// CUATRO peticiones, todas agrupadas y todas en paralelo. La decisión es
-// deliberada: con 200+ colaboradores, pedir una cosa por persona o una por
-// cliente son cientos de viajes y el panel tarda minutos. Aquí nada depende de
-// un id que haya que resolver antes, así que van todas juntas.
-//
-// El recorte por ÁREA no se pide: lo pone el servidor.
-//   - /api/actividades/resumen fuerza `u.area_id` cuando quien llama es jefe.
-//   - /api/clientes/cartera filtra `c.area_id`.
-//   - /api/cumplimiento fuerza `areaId` y da 403 si se pide otra.
-// Enviar un area_id distinto no serviría de nada: en esas tres rutas no se
-// respeta, se ignora o se rechaza.
-
-import { useCallback, useEffect, useState } from 'react'
-
+import { useQuery } from '@tanstack/react-query'
+import { useAuth } from './auth-context'
+import { useCartera } from './use-cartera'
+import { opcionesApi } from './api-cliente'
 import type { Actividad } from './types'
 import type { Resumen } from './use-resumen'
 import type { CumplimientoReporte } from './cumplimiento'
-import type { AlertaCartera, ClienteCartera } from '@/components/cartera-ui'
-import { subscribeClientesChanges } from './events'
-import { opcionesApi } from '@/lib/api-cliente'
-
-export type TotalesCartera = {
-  clientes: number
-  contratadas: number
-  consumidas: number
-  disponibles: number
-  excedidas: number
-  porAprobar: number
-}
-
-export type RespuestaCartera = {
-  totales: TotalesCartera
-  clientes: ClienteCartera[]
-  alertas: AlertaCartera[]
-}
-
-/** Filas recientes de la actividad del equipo. */
-const RECIENTES_LIMITE = 12
-
-export type DatosJefeArea = {
-  rango: { desde: string; hasta: string }
-  /** Agregados del rango elegido. */
-  resumen: Resumen | null
-  /** Agregados del rango inmediatamente anterior, de la MISMA duración. */
-  resumenAnterior: Resumen | null
-  cartera: RespuestaCartera | null
-  cumplimiento: CumplimientoReporte | null
-  recientes: Actividad[]
-  cargando: boolean
-  error: string | null
-}
-
-const VACIO: DatosJefeArea = {
-  rango: { desde: '', hasta: '' },
-  resumen: null,
-  resumenAnterior: null,
-  cartera: null,
-  cumplimiento: null,
-  recientes: [],
-  cargando: false,
-  error: null,
-}
 
 /** Rango por defecto: el mes en curso, del día 1 a hoy. */
 export function rangoDelMes(date = new Date()): { desde: string; hasta: string } {
@@ -101,72 +44,49 @@ export function rangoAnterior(
   return { desde: iso(ini), hasta: iso(fin) }
 }
 
-export function useDatosJefeArea(rango: { desde: string; hasta: string }): DatosJefeArea {
-  const [datos, setDatos] = useState<DatosJefeArea>(VACIO)
-  const { desde, hasta } = rango
+async function consultar<T>(url: string, signal: AbortSignal): Promise<T | null> {
+  try {
+    const respuesta = await fetch(url, opcionesApi({ signal }))
+    return respuesta.ok ? await respuesta.json() as T : null
+  } catch (error) {
+    if (signal.aborted) throw error
+    return null
+  }
+}
 
-  const cargar = useCallback(async () => {
-    if (typeof window === 'undefined') return
-    if (!desde || !hasta) {
-      setDatos(VACIO)
-      return
-    }
-    setDatos((d) => ({ ...d, cargando: true, error: null }))
-    const anterior = rangoAnterior(desde, hasta)
-    const mes = hasta.slice(5, 7)
-    const anio = hasta.slice(0, 4)
-
-    const qs = `desde=${desde}&hasta=${hasta}`
-    // El resumen del mes en curso se usa para el cumplimiento, que la API exige
-    // por mes (`anio` y `mes` son obligatorios). No sigue al filtro de fechas a
-    // propósito: mezclar "cumplimiento de mayo" con un rango de marzo daría dos
-    // escalas distintas en la misma pantalla sin avisar.
-    const [resumen, cartera, cumplimiento, recientes] = await Promise.all([
-      fetch(`/api/actividades/resumen?${qs}`, opcionesApi())
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null),
-      fetch('/api/clientes/cartera', opcionesApi())
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null),
-      fetch(`/api/cumplimiento?anio=${anio}&mes=${mes}`, opcionesApi())
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null),
-      fetch(`/api/actividades?${qs}&limite=${RECIENTES_LIMITE}`, opcionesApi())
-        .then((r) => (r.ok ? r.json() : []))
-        .catch(() => []),
-    ])
-
-    const resumenPrevio = anterior
-      ? await fetch(`/api/actividades/resumen?desde=${anterior.desde}&hasta=${anterior.hasta}`, opcionesApi())
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null)
-      : null
-
-    setDatos({
-      rango: { desde, hasta },
-      resumen: resumen as Resumen | null,
-      resumenAnterior: resumenPrevio as Resumen | null,
-      cartera: cartera as RespuestaCartera | null,
-      cumplimiento: cumplimiento as CumplimientoReporte | null,
-      recientes: Array.isArray(recientes) ? (recientes as Actividad[]) : [],
-      cargando: false,
-      error: null,
-    })
-  }, [desde, hasta])
-
-  useEffect(() => {
-    void cargar()
-  }, [cargar])
-
-  // La cartera que pinta este panel sale de /api/clientes/cartera, que se pidió
-  // una vez al montar. Si alguien da de alta un cliente (o lo edita, o lo borra)
-  // mientras el panel está abierto, esas cifras quedan viejas hasta recargar la
-  // página a mano. El aviso llega del contexto de clientes, que es quien escribe.
-  useEffect(() => {
-    return subscribeClientesChanges(() => {
-      void cargar()
-    })
-  }, [cargar])
-
-  return datos
+export function useDatosJefeArea({ desde, hasta }: { desde: string; hasta: string }) {
+  const { usuario, empresaActiva } = useAuth()
+  const cartera = useCartera()
+  const consulta = useQuery({
+    queryKey: ['dashboard-jefe', empresaActiva?.id, usuario?.id, usuario?.area_id, desde, hasta],
+    enabled: Boolean(empresaActiva && usuario?.rol === 'jefe_area' && usuario.area_id != null && desde && hasta),
+    queryFn: async ({ signal }) => {
+      const anterior = rangoAnterior(desde, hasta)
+      const mesCierre = hasta.slice(0, 7)
+      const parametros = new URLSearchParams({ desde, hasta })
+      const periodoCumplimiento = new URLSearchParams({
+        anio: hasta.slice(0, 4), mes: hasta.slice(5, 7),
+        desde: desde.slice(0, 7) === mesCierre ? desde : mesCierre + '-01',
+        hasta,
+      })
+      const [resumen, resumenAnterior, cumplimiento, recientes] = await Promise.all([
+        consultar<Resumen>('/api/actividades/resumen?' + parametros, signal),
+        anterior ? consultar<Resumen>('/api/actividades/resumen?' + new URLSearchParams(anterior), signal) : null,
+        consultar<CumplimientoReporte>('/api/cumplimiento?' + periodoCumplimiento, signal),
+        consultar<Actividad[]>('/api/actividades?' + parametros + '&limite=8', signal),
+      ])
+      return { resumen, resumenAnterior, cumplimiento, recientes }
+    },
+  })
+  const datos = consulta.data
+  return {
+    resumen: datos?.resumen,
+    resumenAnterior: datos?.resumenAnterior,
+    cumplimiento: datos?.cumplimiento,
+    recientes: datos?.recientes ?? [],
+    cartera: cartera.data,
+    inicial: (consulta.isPending && consulta.fetchStatus !== 'idle') || (cartera.isPending && cartera.fetchStatus !== 'idle'),
+    cargando: consulta.isFetching || cartera.isFetching,
+    error: consulta.isError || cartera.isError || Boolean(datos && (!datos.resumen || !datos.cumplimiento || !datos.recientes)),
+  }
 }

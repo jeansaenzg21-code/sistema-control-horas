@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ChevronDown, Play } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Play, Save } from 'lucide-react'
 import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { useCatalogosActividad } from '@/lib/use-catalogos-actividad'
@@ -10,13 +10,15 @@ import { ClienteSearch } from './cliente-search'
 
 export function ActivityForm() {
   const { iniciarActividad, enRefrigerio } = useActividad()
-  const { usuario } = useAuth()
+  const { usuario, empresaActiva } = useAuth()
+  const claveBorrador = usuario && empresaActiva ? 'pc_actividad_borrador:' + empresaActiva.id + ':' + usuario.id : null
   const [tipoActividadId, setTipoActividadId] = useState<number | ''>('')
   const [clienteId, setClienteId] = useState<number | ''>('')
   const [servicioId, setServicioId] = useState<number | ''>('')
   const [descripcion, setDescripcion] = useState('')
   const [facturable, setFacturable] = useState(false)
   const [cargando, setCargando] = useState(false)
+  const [avisoBorrador, setAvisoBorrador] = useState('')
   const [error, setError] = useState<string | null>(null)
   const { tiposDisponibles, servicios, cargandoServicios, sinAsignaciones, clientesVisibles } =
     useCatalogosActividad(clienteId)
@@ -24,9 +26,35 @@ export function ActivityForm() {
   // Cambiar de cliente invalida el servicio: el anterior pertenece a las bolsas de
   // otro cliente y el servidor lo rechaza. Se limpia aqui para no dejar seleccionado
   // un valor que ya no existe en la lista.
-  useEffect(() => {
+  const cambiarCliente = (id: number | '') => {
+    setClienteId(id)
     setServicioId('')
-  }, [clienteId])
+  }
+
+  useEffect(() => {
+    if (!claveBorrador) return
+    try {
+      const borrador = JSON.parse(sessionStorage.getItem(claveBorrador) ?? 'null')
+      if (!borrador) return
+      setTipoActividadId(typeof borrador.tipoActividadId === 'number' ? borrador.tipoActividadId : '')
+      setClienteId(typeof borrador.clienteId === 'number' ? borrador.clienteId : '')
+      setServicioId(typeof borrador.servicioId === 'number' ? borrador.servicioId : '')
+      setDescripcion(typeof borrador.descripcion === 'string' ? borrador.descripcion : '')
+      setFacturable(borrador.facturable === true)
+    } catch {
+      setAvisoBorrador('No se pudo recuperar el borrador.')
+    }
+  }, [claveBorrador])
+
+  const guardarBorrador = () => {
+    if (!claveBorrador) return
+    try {
+      sessionStorage.setItem(claveBorrador, JSON.stringify({ tipoActividadId, clienteId, servicioId, descripcion, facturable }))
+      setAvisoBorrador('Borrador guardado en esta pestaña.')
+    } catch {
+      setAvisoBorrador('No se pudo guardar el borrador.')
+    }
+  }
 
   const servicioElegido = useMemo(
     () => servicios.find((servicio) => servicio.id === Number(servicioId)) ?? null,
@@ -58,6 +86,12 @@ export function ActivityForm() {
       setError(resultado.error || 'No se pudo iniciar la actividad.')
       return
     }
+    try {
+      if (claveBorrador) sessionStorage.removeItem(claveBorrador)
+    } catch {
+      // La actividad ya se registró aunque el almacenamiento no esté disponible.
+    }
+    setAvisoBorrador('')
     setTipoActividadId('')
     setClienteId('')
     setServicioId('')
@@ -66,7 +100,7 @@ export function ActivityForm() {
   }
 
   return (
-    <form onSubmit={manejarEnvio} className="space-y-4">
+    <form onSubmit={manejarEnvio} className="space-y-5">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div>
           <label className="mb-1.5 block text-sm font-medium text-foreground">
@@ -95,7 +129,7 @@ export function ActivityForm() {
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-foreground">Cliente</label>
-          <ClienteSearch clientes={clientesVisibles} value={clienteId} onChange={setClienteId} />
+          <ClienteSearch clientes={clientesVisibles} value={clienteId} onChange={cambiarCliente} />
         </div>
 
         <div>
@@ -159,9 +193,9 @@ export function ActivityForm() {
         <textarea
           value={descripcion}
           onChange={(e) => setDescripcion(e.target.value)}
-          rows={2}
+          rows={3}
           placeholder="Describe los detalles de la actividad..."
-          className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
+          className="min-h-24 w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder-muted-foreground transition-colors focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/50"
         />
       </div>
 
@@ -184,6 +218,10 @@ export function ActivityForm() {
         <p className="text-xs leading-relaxed text-muted-foreground">
           {enRefrigerio ? 'Refrigerio fijo de 1:00 p. m. a 2:00 p. m. No se pueden iniciar actividades.' : 'La fecha y hora se registran automáticamente. Solo puede existir una actividad activa.'}
         </p>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <button type="button" onClick={guardarBorrador} disabled={!claveBorrador || cargando} className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-muted px-4 py-2.5 text-sm font-semibold hover:border-violet-500/60 disabled:opacity-50">
+            <Save size={16} /> Guardar borrador
+          </button>
         <button
           type="submit"
           disabled={!puedeEnviar}
@@ -194,9 +232,11 @@ export function ActivityForm() {
           ) : (
             <Play size={16} />
           )}
-          {cargando ? 'Iniciando...' : 'Iniciar actividad'}
+          {cargando ? 'Iniciando...' : 'Registrar actividad'}
         </button>
+        </div>
       </div>
+      {avisoBorrador && <p role="status" className="text-sm text-muted-foreground">{avisoBorrador}</p>}
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
     </form>
   )

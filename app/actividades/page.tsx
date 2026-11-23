@@ -1,26 +1,23 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { CalendarCheck, Clock, Coffee, ListChecks, MessageSquare, Play, X } from 'lucide-react'
+import { CalendarCheck, CalendarRange, Check, CircleCheck, Clock, Coffee, ListChecks, MessageSquare, Play, X } from 'lucide-react'
 import { MainLayout } from '@/components/main-layout'
 import { ActivityCard } from '@/components/activity-card'
 import { ActivityForm } from '@/components/activity-form'
 import { RegistroDiaForm } from '@/components/registro-dia-form'
 import { MisRegistros } from '@/components/mis-registros'
+import { CronogramaActividades } from '@/components/cronograma-actividades'
+import { MisObservaciones, useMisObservaciones } from '@/components/mis-observaciones'
 import { useActividad } from '@/lib/actividad-context'
 import { useAuth } from '@/lib/auth-context'
 import { opcionesApi } from '@/lib/api-cliente'
 import { cn, fechaLocalISO, nombreCorto } from '@/lib/utils'
+import styles from './actividades.module.css'
 
-const MisObservaciones = dynamic(
-  () => import('@/components/mis-observaciones').then((modulo) => modulo.MisObservaciones),
-  { loading: () => <div role="status" className="space-y-2.5"><div className="h-16 animate-pulse rounded-xl bg-muted/60" /><div className="h-24 animate-pulse rounded-xl bg-muted/60" /></div> },
-)
-
-type Pestana = 'registrar' | 'registros' | 'observaciones'
+type Pestana = 'registrar' | 'registros' | 'cronograma' | 'observaciones'
 
 type ModoRegistro = 'tiempo-real' | 'dia'
 
@@ -56,6 +53,7 @@ export default function Actividades() {
   const { actividadActual, cargandoActividad, historial, totalHistorial, enRefrigerio } = useActividad()
   const { usuario, empresaActiva, cargando } = useAuth()
   const router = useRouter()
+  useMisObservaciones()
   const [pestana, setPestana] = useState<Pestana>('registrar')
   const [modoRegistro, setModoRegistro] = useState<ModoRegistro>('tiempo-real')
   const [avisoRefrigerioAbierto, setAvisoRefrigerioAbierto] = useState(false)
@@ -157,6 +155,11 @@ export default function Actividades() {
       icono: <ListChecks size={16} />,
     },
     {
+      id: 'cronograma',
+      etiqueta: 'Cronograma semanal',
+      icono: <CalendarRange size={16} />,
+    },
+    {
       id: 'observaciones',
       etiqueta: 'Mis observaciones',
       icono: <MessageSquare size={16} />,
@@ -164,15 +167,16 @@ export default function Actividades() {
   ]
 
   const tarjetasResumen = [
-    { etiqueta: 'Hoy', ayuda: 'Registros de hoy', valor: String(totalHoy) },
-    { etiqueta: 'Aprobados', ayuda: 'Aprobados de hoy', valor: String(aprobadasHoy) },
-    { etiqueta: 'Pendientes', ayuda: 'Pendientes de hoy', valor: String(pendientesHoy) },
+    { icono: CalendarCheck, tono: 'violeta', etiqueta: 'Hoy', ayuda: 'Registros de hoy', valor: resumenDia ? String(totalHoy) : '—' },
+    { icono: CircleCheck, tono: 'verde', etiqueta: 'Aprobados', ayuda: 'Aprobados de hoy', valor: resumenDia ? String(aprobadasHoy) : '—' },
+    { icono: Clock, tono: 'ambar', etiqueta: 'Pendientes', ayuda: 'Pendientes de hoy', valor: resumenDia ? String(pendientesHoy) : '—' },
   ]
 
   return (
     <MainLayout
       title="Actividades"
-      subtitle="Registra tu tiempo y consulta tus registros"
+      ancho="ancho"
+      subtitle="Registro, seguimiento y cronograma de mis actividades."
     >
       {enRefrigerio && avisoRefrigerioAbierto && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm" role="presentation">
@@ -196,11 +200,13 @@ export default function Actividades() {
           </div>
         </div>
       )}
-      <div className="space-y-5">
-        <div className="flex gap-1 border-b border-border">
+      <div className={styles.module}>
+        <nav className={styles.tabs} aria-label="Vistas de actividades">
           {pestañas.map((p) => (
             <button
               key={p.id}
+              type="button"
+              aria-current={pestana === p.id ? true : undefined}
               onClick={() => setPestana(p.id)}
               className={cn(
                 'flex items-center gap-2 border-b-2 px-3 pb-2.5 pt-1 text-sm font-medium transition-colors',
@@ -213,7 +219,7 @@ export default function Actividades() {
               {p.etiqueta}
             </button>
           ))}
-        </div>
+        </nav>
 
         {pestana === 'registrar' ? (
           <>
@@ -222,11 +228,11 @@ export default function Actividades() {
                 Es hora de refrigerio (1:00 p. m. a 2:00 p. m.). {actividadActual ? 'El cronómetro se pausa.' : ''} No puedes registrar ni reanudar actividades hasta las 2:00 p. m.
               </p>
             )}
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 sm:px-5 sm:py-4">
+            <div className={styles.hero}>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs capitalize text-muted-foreground">{fechaHoy}</p>
-                <h2 className="truncate text-base font-semibold text-foreground sm:text-lg">Hola, {primerNombre}</h2>
-                <p className="text-xs leading-snug text-muted-foreground sm:text-sm">
+                <p className={styles.date}><CalendarCheck size={18} aria-hidden="true" />{fechaHoy}</p>
+                <h2 className={styles.greeting}>Hola, {primerNombre}</h2>
+                <p className="text-base leading-snug text-muted-foreground">
                   {actividadActual
                     ? 'Tienes una actividad en curso, puedes pausarla o finalizarla.'
                     : '¿Qué vas a trabajar hoy?'}
@@ -260,17 +266,19 @@ export default function Actividades() {
                 )}
               </div>
 
-              <div className="flex shrink-0 divide-x divide-border rounded-lg bg-muted/60">
+              <div className={styles.summary}>
                 {tarjetasResumen.map((tarjeta) => (
                   <div
                     key={tarjeta.etiqueta}
                     title={tarjeta.ayuda}
-                    className="min-w-[3.25rem] px-2 py-1.5 text-center sm:min-w-[4rem] sm:px-4 sm:py-2"
+                    className={styles.stat}
+                    data-tone={tarjeta.tono}
                   >
-                    <p className="text-base font-bold leading-tight text-foreground sm:text-lg">
+                    <tarjeta.icono size={22} aria-hidden="true" />
+                    <p className="text-xl font-bold leading-tight text-foreground">
                       {tarjeta.valor}
                     </p>
-                    <p className="whitespace-nowrap text-[10px] text-muted-foreground sm:text-[11px]">
+                    <p className="text-xs text-muted-foreground">
                       {tarjeta.etiqueta}
                     </p>
                   </div>
@@ -278,7 +286,7 @@ export default function Actividades() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 rounded-xl border border-border bg-card p-2 sm:grid-cols-2">
+            <div className={styles.modes}>
               <OpcionModo
                 activo={modoRegistro === 'tiempo-real'}
                 onClick={() => cambiarModoRegistro('tiempo-real')}
@@ -297,20 +305,20 @@ export default function Actividades() {
 
             {modoRegistro === 'tiempo-real' ? (
               cargandoActividad ? (
-                <section className="rounded-xl border border-border bg-card p-5">
+                <section className={styles.formPanel}>
                   <div className="h-5 w-48 animate-pulse rounded bg-muted" />
                   <div className="mt-4 h-24 animate-pulse rounded-xl bg-muted/60" />
                 </section>
               ) : actividadActual ? (
                 <ActivityCard />
               ) : (
-                <section className="rounded-xl border border-border bg-card p-5">
-                  <div className="mb-4 flex items-center gap-2.5">
+                <section className={cn(styles.formPanel, styles.newActivityPanel)}>
+                  <div className={styles.formHeader}>
                     <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[#7c3aed]/15">
                       <CalendarCheck size={17} className="text-[#c4b5fd]" />
                     </div>
                     <div>
-                      <h2 className="text-base font-semibold text-foreground">
+                      <h2 className="text-xl font-semibold text-foreground">
                         Registrar nueva actividad
                       </h2>
                       <p className="text-sm text-muted-foreground">
@@ -322,13 +330,13 @@ export default function Actividades() {
                 </section>
               )
             ) : (
-              <section className="rounded-xl border border-border bg-card p-5">
-                <div className="mb-4 flex items-center gap-2.5">
+              <section className={styles.formPanel}>
+                <div className={styles.formHeader}>
                   <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-emerald-500/15">
                     <Clock size={17} className="text-emerald-300" />
                   </div>
                   <div>
-                    <h2 className="text-base font-semibold text-foreground">Registrar horas del día</h2>
+                    <h2 className="text-xl font-semibold text-foreground">Registrar horas del día</h2>
                     <p className="text-sm text-muted-foreground">
                       Al terminar tu jornada, anota el bloque con hora de inicio y fin. Queda pendiente de
                       aprobación.
@@ -346,6 +354,8 @@ export default function Actividades() {
           </>
         ) : pestana === 'registros' ? (
           <MisRegistros />
+        ) : pestana === 'cronograma' ? (
+          <CronogramaActividades />
         ) : (
           <MisObservaciones />
         )}
@@ -373,7 +383,7 @@ function OpcionModo({
       onClick={onClick}
       aria-pressed={activo}
       className={cn(
-        'flex items-start gap-3 rounded-lg px-3.5 py-3 text-left transition-colors',
+        styles.mode,
         activo
           ? 'bg-[#7c3aed]/15 ring-1 ring-inset ring-[#7c3aed]/40'
           : 'hover:bg-muted/50',
@@ -381,18 +391,19 @@ function OpcionModo({
     >
       <span
         className={cn(
-          'mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg',
+          styles.modeIcon,
           activo ? 'bg-[#7c3aed]/20 text-[#c4b5fd]' : 'bg-muted text-muted-foreground',
         )}
       >
         {icono}
       </span>
       <span className="min-w-0">
-        <span className={cn('block text-sm font-semibold', activo ? 'text-foreground' : 'text-foreground/90')}>
+        <span className={cn('block text-base font-semibold', activo ? 'text-foreground' : 'text-foreground/90')}>
           {titulo}
         </span>
-        <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{descripcion}</span>
+        <span className="mt-0.5 block text-sm leading-snug text-muted-foreground">{descripcion}</span>
       </span>
+      <span className={styles.modeCheck} aria-hidden="true">{activo && <Check size={14} />}</span>
     </button>
   )
 }

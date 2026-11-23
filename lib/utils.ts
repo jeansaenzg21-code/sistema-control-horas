@@ -139,3 +139,18 @@ export function nombreCorto(nombre: string | null | undefined, correo?: string |
   return `${nombrePila} ${inicial}.`
 }
 
+
+/** Primer nombre y primer apellido en el formato de la lista de personal. */
+export function primerNombreYApellido(nombre: string, correo?: string | null): string {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean)
+  const datosCorreo = pilaYApellidoDesdeCorreo(correo, partes)
+  const apellidoCorreo = datosCorreo?.apellido
+  const apellidoConfirmado = apellidoCorreo && partes.find((parte) => iguales(parte, apellidoCorreo))
+  const [pila, apellido] = datosCorreo && apellidoConfirmado
+    ? [datosCorreo.pila, apellidoConfirmado]
+    : [partes[2] ?? partes[1] ?? partes[0], partes.length > 1 ? partes[0] : undefined]
+
+  return [pila, apellido].filter((parte): parte is string => Boolean(parte))
+    .map((parte) => parte.charAt(0).toLocaleUpperCase('es-PE') + parte.slice(1).toLocaleLowerCase('es-PE'))
+    .join(' ') || '—'
+}

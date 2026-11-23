@@ -3,9 +3,12 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { MainLayout } from '@/components/main-layout'
 import { DateRangeFilter } from '@/components/date-range-filter'
+import { DashboardAdminVista } from './dashboard-admin-vista'
+import { evaluarBolsaHoras } from '@/lib/bolsa-horas'
 import { PANEL } from '@/components/cartera-ui'
 import { cn } from '@/lib/utils'
 import { formatoHoras } from '@/lib/utils'
+import { useCartera } from '@/lib/use-cartera'
 import { useAuth } from '@/lib/auth-context'
 import { opcionesApi } from '@/lib/api-cliente'
 import { useQuery } from '@tanstack/react-query'
@@ -14,77 +17,52 @@ import {
   ChevronRight, AlertTriangle, ClipboardCheck, MessageSquareWarning, UserX, TrendingDown, Ban,
 } from 'lucide-react'
 type Area = { id: number; nombre: string }
-type Usuario = { id: number; nombre: string; rol: string; area_id: number | null; area_nombre: string | null; activo: number | boolean; cargo?: string | null }
-type ClienteCartera = { id: number; area_id: number; area_nombre: string; horasContratadas: number; horasConsumidas: number; horasDisponibles: number; horasExcedidas: number; estado: string; nombre: string }
-type CarteraRespuesta = { clientes: ClienteCartera[]; totales: { clientes: number; contratadas: number; consumidas: number; disponibles: number; excedidas: number; porAprobar: number } }
+type Usuario = { id: number; nombre: string; correo?: string | null; rol: string; area_id: number | null; area_nombre: string | null; activo: number | boolean; cargo?: string | null }
 type FilaFacturableArea = { area_id?: number | null; area_nombre: string; horas?: number; pendientes?: number; horas_facturadas?: number; horas_no_facturadas?: number; horas_facturables?: number; horas_no_facturables?: number }
 type Resumen = { por_area?: FilaFacturableArea[]; totales: { registros: number; horas: number; horas_facturadas: number; horas_no_facturadas: number }; por_usuario: Array<{ usuario_id: number; nombre: string; cargo: string | null; area_nombre: string; registros: number; horas: number; horas_facturadas?: number; horas_no_facturadas?: number; horas_facturables?: number; horas_no_facturables?: number }>; por_estado?: Array<{ estado: string; registros: number; horas: number }> }
 type Aprobacion = { id: number; estado: string; usuario_nombre: string; usuario_id: number; revisado_por: number | null; revisado_en: string | null; area_nombre: string; area_id: number }
 type Cumplimiento = { resumen: { cobertura: number; colaboradores: number; cumplen: number; cumplen_parcial: number; no_cumplen: number } }
 type Severidad = 'rojo' | 'ambar' | 'violeta'
 export function DashboardAdministrador() {
-  const { usuarios, cargarUsuarios } = useAuth()
+  const { usuarios, cargarUsuarios, usuario, empresaActiva } = useAuth()
+  const carteraQuery = useCartera()
+  const cartera = carteraQuery.data
   const hoy = new Date()
   const mes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
   const ultimo = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate()
   const [desde, setDesde] = useState(`${mes}-01`)
   const [hasta, setHasta] = useState(`${mes}-${String(Math.min(hoy.getDate(), ultimo)).padStart(2, '0')}`)
-  const [cargando, setCargando] = useState(true)
-  const [areas, setAreas] = useState<Area[]>([])
-  const [resumen, setResumen] = useState<Resumen | null>(null)
-  const [resumenPrevio, setResumenPrevio] = useState<Resumen | null>(null)
-  const [cartera, setCartera] = useState<CarteraRespuesta | null>(null)
-  const [cumplimiento, setCumplimiento] = useState<Cumplimiento | null>(null)
-  const [aprobaciones, setAprobaciones] = useState<Aprobacion[]>([])
-  const [usuariosRemotos, setUsuariosRemotos] = useState<Usuario[]>([])
   const [mostrarAreasSinActividad, setMostrarAreasSinActividad] = useState(false)
   const [ordenFacturacion, setOrdenFacturacion] = useState<'horas' | 'porcentaje'>('horas')
   useEffect(() => {
     if (usuarios.length === 0) void cargarUsuarios()
   }, [usuarios.length, cargarUsuarios])
   const dashboardQuery = useQuery({
-    queryKey: ['dashboard-admin', desde, hasta],
+    queryKey: ['dashboard-admin', empresaActiva?.id, usuario?.id, desde, hasta],
+    enabled: Boolean(empresaActiva && usuario),
     queryFn: async () => {
       const qs = desde && hasta ? `desde=${desde}&hasta=${hasta}` : ''
       const mesF = (hasta || new Date().toISOString().slice(0, 10)).slice(5, 7)
       const anioF = (hasta || new Date().toISOString().slice(0, 10)).slice(0, 4)
-      const [a, r, rp, c, cu, ap, u] = await Promise.all([
-        fetch('/api/areas', opcionesApi()).then((x) => x.ok ? x.json() : []),
+      const [a, r, rp, cu, ap] = await Promise.all([
+        fetch('/api/areas', opcionesApi()).then((x) => x.ok ? x.json() : null),
         fetch(`/api/actividades/resumen${qs ? `?${qs}` : ''}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
         fetchPrevio(desde, hasta),
-        fetch('/api/clientes/cartera', opcionesApi()).then((x) => x.ok ? x.json() : null),
         fetch(`/api/cumplimiento?anio=${anioF}&mes=${mesF}&desde=${desde}&hasta=${hasta}`, opcionesApi()).then((x) => x.ok ? x.json() : null),
-        fetch('/api/aprobaciones', opcionesApi()).then((x) => x.ok ? x.json() : []),
-        fetch('/api/usuarios', opcionesApi()).then((x) => x.ok ? x.json() : []),
+        fetch('/api/aprobaciones', opcionesApi()).then((x) => x.ok ? x.json() : null),
       ])
-      return { a, r, rp, c, cu, ap, u }
+      return { a, r, rp, cu, ap, incompleto: !r || !cu || !Array.isArray(a) || !Array.isArray(ap) }
     },
     staleTime: 60_000,
   })
 
-  useEffect(() => {
-    if (!dashboardQuery.data) return
-    const { a, r, rp, c, cu, ap, u } = dashboardQuery.data
-    setAreas(Array.isArray(a) ? a : [])
-    setResumen(r as Resumen | null)
-    setResumenPrevio(rp as Resumen | null)
-    setCartera(c as CarteraRespuesta | null)
-    setCumplimiento(cu as Cumplimiento | null)
-    setAprobaciones(Array.isArray(ap) ? ap : [])
-    setUsuariosRemotos(Array.isArray(u) ? u : [])
-    setCargando(false)
-  }, [dashboardQuery.data])
-
-  useEffect(() => {
-    if (dashboardQuery.isError) {
-      setResumen(null); setCartera(null); setCumplimiento(null); setAprobaciones([]); setUsuariosRemotos([])
-      setCargando(false)
-    }
-  }, [dashboardQuery.isError])
-
-  useEffect(() => {
-    setCargando(dashboardQuery.isFetching)
-  }, [dashboardQuery.isFetching])
+  const datos = dashboardQuery.data
+  const areas = useMemo<Area[]>(() => Array.isArray(datos?.a) ? datos.a : [], [datos])
+  const resumen = (datos?.r ?? null) as Resumen | null
+  const resumenPrevio = (datos?.rp ?? null) as Resumen | null
+  const cumplimiento = (datos?.cu ?? null) as Cumplimiento | null
+  const aprobaciones = useMemo<Aprobacion[]>(() => Array.isArray(datos?.ap) ? datos.ap : [], [datos])
+  const cargando = dashboardQuery.isFetching || carteraQuery.isFetching
   const horasActual = resumen?.totales.horas ?? 0
   const horasPrevias = resumenPrevio?.totales.horas ?? 0
   const variacion = horasPrevias > 0 ? Math.round(((horasActual - horasPrevias) / horasPrevias) * 1000) / 10 : null
@@ -95,7 +73,7 @@ export function DashboardAdministrador() {
   const enCurso = resumen?.por_estado?.find((e) => e.estado === 'EN_CURSO')?.registros ?? 0
   const totalEstado = aprobadas + pendientes + observados + rechazadas + enCurso
   const usuariosUnicos = useMemo(() => new Set((resumen?.por_usuario ?? []).map((u) => u.usuario_id)), [resumen])
-  const listaUsuarios = usuarios.length ? usuarios as unknown as Usuario[] : usuariosRemotos
+  const listaUsuarios: Usuario[] = usuarios.map((persona) => ({ ...persona, area_nombre: persona.area_nombre ?? null }))
   const totalColaboradores = listaUsuarios.filter((u) => u.activo && ['personal', 'supervisor', 'jefe_area'].includes(String(u.rol).toLowerCase())).length
   const sinRegistro = Math.max(0, totalColaboradores - usuariosUnicos.size)
   const clientes = useMemo(() => cartera?.clientes ?? [], [cartera])
@@ -238,7 +216,7 @@ export function DashboardAdministrador() {
   ]
   const pct = (v: number) => (totalEstado ? Math.round((v / totalEstado) * 100) : 0)
   const metricas = [
-    { titulo: 'Horas registradas', valor: formatoHoras(horasActual), detalle: variacion === null ? `${resumen?.totales.registros ?? 0} registros` : `${variacion > 0 ? '+' : ''}${variacion}% vs. período anterior`, icono: Clock, tono: 'sky', destacado: true },
+    { titulo: 'Horas registradas', valor: formatoHoras(horasActual), detalle: variacion === null ? `${resumen?.totales.registros ?? 0} registros` : `${variacion > 0 ? '+' : ''}${variacion}% vs. período anterior`, icono: Clock, tono: 'sky' },
     { titulo: 'Cobertura de cumplimiento', valor: cumplimiento ? `${cumplimiento.resumen.cobertura}%` : '—', detalle: cumplimiento ? `${cumplimiento.resumen.cumplen} de ${cumplimiento.resumen.colaboradores} cumplen` : 'Sin datos', icono: ShieldCheck, tono: 'emerald' },
     { titulo: 'Por aprobar', valor: String(pendientesTotal), detalle: 'Registros pendientes', icono: ListChecks, tono: 'amber' },
     { titulo: 'Clientes en cartera', valor: String(clientesActivos), detalle: `${clientesRiesgo} en riesgo`, icono: Users, tono: 'violet' },
@@ -249,6 +227,47 @@ export function DashboardAdministrador() {
     sky: 'bg-sky-500/12 text-sky-400', emerald: 'bg-emerald-500/12 text-emerald-400',
     amber: 'bg-amber-500/12 text-amber-400', violet: 'bg-violet-500/12 text-violet-400',
     teal: 'bg-teal-500/12 text-teal-400', blue: 'bg-blue-500/12 text-blue-400',
+  }
+  if (usuario?.rol === 'admin' || usuario?.rol === 'socio') {
+    const estados = [
+      { nombre: 'En curso', valor: 0, color: '#61de90' },
+      { nombre: 'Bolsa próxima a agotarse', valor: 0, color: '#fbbf24' },
+      { nombre: 'En riesgo (exceso)', valor: 0, color: '#f83272' },
+      { nombre: 'Sin presupuesto', valor: 0, color: '#aa77fa' },
+    ]
+    let presupuestos = 0
+    for (const cliente of clientes) {
+      if (cliente.estado === 'PENDIENTE') presupuestos += 1
+      else if (cliente.estado === 'SIN_PRESUPUESTO') estados[3].valor += 1
+      else if (cliente.estado === 'EN_RIESGO') estados[2].valor += 1
+      else if (evaluarBolsaHoras(cliente.horasContratadas, cliente.horasConsumidas).estado !== 'normal') estados[1].valor += 1
+      else estados[0].valor += 1
+    }
+    if (presupuestos) estados.push({ nombre: 'Por revisar', valor: presupuestos, color: '#7c6db1' })
+    const divisiones = [
+      ...horasPorArea,
+      ...areas.filter((area) => !horasPorArea.some((fila) => fila.id === area.id)).map((area) => ({ ...area, horas: 0 })),
+    ]
+    const usuariosConRegistro = listaUsuarios.filter((persona) => persona.activo &&
+      ['personal', 'supervisor', 'jefe_area'].includes(persona.rol) && usuariosUnicos.has(persona.id)).length
+
+    return <DashboardAdminVista
+      desde={desde} hasta={hasta} onChange={(inicio, fin) => { setDesde(inicio); setHasta(fin) }}
+      reintentar={() => { void dashboardQuery.refetch(); void carteraQuery.refetch() }}
+      cargando={cargando} listo={Boolean(datos && !datos.incompleto && cartera)} error={carteraQuery.isError || dashboardQuery.isError || Boolean(dashboardQuery.data?.incompleto)}
+      metricas={metricas.slice(0, 5).map((metrica, indice) => ({
+        ...metrica,
+        titulo: indice === 1 ? 'Cumplimiento' : metrica.titulo,
+        valor: indice === 3 ? String(clientes.length) : metrica.valor,
+        detalle: indice === 4 ? formatoHoras(totalContratadas) + ' contratadas' : metrica.detalle,
+      }))}
+      divisiones={divisiones}
+      integrantes={listaUsuarios.filter((persona) => persona.activo && ['personal', 'supervisor', 'jefe_area'].includes(persona.rol))}
+      cartera={areasCartera} estados={estados}
+      facturables={totalFacturables} noFacturables={totalNoFacturables}
+      pendientes={pendientesTotal} sinRegistro={Math.max(0, totalColaboradores - usuariosConRegistro)}
+      riesgo={clientesRiesgo} presupuestos={presupuestos}
+    />
   }
   const superficie = `${PANEL} min-w-0 overflow-hidden`
   return (

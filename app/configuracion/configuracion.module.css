@@ -1,0 +1,92 @@
+
+.layout { display: grid; gap: 15px; min-width: 0; }
+.navigation {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.navigation button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 38px; padding: 7px 14px; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0;
+  color: var(--muted-foreground); font-size: 14px; font-weight: 600;
+  transition: background-color 150ms, color 150ms, border-color 150ms;
+}
+.navigation button:hover { color: var(--foreground); background: var(--muted); }
+.navigation button[aria-current] {
+  border-color: var(--ad-accent-ink, var(--primary));
+  color: var(--ad-accent-ink, var(--primary));
+}
+.navigation button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.content, .fields { min-width: 0; }
+.fields { display: contents; }
+.content :is(.fields > *, .fields > * > *, section)[class~="bg-card"] {
+  border-radius: 16px; border-color: var(--ad-line, var(--border));
+  background: var(--ad-panel, var(--card));
+  box-shadow: 0 5px 18px rgb(29 14 49 / 5%);
+}
+.content :is(h2, h3)[class~="text-foreground"] { font-size: 1rem; font-weight: 650; }
+.content :is(input, select, textarea)[class~="bg-background"] {
+  border-color: var(--input);
+  background-color: color-mix(in srgb, var(--card) 35%, var(--background));
+}
+.content :is(input, select, textarea)[class~="bg-background"]:focus-visible { border-color: var(--ring); }
+.content thead { background: var(--ad-raised, var(--muted)); }
+.readonly {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 11px; background: var(--card);
+  color: var(--muted-foreground); font-size: 13px;
+}
+@media (max-width: 560px) {
+  .navigation button { flex: 1 1 auto; padding-inline: 9px; font-size: 13px; }
+}
+
+
+
+.appearance, .account, .editProfile {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--ad-panel, var(--card));
+}
+.appearance {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 13px; padding: 15px clamp(14px, 2vw, 25px);
+}
+.panelHeading { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.panelHeading h2 { font-size: 18px; font-weight: 700; }
+.panelHeading p { color: var(--muted-foreground); font-size: 14px; }
+.tile { display: grid; place-items: center; flex: 0 0 43px; aspect-ratio: 1; border-radius: 11px; color: var(--ad-accent-ink, var(--primary)); background: color-mix(in srgb, var(--primary) 15%, var(--card)); }
+.themeOptions { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); }
+.themeOptions button, .editProfile footer button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 15px; min-height: 39px; border-radius: 9px; font-size: 14px; }
+.themeOptions button:hover { background: var(--muted); }
+.themeOptions button[aria-pressed="true"], .editProfile button[type="submit"] { background: var(--ad-selected, var(--primary)); color: var(--primary-foreground); }
+.profileGrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.account {
+  display: flex; flex-direction: column; align-items: center; gap: 15px;
+  padding: clamp(18px, 2.7vw, 36px) clamp(14px, 2vw, 25px);
+  background: radial-gradient(ellipse at 0 0, color-mix(in srgb, var(--primary) 36%, transparent), transparent 46%),
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--primary) 17%, transparent), transparent 48%), var(--card);
+}
+.avatar { display: grid; place-items: center; width: 76px; aspect-ratio: 1; border-radius: 23px; border: 1px solid color-mix(in srgb, var(--primary) 44%, var(--border)); background: color-mix(in srgb, var(--primary) 24%, var(--card)); font-size: 32px; font-weight: 680; }
+.account h2 { font-size: clamp(16px, 1.35vw, 21px); font-weight: 700; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+.email, .accountDetails > div { display: flex; align-items: center; gap: 11px; width: 100%; overflow-wrap: anywhere; }
+.account svg { flex: none; color: var(--muted-foreground); }
+.email { font-size: 14px; color: var(--muted-foreground); }
+.accountDetails { display: grid; gap: 13px; width: 100%; border-top: 1px solid var(--border); padding-top: 14px; }
+.accountDetails dt { color: var(--muted-foreground); font-size: 12px; }
+.accountDetails dd { font-weight: 650; font-size: 14px; }
+.editProfile { display: grid; gap: 13px; padding: clamp(15px, 2vw, 25px); }
+.editProfile > label, .passwordField { display: grid; gap: 5px; font-size: 14px; font-weight: 600; }
+.passwordField label span { color: var(--muted-foreground); font-weight: 400; }
+.editProfile input { width: 100%; min-height: 37px; padding: 7px 11px; border: 1px solid var(--input); border-radius: 9px; background: var(--background); color: var(--foreground); font-weight: 400; }
+.editProfile input:focus-visible, .themeOptions button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.passwordField > div { position: relative; }
+.passwordField input { padding-inline-end: 42px; }
+.passwordField button { position: absolute; inset-inline-end: 0; inset-block: 0; display: grid; width: 38px; place-items: center; color: var(--muted-foreground); }
+.passwordField button:hover { color: var(--foreground); }
+.editProfile footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; padding-top: 7px; }
+.editProfile footer button { border: 1px solid var(--border); }
+.editProfile footer button:hover { border-color: var(--ring); }
+.editProfile footer button:disabled { opacity: .55; }
+@media (min-width: 900px) {
+  .profileGrid { grid-template-columns: minmax(235px, 1fr) minmax(0, 2.2fr); }
+}

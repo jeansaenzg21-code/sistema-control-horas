@@ -106,6 +106,60 @@ const HORAS_ACTIVIDAD = `GREATEST(0, TIMESTAMPDIFF(SECOND, a.inicio, a.fin) -
   COALESCE((SELECT SUM(TIMESTAMPDIFF(SECOND, p.inicio, COALESCE(p.fin, a.fin)))
              FROM pausas p WHERE p.actividad_id = a.id), 0))`
 
+async function evolucionMensual(empresaId: number) {
+  const [anio, mes] = new Intl.DateTimeFormat('fr-CA', {
+    year: 'numeric', month: '2-digit', timeZone: 'America/Lima',
+  }).format(new Date()).split('-').map(Number)
+  const meses = Array.from({ length: 7 }, (_, indice) =>
+    new Date(Date.UTC(anio, mes - 6 + indice, 1)).toISOString().slice(0, 10))
+  const desde = meses[0]
+  const hasta = meses[6]
+  type FilaMes = RowDataPacket & { mes: string; horas: number | string }
+  // La importación actual crea las bolsas activas y no llena revisado_en.
+  // Las altas manuales conservan su propia fecha y horas en auditoría.
+  const [[contratadas], [consumidas]] = await Promise.all([
+    pool.query<FilaMes[]>(
+      `WITH altas_manuales AS (
+         SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(despues, '$.servicioId')) AS UNSIGNED) AS servicio_id,
+                created_at AS fecha,
+                CAST(JSON_UNQUOTE(JSON_EXTRACT(despues, '$.horas')) AS DECIMAL(14, 4)) AS horas
+           FROM auditoria
+          WHERE empresa_id = ? AND entidad = 'clientes' AND accion = 'SERVICIO_PRESUPUESTO_CREAR'
+       ), contrataciones AS (
+         SELECT COALESCE(p.revisado_en, p.creado_en) AS fecha, s.horas
+           FROM presupuestos p
+           JOIN presupuesto_servicios s ON s.presupuesto_id = p.id
+          WHERE p.empresa_id = ? AND p.estado = 'APROBADO' AND s.activo = TRUE
+            AND s.origen <> 'CONSOLIDADO'
+            AND NOT EXISTS (SELECT 1 FROM altas_manuales m WHERE m.servicio_id = s.id)
+          UNION ALL
+         SELECT fecha, horas FROM altas_manuales
+       )
+       SELECT DATE_FORMAT(fecha, '%Y-%m') AS mes, SUM(horas) AS horas
+         FROM contrataciones
+        WHERE fecha >= ? AND fecha < ?
+        GROUP BY mes`,
+      [empresaId, empresaId, desde, hasta],
+    ),
+    pool.query<FilaMes[]>(
+      `SELECT DATE_FORMAT(a.inicio, '%Y-%m') AS mes, SUM(${HORAS_ACTIVIDAD}) / 3600 AS horas
+         FROM actividades a
+         JOIN clientes c ON c.id = a.cliente_id AND c.activo = TRUE
+         JOIN areas d ON d.id = c.area_id
+        WHERE d.empresa_id = ? AND a.fin IS NOT NULL
+          AND a.estado IN ('PENDIENTE_APROBACION','APROBADA') AND a.inicio >= ? AND a.inicio < ?
+        GROUP BY mes`,
+      [empresaId, desde, hasta],
+    ),
+  ])
+  const contratosPorMes = new Map(contratadas.map((fila) => [fila.mes, Number(fila.horas)]))
+  const consumoPorMes = new Map(consumidas.map((fila) => [fila.mes, Number(fila.horas)]))
+  return meses.slice(0, 6).map((fecha) => {
+    const mes = fecha.slice(0, 7)
+    return { mes, contratadas: contratosPorMes.get(mes) ?? 0, consumidas: consumoPorMes.get(mes) ?? 0 }
+  })
+}
+
 export async function GET(request: Request) {
   try {
     const user = await getUserFromRequest(request)
@@ -117,6 +171,13 @@ export async function GET(request: Request) {
     }
     const puedeVerTodaCartera = esAdministrador(user) || esJefeDeArea(user) || esSocio(user)
     if (!puedeVerTodaCartera) return NextResponse.json({ error: 'La cartera de clientes solo está disponible para quienes administran el área.' }, { status: 403 })
+
+    if (new URL(request.url).searchParams.get('evolucion') === '1') {
+      if (!esAdministrador(user) && !esSocio(user)) {
+        return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
+      }
+      return NextResponse.json(await evolucionMensual(context.activa.id))
+    }
 
     const params: (string | number)[] = [user.id, context.activa.id]
     let filtroArea = ''

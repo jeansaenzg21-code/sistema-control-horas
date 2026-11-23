@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarOff, Check, Loader2, Pencil, Plus, Search, Sun, Trash2, Umbrella, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CalendarDays, CalendarOff, Check, ChevronDown, Loader2, Pencil, Plus, Search, Sun, Trash2, Umbrella, Users, X } from 'lucide-react'
 import { useAuth, type Usuario } from '@/lib/auth-context'
+import styles from './cumplimiento/cumplimiento.module.css'
 import { opcionesApi } from '@/lib/api-cliente'
 
 interface ExcepcionRow {
@@ -36,8 +37,17 @@ const estiloCampo =
   'h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-[#7c3aed]/40'
 
 export function ExcepcionesAdmin() {
-  const { usuarios, empresaActiva } = useAuth()
-  const colaboradores = usuarios.filter((u) => u.rol === 'personal' && u.activo)
+  const { usuarios, usuario, empresaActiva, cargarUsuarios } = useAuth()
+  const empresaId = empresaActiva?.id
+  const soloLectura = usuario?.rol === 'socio'
+  const jefeDeArea = usuario?.rol === 'jefe_area'
+  const colaboradores = useMemo(() => {
+    const lista = usuarios.filter((u) => u.activo && u.area_id != null &&
+      (!jefeDeArea || u.area_id === usuario?.area_id))
+    return jefeDeArea && usuario && !lista.some((u) => u.id === usuario.id) ? [usuario, ...lista] : lista
+  }, [jefeDeArea, usuario, usuarios])
+
+  useEffect(() => { void cargarUsuarios() }, [cargarUsuarios, empresaId])
 
   const [rows, setRows] = useState<ExcepcionRow[]>([])
   const [cargando, setCargando] = useState(true)
@@ -46,6 +56,8 @@ export function ExcepcionesAdmin() {
   const [form, setForm] = useState<FormEstado>(FORM_VACIO)
   const [busquedaUsuario, setBusquedaUsuario] = useState('')
   const [autocompletadoAbierto, setAutocompletadoAbierto] = useState(false)
+  const buscadorColaborador = useRef<HTMLDivElement>(null)
+
   const [guardando, setGuardando] = useState(false)
   const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null)
   const usuarioSeleccionado = colaboradores.find((u) => String(u.id) === form.usuario_id) ?? null
@@ -61,8 +73,8 @@ export function ExcepcionesAdmin() {
   }, [busquedaUsuario, colaboradores])
 
   const cargar = useCallback(async () => {
+    if (!empresaId) return
     setCargando(true)
-    setMensaje(null)
     try {
       const params = new URLSearchParams()
       if (mostrando === 'mes') {
@@ -85,7 +97,7 @@ export function ExcepcionesAdmin() {
     } finally {
       setCargando(false)
     }
-  }, [mostrando, empresaActiva?.id])
+  }, [mostrando, empresaId])
 
   useEffect(() => {
     cargar()
@@ -110,7 +122,7 @@ export function ExcepcionesAdmin() {
       usuario_id: row.usuario_id != null ? String(row.usuario_id) : '',
       descripcion: row.descripcion ?? '',
     })
-    setBusquedaUsuario(usuario?.nombre ?? '')
+    setBusquedaUsuario(usuario?.nombre ?? row.usuario_nombre ?? '')
     setAutocompletadoAbierto(false)
     setMensaje(null)
     setModalAbierto(true)
@@ -121,8 +133,8 @@ export function ExcepcionesAdmin() {
       setMensaje({ tipo: 'error', texto: 'Selecciona una fecha.' })
       return
     }
-    if (form.tipo === 'VACACIONES' && !form.usuario_id) {
-      setMensaje({ tipo: 'error', texto: 'Selecciona un colaborador para registrar vacaciones.' })
+    if (!form.usuario_id && (jefeDeArea || form.tipo === 'VACACIONES' || busquedaUsuario.trim())) {
+      setMensaje({ tipo: 'error', texto: 'Selecciona un colaborador de la lista.' })
       return
     }
     setGuardando(true)
@@ -192,43 +204,21 @@ export function ExcepcionesAdmin() {
   }
 
   return (
-    <section className="rounded-xl border border-border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-        <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <CalendarOff size={15} className="text-sky-400" />
-            Feriados y vacaciones
-          </h2>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Estas fechas se excluyen del cálculo de cumplimiento del módulo /cumplimiento.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-border p-0.5">
-            <button
-              onClick={() => setMostrando('mes')}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                mostrando === 'mes' ? 'bg-[#7c3aed] text-white' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Este mes
-            </button>
-            <button
-              onClick={() => setMostrando('todas')}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                mostrando === 'todas' ? 'bg-[#7c3aed] text-white' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Todas
-            </button>
+    <section className={styles.exceptions}>
+      <div className={styles.exceptionsHeading}>
+        <div className={styles.exceptionsTitle}>
+          <span><CalendarOff size={26} /></span>
+          <div>
+            <h2>Feriados y vacaciones</h2>
+            <p>{jefeDeArea ? 'Registra excepciones para ti o los integrantes de tu división.' : 'Estas fechas se excluyen del cálculo de cumplimiento.'}</p>
           </div>
-          <button
-            onClick={abrirNueva}
-            className="flex items-center gap-1.5 rounded-lg bg-[#7c3aed] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#6d28d9]"
-          >
-            <Plus size={13} />
-            Agregar excepción
-          </button>
+        </div>
+        <div className={styles.exceptionsTools}>
+          <div className={styles.exceptionsTabs} role="group" aria-label="Período">
+            <button type="button" aria-pressed={mostrando === 'mes'} onClick={() => { setMensaje(null); setMostrando('mes') }}>Este mes</button>
+            <button type="button" aria-pressed={mostrando === 'todas'} onClick={() => { setMensaje(null); setMostrando('todas') }}>Todas</button>
+          </div>
+          {!soloLectura && <button type="button" className={styles.exceptionsPrimary} onClick={abrirNueva}><Plus size={18} /> Agregar excepción</button>}
         </div>
       </div>
 
@@ -251,21 +241,21 @@ export function ExcepcionesAdmin() {
           No hay excepciones {mostrando === 'mes' ? 'para este mes' : 'registradas'}.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+        <div className={styles.exceptionsScroll}>
+          <table className={styles.exceptionsTable}>
             <thead>
               <tr className="border-b border-border text-left">
-                <th className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Fecha</th>
-                <th className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Tipo</th>
-                <th className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Colaborador</th>
-                <th className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Descripción</th>
-                <th className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Acciones</th>
+                <th scope="col" className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Fecha</th>
+                <th scope="col" className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Tipo</th>
+                <th scope="col" className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Colaborador</th>
+                <th scope="col" className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Descripción</th>
+                {!soloLectura && <th scope="col" className="px-4 py-1.5 text-[11px] font-medium text-muted-foreground">Acciones</th>}
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-b border-border/50 transition-colors hover:bg-[#7c3aed]/5">
-                  <td className="whitespace-nowrap px-4 py-1.5 text-xs tabular-nums text-muted-foreground">{row.fecha}</td>
+                  <td><span className={styles.exceptionInline}><CalendarDays size={18} />{row.fecha}</span></td>
                   <td className="px-4 py-1.5">
                     <span
                       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
@@ -274,38 +264,32 @@ export function ExcepcionesAdmin() {
                           : 'border-sky-500/30 bg-sky-500/10 text-sky-400'
                       }`}
                     >
-                      {row.tipo === 'FERIADO' ? <Sun size={10} /> : <Umbrella size={10} />}
+                      {row.tipo === 'FERIADO' ? <Sun size={15} /> : <Umbrella size={15} />}
                       {row.tipo.charAt(0) + row.tipo.slice(1).toLowerCase()}
                     </span>
                   </td>
-                  <td className="px-4 py-1.5 text-xs text-muted-foreground">
-                    {row.ambito === 'todos' ? (
-                      <span className="text-muted-foreground">General (todos)</span>
-                    ) : (
-                      row.usuario_nombre ?? `#${row.usuario_id}`
-                    )}
-                  </td>
+                  <td><span className={styles.exceptionInline}><Users size={17} />{row.ambito === 'todos' ? 'General (todos)' : row.usuario_nombre ?? '#' + row.usuario_id}</span></td>
                   <td className="max-w-[240px] truncate px-4 py-1.5 text-xs text-muted-foreground" title={row.descripcion ?? ''}>
                     {row.descripcion ?? '—'}
                   </td>
-                  <td className="px-4 py-1.5">
-                    <div className="flex gap-1">
+                  {!soloLectura && <td className="px-4 py-1.5">
+                    <div className={styles.exceptionsActions}>
                       <button
                         onClick={() => abrirEdicion(row)}
-                        title="Editar"
+                        title="Editar" aria-label="Editar excepción"
                         className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-[#7c3aed]/10 hover:text-[#c4b5fd]"
                       >
-                        <Pencil size={13} />
+                        <Pencil size={17} />
                       </button>
                       <button
                         onClick={() => eliminar(row)}
-                        title="Eliminar"
+                        title="Eliminar" aria-label="Eliminar excepción"
                         className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-rose-500/10 hover:text-rose-400"
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={17} />
                       </button>
                     </div>
-                  </td>
+                  </td>}
                 </tr>
               ))}
             </tbody>
@@ -320,6 +304,11 @@ export function ExcepcionesAdmin() {
         >
           <div
             className="w-full max-w-md rounded-xl border border-border bg-card"
+            onPointerDownCapture={(evento) => {
+              if (evento.target instanceof Node && !buscadorColaborador.current?.contains(evento.target)) {
+                setAutocompletadoAbierto(false)
+              }
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -361,26 +350,24 @@ export function ExcepcionesAdmin() {
               </div>
               <div>
                 <label className="mb-1 block text-[11px] font-medium text-muted-foreground">
-                  Colaborador {form.tipo === 'VACACIONES' ? '(obligatorio)' : '(opcional)'}
+                  Colaborador {jefeDeArea || form.tipo === 'VACACIONES' ? '(obligatorio)' : '(opcional)'}
                 </label>
-                <div className="relative">
+                <div ref={buscadorColaborador} onBlur={(evento) => {
+                  if (evento.relatedTarget && !evento.currentTarget.contains(evento.relatedTarget)) setAutocompletadoAbierto(false)
+                }}>
+                  <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
                   <input
                     type="text"
                     value={usuarioSeleccionado?.nombre ?? busquedaUsuario}
-                    onFocus={() => {
-                      if (form.usuario_id) {
-                        setBusquedaUsuario('')
-                        setForm((actual) => ({ ...actual, usuario_id: '' }))
-                      }
-                      setAutocompletadoAbierto(true)
-                    }}
+                    onFocus={() => setAutocompletadoAbierto(true)}
+                    onClick={() => setAutocompletadoAbierto(true)}
                     onChange={(e) => editarBusquedaUsuario(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Escape') setAutocompletadoAbierto(false)
                     }}
-                    placeholder={form.tipo === 'FERIADO' ? 'General (todos) o escribe para buscar...' : 'Escribe el nombre del colaborador...'}
-                    className={`${estiloCampo} pl-8 pr-8`}
+                    placeholder={!jefeDeArea && form.tipo === 'FERIADO' ? 'General (todos) o escribe para buscar...' : 'Escribe el nombre del colaborador...'}
+                    className={`${estiloCampo} pl-8 pr-16`}
                     autoComplete="off"
                     aria-label="Buscar colaborador"
                   />
@@ -389,15 +376,26 @@ export function ExcepcionesAdmin() {
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={seleccionarGeneral}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                      className="absolute right-9 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
                       aria-label="Limpiar colaborador"
                     >
                       <X size={13} />
                     </button>
                   )}
+                  <button
+                    type="button"
+                    aria-label={autocompletadoAbierto ? 'Cerrar lista de colaboradores' : 'Abrir lista de colaboradores'}
+                    aria-expanded={autocompletadoAbierto}
+                    aria-controls={autocompletadoAbierto ? 'lista-colaboradores-excepcion' : undefined}
+                    onClick={() => setAutocompletadoAbierto((abierto) => !abierto)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronDown size={16} className={autocompletadoAbierto ? 'rotate-180' : undefined} />
+                  </button>
+                  </div>
                   {autocompletadoAbierto && (
-                    <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-30 max-h-56 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-xl">
-                      {form.tipo === 'FERIADO' && (
+                    <div id="lista-colaboradores-excepcion" className={`mt-1 rounded-lg border border-border bg-card p-1 ${styles.exceptionOptions}`}>
+                      {!jefeDeArea && form.tipo === 'FERIADO' && (
                         <button
                           type="button"
                           onMouseDown={(e) => e.preventDefault()}
@@ -426,7 +424,7 @@ export function ExcepcionesAdmin() {
                                   {colaborador.nombre.split(' ').map((parte) => parte[0]).slice(0, 2).join('').toUpperCase()}
                                 </span>
                                 <span className="min-w-0">
-                                  <span className="block truncate text-xs font-medium text-foreground">{colaborador.nombre}</span>
+                                  <span className="block truncate text-xs font-medium text-foreground">{colaborador.nombre}{colaborador.id === usuario?.id && ' (yo)'}</span>
                                   <span className="block truncate text-[10px] text-muted-foreground">
                                     {[colaborador.area_nombre, colaborador.cargo].filter(Boolean).join(' · ') || 'Sin división'}
                                   </span>

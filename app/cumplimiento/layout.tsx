@@ -17,7 +17,7 @@ export default function CumplimientoLayout({ children }: { children: React.React
   if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area' && usuario.rol !== 'socio')) return null
 
   return (
-    <MainLayout title="Cumplimiento" subtitle="Control de registro de horas por colaborador">
+    <MainLayout ancho="ancho" title="Cumplimiento" subtitle="Control de registro de horas por colaborador">
       <div className="space-y-3">
         <CumplimientoNav />
         {children}

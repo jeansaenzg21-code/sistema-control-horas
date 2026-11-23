@@ -1,4 +1,5 @@
 import pool from '@/lib/db'
+import { esJefeDeArea, esSocio, type UsuarioConPermisos } from '@/lib/permisos'
 import { esFechaValida } from '@/lib/fechas'
 
 export const TIPOS_EXCEPCION = ['FERIADO', 'VACACIONES'] as const
@@ -13,6 +14,38 @@ export interface DatosExcepcion {
 
 export function esAdmin(user: { rol: string } | null): boolean {
   return !!user && user.rol === 'ADMINISTRACION'
+}
+
+export function puedeGestionarExcepciones(user: UsuarioConPermisos): boolean {
+  return esAdmin(user) || esJefeDeArea(user)
+}
+
+// Usa los alias e, u y ar en consultas que operan sobre una excepción existente.
+export function alcanceExcepciones(user: UsuarioConPermisos, empresaId: number) {
+  return esAdmin(user) || esSocio(user)
+    ? { sql: '(e.usuario_id IS NULL OR ar.empresa_id = ?)', valores: [empresaId] }
+    : { sql: 'ar.empresa_id = ? AND u.area_id = ?', valores: [empresaId, user.area_id] }
+}
+
+export async function validarDestinatarioExcepcion(
+  usuarioId: number | null,
+  user: UsuarioConPermisos,
+  empresaId: number,
+): Promise<{ error: string; status: number } | null> {
+  const admin = esAdmin(user)
+  if (usuarioId === null) {
+    return admin ? null : { error: 'Selecciona a un miembro de tu división o a ti mismo.', status: 403 }
+  }
+
+  const [filas] = await pool.query(
+    `SELECT u.id FROM usuarios u JOIN areas ar ON ar.id = u.area_id
+      WHERE u.id = ? AND ar.empresa_id = ? AND u.activo = TRUE${admin ? '' : ' AND u.area_id = ?'}`,
+    admin ? [usuarioId, empresaId] : [usuarioId, empresaId, user.area_id],
+  )
+  if ((filas as unknown[]).length) return null
+  return admin
+    ? { error: 'El colaborador no pertenece a la empresa activa o está inactivo.', status: 400 }
+    : { error: 'Solo puedes gestionar excepciones para colaboradores de tu división.', status: 403 }
 }
 
 export function claveUnicaExcepcion(datos: DatosExcepcion): number {

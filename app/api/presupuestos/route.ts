@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
-import { analizarPresupuesto } from '@/lib/presupuestos/importar-excel'
-import { guardarAnalisis } from '@/lib/presupuestos/guardar'
+import { esAdministrador, esSocio } from '@/lib/permisos'
 import { resolverPermiso } from '@/lib/presupuestos/permisos'
 
 export const runtime = 'nodejs'
@@ -16,6 +15,14 @@ export async function GET(request: Request) {
   if (!context.activa) return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
 
   const { searchParams } = new URL(request.url)
+  if (searchParams.get('cartera') === '1') {
+    if (!esAdministrador(user) && !esSocio(user)) {
+      return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
+    }
+    const { obtenerPresupuestosPorCliente } = await import('@/lib/presupuestos/consultar')
+    return NextResponse.json(await obtenerPresupuestosPorCliente(context.activa.id))
+  }
+
   const clienteId = Number(searchParams.get('cliente_id'))
   if (!Number.isInteger(clienteId) || clienteId <= 0) {
     return NextResponse.json({ error: 'cliente_id no es valido.' }, { status: 400 })
@@ -77,6 +84,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: permiso.motivo }, { status: 403 })
   }
 
+  const { analizarPresupuesto } = await import('@/lib/presupuestos/importar-excel')
   let analisis
   try {
     analisis = await analizarPresupuesto(bytes)
@@ -97,6 +105,7 @@ export async function POST(request: Request) {
     )
   }
 
+  const { guardarAnalisis } = await import('@/lib/presupuestos/guardar')
   const resultado = await guardarAnalisis({
     empresaId: context.activa.id,
     clienteId,

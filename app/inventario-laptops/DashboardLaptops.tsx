@@ -131,6 +131,8 @@ export default function DashboardLaptops() {
   const topMarca = marcas[0];
   const topArea = areas[0];
 
+  if (cargando) return <p role="status" className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">Cargando inventario…</p>
+  if (error && equipos.length === 0) return <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-destructive">{error}</p>
   return <div className={styles.app}>
     <div className={styles.page}>
       <section className={styles.kpiGrid}>{kpis.map((k) => <div key={k.label} className={`${styles.kpi} ${styles[k.color + 'Card']}`}><div className={styles.kpiIcon}><k.Icon size={27} /></div><div><span>{k.label}</span><strong>{k.value}</strong><small>{k.hint}</small></div></div>)}</section>

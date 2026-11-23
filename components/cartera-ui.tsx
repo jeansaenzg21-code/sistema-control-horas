@@ -231,13 +231,13 @@ export function Kpi({ icono, etiqueta, valor, nota, tono = 'violeta', avance }: 
 
   const colores = {
 
-    violeta: { icono: 'bg-violet-500/15 text-[#b58aff]', barra: '#9966ee', numero: 'text-white' },
+    violeta: { icono: 'bg-violet-500/15 text-[#b58aff]', barra: '#9966ee', numero: 'text-foreground' },
 
-    azul: { icono: 'bg-blue-500/15 text-[#92b0ff]', barra: '#7597ed', numero: 'text-white' },
+    azul: { icono: 'bg-blue-500/15 text-[#92b0ff]', barra: '#7597ed', numero: 'text-foreground' },
 
-    verde: { icono: 'bg-emerald-500/15 text-[#6de1b1]', barra: '#5ccaac', numero: 'text-white' },
+    verde: { icono: 'bg-emerald-500/15 text-[#6de1b1]', barra: '#5ccaac', numero: 'text-foreground' },
 
-    ambar: { icono: 'bg-amber-500/15 text-[#ffc66d]', barra: '#efb64e', numero: 'text-white' },
+    ambar: { icono: 'bg-amber-500/15 text-[#ffc66d]', barra: '#efb64e', numero: 'text-foreground' },
 
     rojo: { icono: 'bg-rose-500/15 text-[#ff7e99]', barra: '#ff748e', numero: 'text-[#ff8198]' },
 

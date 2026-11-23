@@ -2,20 +2,28 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Search, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, Menu } from 'lucide-react'
+import { Bell, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, Menu } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useNotificaciones } from '@/lib/notificaciones-context'
+import { Logo } from './logo'
 import { cn } from '@/lib/utils'
 
 interface HeaderProps {
   title: string
   subtitle?: string
+
+  actions?: React.ReactNode
   onAbrirMenu: () => void
 }
 
-export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
-  const { usuario, empresaActiva, logout } = useAuth()
+export function Header({ title, subtitle, onAbrirMenu, actions }: HeaderProps) {
+  const { usuario, logout } = useAuth()
   const { notificaciones, noLeidas, marcarLeida, marcarTodasLeidas } = useNotificaciones()
+  const rolVisible = usuario?.rol === 'admin' ? 'Administrador'
+    : usuario?.rol === 'jefe_area' ? 'Jefe de área'
+      : usuario?.rol === 'supervisor' ? 'Supervisor'
+        : usuario?.rol === 'socio' ? 'Socio · solo lectura'
+          : usuario?.cargo || 'Colaborador'
   const [notifAbierto, setNotifAbierto] = useState(false)
   const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false)
   const contenedorNotifRef = useRef<HTMLDivElement>(null)
@@ -74,24 +82,15 @@ export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
         >
           <Menu size={20} />
         </button>
+        <div className="admin-brand"><Logo size={54} /><div><strong>Paredes Cano</strong><small>Registro de horas</small></div></div>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-bold tracking-tight text-foreground">{title}</h1>
           {subtitle && <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>}
-          {empresaActiva && (
-            <p className="truncate text-[11px] text-[#c4b5fd]">{empresaActiva.nombre}</p>
-          )}
         </div>
       </div>
 
       <div className="flex items-center gap-1 sm:gap-3">
-        <div className="hidden items-center gap-2 rounded-lg border border-border bg-background/60 px-3 py-1.5 lg:flex">
-          <Search size={15} className="text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            className="w-36 bg-transparent text-sm text-foreground placeholder-muted-foreground focus:outline-none"
-          />
-        </div>
+        {actions}
 
         <div className="relative" ref={contenedorNotifRef}>
           <button
@@ -108,7 +107,7 @@ export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
           </button>
 
           {notifAbierto && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95">
+            <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-5rem)] overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <span className="text-sm font-semibold text-foreground">Notificaciones</span>
                 {noLeidas > 0 && (
@@ -163,7 +162,7 @@ export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
             onClick={() => setMenuUsuarioAbierto((valor) => !valor)}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted"
           >
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#7c3aed]/20">
+            <div className="admin-avatar flex h-7 w-7 items-center justify-center">
               {usuario ? (
                 <span className="text-xs font-bold uppercase text-[#c4b5fd]">
                   {usuario.nombre
@@ -177,7 +176,7 @@ export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
               )}
             </div>
             <span className="hidden text-sm font-medium text-foreground sm:inline">
-              {usuario?.nombre || 'Sin sesión'}
+              <span className="admin-profile">{usuario?.nombre || 'Sin sesión'}{usuario && <small>{rolVisible}</small>}</span>
             </span>
             <ChevronDown
               size={14}
@@ -192,15 +191,7 @@ export function Header({ title, subtitle, onAbrirMenu }: HeaderProps) {
             <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/30 animate-in fade-in-0 zoom-in-95">
               <div className="border-b border-border px-4 py-3">
                 <p className="truncate text-sm font-semibold text-foreground">{usuario.nombre}</p>
-                <p className="text-[11px] capitalize text-muted-foreground">
-                  {/* `capitalize` no sirve para "Jefe de área": capitalizaría cada
-                      palabra. El texto de los roles ya viene escrito como debe
-                      mostrarse, así que solo se aplica al cargo libre. */}
-                  {usuario.rol === 'admin' ? 'Administrador'
-                    : usuario.rol === 'jefe_area' ? 'Jefe de área'
-                      : usuario.rol === 'socio' ? 'Socio · solo lectura'
-                        : <span className="capitalize">{usuario.cargo || 'Colaborador'}</span>}
-                </p>
+                <p className="text-[11px] text-muted-foreground">{rolVisible}</p>
               </div>
 
               <div className="p-1">

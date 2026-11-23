@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { esSocio } from '@/lib/permisos'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import {
   TIPOS_EXCEPCION,
-  esAdmin,
+  alcanceExcepciones,
+  puedeGestionarExcepciones,
+  validarDestinatarioExcepcion,
   validarDatosExcepcion,
   existeDuplicadoExcepcion,
 } from '@/lib/excepciones'
@@ -11,12 +14,13 @@ import {
 export async function GET(request: Request) {
   try {
     const user = await getUserFromRequest(request)
-    if (!user || !esAdmin(user)) {
+    if (!user || (!puedeGestionarExcepciones(user) && !esSocio(user))) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
     const context = await getEmpresaContext(user)
     if (!context.activa) return NextResponse.json({ error: 'No hay una empresa activa.' }, { status: 409 })
 
+    const alcance = alcanceExcepciones(user, context.activa.id)
     const { searchParams } = new URL(request.url)
     const anio = searchParams.get('anio')
     const mes = searchParams.get('mes')
@@ -30,8 +34,8 @@ export async function GET(request: Request) {
       FROM excepciones e
       LEFT JOIN usuarios u ON u.id = e.usuario_id
       LEFT JOIN areas ar ON ar.id = u.area_id
-      WHERE (e.usuario_id IS NULL OR ar.empresa_id = ?)`
-    const params: (string | number)[] = [context.activa.id]
+      WHERE (${alcance.sql})`
+    const params: (string | number | null)[] = [...alcance.valores]
 
     if (anio) {
       query += ' AND YEAR(e.fecha) = ?'
@@ -69,7 +73,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const user = await getUserFromRequest(request)
-    if (!user || !esAdmin(user)) {
+    if (!user || !puedeGestionarExcepciones(user)) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
     const context = await getEmpresaContext(user)
@@ -80,15 +84,9 @@ export async function POST(request: Request) {
     if (!validado.ok) {
       return NextResponse.json({ error: validado.error }, { status: validado.status })
     }
-    if (validado.datos.usuario_id) {
-      const [usuarios] = await pool.query(
-        `SELECT u.id FROM usuarios u INNER JOIN areas ar ON ar.id = u.area_id
-         WHERE u.id = ? AND ar.empresa_id = ? AND u.activo = TRUE`,
-        [validado.datos.usuario_id, context.activa.id]
-      )
-      if ((usuarios as unknown[]).length === 0) {
-        return NextResponse.json({ error: 'El colaborador no pertenece a la empresa activa.' }, { status: 400 })
-      }
+    const destinatario = await validarDestinatarioExcepcion(validado.datos.usuario_id, user, context.activa.id)
+    if (destinatario) {
+      return NextResponse.json({ error: destinatario.error }, { status: destinatario.status })
     }
 
     const duplicado = await existeDuplicadoExcepcion(validado.datos)
