@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { createPortal } from 'react-dom'
 
@@ -457,9 +457,8 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
                   <th scope="col" className={styles.centeredColumn}>Consumo</th>
                   <th scope="col" className="px-1 py-3 text-center font-medium"><span className="sr-only">Acciones</span></th>
                 </tr></thead>
-                <tbody>
-                  {clientes.map((cliente) => <Fragment key={cliente.id}>
-                    <tr tabIndex={0} aria-label={`Abrir detalle de ${cliente.nombre}`} onClick={() => onAbrirGestion(cliente)} onKeyDown={(evento) => { if (evento.target !== evento.currentTarget) return; if (evento.key === 'Enter' || evento.key === ' ') { evento.preventDefault(); onAbrirGestion(cliente) } }} className="group cursor-pointer hover:bg-muted/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500">
+                {clientes.map((cliente) => <tbody key={cliente.id} className={styles.clientGroup}>
+                    <tr tabIndex={0} aria-label={`Abrir detalle de ${cliente.nombre}`} onClick={() => onAbrirGestion(cliente)} onKeyDown={(evento) => { if (evento.target !== evento.currentTarget) return; if (evento.key === 'Enter' || evento.key === ' ') { evento.preventDefault(); onAbrirGestion(cliente) } }} className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500">
                       <td className="py-3 pl-3 pr-2 align-middle"><div className="flex min-w-0 items-center gap-2.5"><Avatar iniciales={inicialesDe(cliente.nombre)} color={colorDeCliente(cliente.id)} /><div className="min-w-0"><button type="button" onClick={(evento) => { evento.stopPropagation(); onAbrirGestion(cliente) }} title={cliente.nombre} className="block max-w-full text-left text-sm font-semibold leading-[1.35] text-[#f3f3fb] hover:text-violet-300 [overflow-wrap:anywhere]">{cliente.nombre}</button>{cliente.ruc && <span title={cliente.ruc} className="mt-0.5 block text-xs text-muted-foreground">RUC {cliente.ruc}</span>}</div></div></td>
                       <td data-label="Horas contratadas" className="px-2 text-center font-semibold tabular-nums">{horas(cliente.horasContratadas)}{cliente.horasContratadas === 0 && <span className="block whitespace-normal text-[9px] font-normal leading-tight text-[#919bb2]">Sin bolsa activa</span>}</td>
                       <td data-label="Horas consumidas" className="px-2 py-2 text-center align-middle">
@@ -490,9 +489,8 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
                       </td>
                       <td onClick={(evento) => evento.stopPropagation()} className={styles.actionsCell}>{cliente.mi_funcion === 'ENCARGADO' && onSolicitarAsistente ? <button type="button" onClick={() => onSolicitarAsistente(cliente)} title="Solicitar asistentes al jefe de área" className="mb-1 block whitespace-nowrap rounded-md border border-violet-500/40 px-1.5 py-1 text-[9px] text-violet-300">Solicitar asistente</button> : null}<AccionesCliente cliente={cliente} onEditar={onEditar} onEliminar={onEliminar} onImportarPresupuesto={onImportarPresupuesto} onAbrirGestion={onAbrirGestion} soloLectura={soloLectura} /></td>
                     </tr>
-                    <tr className="border-b border-border last:border-0"><td colSpan={4} className="px-3 pb-2.5 pt-1"><div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs"><span className="shrink-0 font-medium text-[#a0a8bf]">Servicios activos:</span>{cliente.servicios.length === 0 ? <span className="text-[#8794ac]">Sin servicios cargados</span> : <>{cliente.servicios.slice(0, 3).map((servicio) => <span key={servicio} title={servicio} className="max-w-[168px] truncate rounded-md bg-muted px-2 py-1 text-[#d0d6e6]">{servicio}</span>)}{cliente.servicios.length > 3 && <span className="rounded-md bg-muted px-2 py-1 text-[#c1c9dd]">+{cliente.servicios.length - 3} más</span>}</>}</div></td><td /></tr>
-                  </Fragment>)}
-                </tbody>
+                    <tr><td colSpan={4} className="px-3 pb-2.5 pt-1"><div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs"><span className="shrink-0 font-medium text-[#a0a8bf]">Servicios activos:</span>{cliente.servicios.length === 0 ? <span className="text-[#8794ac]">Sin servicios cargados</span> : <>{cliente.servicios.slice(0, 3).map((servicio) => <span key={servicio} title={servicio} className="max-w-[168px] truncate rounded-md bg-muted px-2 py-1 text-[#d0d6e6]">{servicio}</span>)}{cliente.servicios.length > 3 && <span className="rounded-md bg-muted px-2 py-1 text-[#c1c9dd]">+{cliente.servicios.length - 3} más</span>}</>}</div></td><td /></tr>
+                  </tbody>)}
               </table>
               {clientes.length === 0 && <p className="px-4 py-10 text-center text-xs text-[#a6aec3]">{cartera.length === 0 ? 'Todavía no hay clientes registrados.' : 'No encontramos clientes para esos filtros.'}</p>}
             </div>

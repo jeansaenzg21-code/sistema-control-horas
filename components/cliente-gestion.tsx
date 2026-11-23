@@ -58,6 +58,10 @@ type FilaServicio = {
 
 type FilaIntegrante = {
 
+  asignacionIds: number[]
+
+  tieneRegistros: boolean
+
   usuarioId: number
 
   nombre: string
@@ -291,7 +295,7 @@ export function ClienteGestion({
 
    */
 
-  const asignar = async (asignacionIds: number[], usuarioId: number) => {
+  const asignar = async (asignacionIds: number[], usuarioId: number, usuarioAnteriorId?: number) => {
 
     const presupuestoId = datos?.presupuestoVigente
 
@@ -322,8 +326,8 @@ export function ClienteGestion({
           asignacion_ids: asignacionIds,
 
           usuario_id: usuarioId,
-
-          justificacion: 'Reparto de horas sin persona a un integrante del área.',
+          usuario_anterior_id: usuarioAnteriorId,
+          justificacion: usuarioAnteriorId ? 'Reasignación de horas sin registros en el cliente.' : 'Reparto de horas sin persona a un integrante del área.',
 
         }),
 
@@ -873,13 +877,14 @@ function PanelEquipo({
 
   asignando: number[] | null
 
-  onAsignar: (asignacionIds: number[], usuarioId: number) => void
+  onAsignar: (asignacionIds: number[], usuarioId: number, usuarioAnteriorId?: number) => void
 
 }) {
 
   const sinResolver = useMemo(() => agruparSinRepartir(datos.sinResolver), [datos.sinResolver])
 
-  const puedeRepartir = datos.permisos.puedeGestionar
+  const puedeRepartir = datos.permisos.puedeGestionar && datos.presupuestoVigente !== null
+  const mostrarAcciones = puedeRepartir && (sinResolver.length > 0 || datos.equipo.some((persona) => !persona.tieneRegistros && persona.asignacionIds.length > 0))
 
   const totalSinRepartir = Math.round(sinResolver.reduce((t, a) => t + a.horas, 0) * 100) / 100
 
@@ -937,7 +942,7 @@ function PanelEquipo({
 
               <col style={{ width: '19%' }} />
 
-              {puedeRepartir && sinResolver.length > 0 && <col style={{ width: '13%' }} />}
+              {mostrarAcciones && <col style={{ width: '13%' }} />}
 
             </colgroup>
 
@@ -955,7 +960,7 @@ function PanelEquipo({
 
                 <th className="px-2 py-3 font-medium leading-tight">Consumo</th>
 
-                {puedeRepartir && sinResolver.length > 0 && (
+                {mostrarAcciones && (
 
                   <th className="py-3 pl-2 pr-3 text-right font-medium leading-tight">Repartir</th>
 
@@ -1055,7 +1060,14 @@ function PanelEquipo({
 
                     </td>
 
-                    {puedeRepartir && sinResolver.length > 0 && <td />}
+                    {mostrarAcciones && <td className="py-3 pl-2 pr-3 text-right">
+                      {!persona.tieneRegistros && persona.asignacionIds.length > 0 && <SelectorArea
+                        etiqueta="Cambiar persona"
+                        candidatos={datos.candidatos.filter((candidato) => candidato.id !== persona.usuarioId)}
+                        disabled={asignando !== null}
+                        onElegir={(usuarioId) => onAsignar(persona.asignacionIds, usuarioId, persona.usuarioId)}
+                      />}
+                    </td>}
 
                   </tr>
 
@@ -1353,6 +1365,7 @@ function PanelServicios({ datos }: { datos: Gestion }) {
 function SelectorArea({
 
   candidatos,
+  etiqueta = 'Asignar',
 
   disabled,
 
@@ -1361,6 +1374,7 @@ function SelectorArea({
 }: {
 
   candidatos: Candidato[]
+  etiqueta?: string
 
   disabled: boolean
 
@@ -1452,7 +1466,10 @@ function SelectorArea({
 
     // Con scroll o cambio de tamaño la posición fija quedaría desfasada.
 
-    const ocultar = () => setAbierto(false)
+    const ocultar = (evento: Event) => {
+      if (evento.target instanceof Node && menu.current?.contains(evento.target)) return
+      setAbierto(false)
+    }
 
     document.addEventListener('pointerdown', cerrar)
 
@@ -1534,7 +1551,7 @@ function SelectorArea({
 
       >
 
-        <UserPlus size={13} /> Asignar
+        <UserPlus size={13} /> {etiqueta}
 
       </button>
 
@@ -1580,7 +1597,7 @@ function SelectorArea({
 
             />
 
-            <ul className="max-h-64 overflow-auto">
+            <ul className="max-h-64 overflow-auto overscroll-contain">
 
               {lista.map((c) => (
 
