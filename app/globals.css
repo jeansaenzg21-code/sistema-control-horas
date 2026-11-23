@@ -50,30 +50,30 @@
 /* Tema claro (opcional; el predeterminado es oscuro) */
 :root {
   color-scheme: light;
-  --background: #ffffff;
-  --foreground: #09090b;
+  --background: #f5f3fa;
+  --foreground: #201a30;
   --card: #ffffff;
   --card-foreground: #09090b;
   --popover: #ffffff;
   --popover-foreground: #09090b;
-  --header: #f4f4f5;
-  --brand: #7c3aed;
-  --primary: #7c3aed;
+  --header: #fcfbff;
+  --brand: #6e32ba;
+  --primary: #6d32c5;
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #09090b;
-  --muted: #f4f4f5;
-  --muted-foreground: #52525b;
-  --accent: #8b5cf6;
+  --secondary: #eee9f7;
+  --secondary-foreground: #2f2541;
+  --muted: #f1edf7;
+  --muted-foreground: #5d546b;
+  --accent: #7441ca;
   --accent-foreground: #ffffff;
-  --destructive: #dc2626;
-  --success: #16a34a;
-  --warning: #d97706;
-  --danger: #dc2626;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #7c3aed;
-  --chart-1: #7c3aed;
+  --destructive: #b42344;
+  --success: #08704e;
+  --warning: #8b5500;
+  --danger: #b42344;
+  --border: #ded6e9;
+  --input: #d4c9e3;
+  --ring: #7942ce;
+  --chart-1: #783bd2;
   --chart-2: #8b5cf6;
   --chart-3: #a78bfa;
   --chart-4: #c4b5fd;
@@ -920,4 +920,85 @@
 *:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* Colores de lectura para estados y superficies compartidas. */
+@layer utilities {
+  :root:not(.dark) :is(
+    [class~="text-[#e7e9f3]"],
+    [class~="text-[#f1f0fa]"],
+    [class~="text-[#f3f3fb]"],
+    [class~="text-[#f2f0f9]"],
+    [class~="text-[#e8e8f4]"],
+    [class~="text-[#ecedf5]"],
+    [class~="text-[#ece9f8]"],
+    [class~="text-[#e0deec]"],
+    [class~="text-[#ece9f5]"],
+    [class~="text-[#eee7ff]"],
+    [class~="text-[#ead9ff]"]
+  ) { color: var(--foreground); }
+  :root:not(.dark) :is(
+    [class~="text-[#a1a8bd]"],
+    [class~="text-[#a3abc0]"],
+    [class~="text-[#b7bed0]"],
+    [class~="text-[#969eb3]"],
+    [class~="text-[#aeb4c7]"],
+    [class~="text-[#a0a8bf]"],
+    [class~="text-[#9ba4b8]"],
+    [class~="text-[#aeb7ca]"],
+    [class~="text-[#a1abc0]"],
+    [class~="text-[#a1aabd]"],
+    [class~="text-[#a6aec3]"],
+    [class~="text-[#a0a8bc]"],
+    [class~="text-[#aab2c6]"],
+    [class~="text-[#aeb7c8]"],
+    [class~="text-[#abb4c8]"],
+    [class~="text-[#d0d6e6]"],
+    [class~="text-[#c1c9dd]"],
+    [class~="text-[#919bb2]"]
+  ) { color: var(--muted-foreground); }
+  :root:not(.dark) :is(
+    [class~="text-[#c4b5fd]"],
+    [class~="text-[#a78bfa]"],
+    [class~="text-[#b58aff]"],
+    [class~="text-[#ab83fb]"],
+    [class~="text-violet-200"],
+    [class~="text-violet-300"],
+    [class~="text-violet-400"],
+    [class~="text-purple-300"],
+    [class~="text-fuchsia-300"]
+  ) { color: #7135bb; }
+  :root:not(.dark) :is(
+    [class~="text-[#ff8198]"],
+    [class~="text-[#ff7e99]"],
+    [class~="text-rose-200"],
+    [class~="text-rose-300"],
+    [class~="text-rose-400"],
+    [class~="text-red-300"],
+    [class~="text-red-400"]
+  ) { color: #a32149; }
+  :root:not(.dark) :is(
+    [class~="text-[#6de1b1]"],
+    [class~="text-emerald-200"],
+    [class~="text-emerald-300"],
+    [class~="text-emerald-400"],
+    [class~="text-green-300"],
+    [class~="text-green-400"]
+  ) { color: #08704e; }
+  :root:not(.dark) :is(
+    [class~="text-[#ffc66d]"],
+    [class~="text-amber-200"],
+    [class~="text-amber-300"],
+    [class~="text-amber-400"],
+    [class~="text-yellow-300"],
+    [class~="text-yellow-400"]
+  ) { color: #855200; }
+  :root:not(.dark) :is(
+    [class~="text-[#92b0ff]"],
+    [class~="text-blue-300"],
+    [class~="text-sky-300"],
+    [class~="text-cyan-300"],
+    [class~="text-teal-300"],
+    [class~="text-teal-400"]
+  ) { color: #1a5b9e; }
 }

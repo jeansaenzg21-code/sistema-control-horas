@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Building2, CalendarDays, ChevronLeft, ChevronRight, Clock, TrendingUp, Wallet } from 'lucide-react'
+import { Building2, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, TrendingUp, Wallet } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { StatusBadge } from './status-badge'
 import { FacturableBadge } from './facturable-badge'
@@ -10,7 +10,8 @@ import { useHistorialRango } from '@/lib/use-historial-rango'
 import { useAreas } from '@/lib/areas-context'
 import { opcionesApi } from '@/lib/api-cliente'
 import type { Actividad } from '@/lib/types'
-import { cn, esFacturable, esNoFacturable, fechaLocalISO, formatoHoras, nombreCorto } from '@/lib/utils'
+import styles from './consolidacion.module.css'
+import { esFacturable, esNoFacturable, fechaLocalISO, formatoHoras, nombreCorto } from '@/lib/utils'
 
 type FiltroFactura = 'todas' | 'facturadas' | 'no_facturadas'
 
@@ -51,30 +52,30 @@ function Titulo(valor: string): string {
 
 export function ConsolidationTable() {
   const { areas } = useAreas()
-  const { usuario, usuarios } = useAuth()
+  const { usuario, usuarios, empresaActiva } = useAuth()
   const jefeDeArea = usuario?.rol === 'jefe_area'
   const areaInicial = jefeDeArea && usuario?.area_id != null ? String(usuario.area_id) : ''
   const [areaId, setAreaId] = useState(areaInicial)
   const [desde, setDesde] = useState(() => `${new Date().getFullYear()}-01-01`)
-  const [hasta, setHasta] = useState(() => new Date().toISOString().slice(0, 10))
+  const [hasta, setHasta] = useState(() => fechaLocalISO(new Date()))
 
   // La division no se elige sola para admin/socio. Antes la pantalla pedia
   // igualmente TODAS las filas de la empresa al montar, aunque el aviso de
   // abajo dijera "Selecciona una division": era la causa de que entrar a
   // Consolidacion tardara decenas de segundos.
   const resumenQuery = useQuery({
-    queryKey: ['consolidacion', areaId, desde, hasta],
+    queryKey: ['consolidacion', empresaActiva?.id, usuario?.id, areaId, desde, hasta],
     enabled: areaId !== '' && Boolean(desde) && Boolean(hasta),
     staleTime: 60_000,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const params = new URLSearchParams({ area_id: areaId, desde, hasta })
-      const res = await fetch(`/api/consolidacion?${params.toString()}`, opcionesApi())
+      const res = await fetch(`/api/consolidacion?${params.toString()}`, opcionesApi({ signal }))
       if (!res.ok) throw new Error('No se pudo cargar la consolidación.')
       return (await res.json()) as ResumenUsuario[]
     },
   })
 
-  const resumenPorUsuario = resumenQuery.data ?? []
+  const resumenPorUsuario = useMemo(() => resumenQuery.data ?? [], [resumenQuery.data])
   const [filtro, setFiltro] = useState<FiltroFactura>('todas')
   const [usuarioSeleccionadoId, setUsuarioSeleccionadoId] = useState<number | null>(null)
 
@@ -154,8 +155,8 @@ export function ConsolidationTable() {
   const indicadores = [
     { etiqueta: 'Total de horas', valor: formatoHoras(resumen.total), icono: Clock, color: 'text-foreground' },
     { etiqueta: 'Horas facturadas', valor: formatoHoras(resumen.facturadas), icono: TrendingUp, color: 'text-emerald-400' },
-    { etiqueta: 'Horas no facturadas', valor: formatoHoras(resumen.noFacturadas), icono: Wallet, color: 'text-muted-foreground' },
-    { etiqueta: 'Por definir', valor: formatoHoras(resumen.porDefinir), icono: CalendarDays, color: 'text-[#c4b5fd]' },
+    { etiqueta: 'Horas no facturadas', valor: formatoHoras(resumen.noFacturadas), icono: Wallet, color: 'text-foreground' },
+    { etiqueta: 'Por definir', valor: formatoHoras(resumen.porDefinir), icono: CalendarDays, color: styles.undefinedValue },
   ]
 
   /**
@@ -185,7 +186,7 @@ export function ConsolidationTable() {
   ]
 
   return (
-    <div className="space-y-5">
+    <div className={styles.view}>
       {areaId !== '' && resumenQuery.isPending && (
         <p className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
           Cargando consolidación…
@@ -205,99 +206,65 @@ export function ConsolidationTable() {
           fechas para ver el total completo.
         </p>
       )}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {indicadores.map((indicador) => (
-          <div key={indicador.etiqueta} className="rounded-xl border border-border bg-card p-4">
-            <div className="mb-1 flex items-center gap-2">
-              <indicador.icono size={15} className="text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">{indicador.etiqueta}</span>
-            </div>
-            <p className={cn('text-xl font-bold', indicador.color)}>{indicador.valor}</p>
-          </div>
+      {resumenQuery.data && <section className={styles.metrics} aria-label="Indicadores de consolidación">
+        {indicadores.map(({ etiqueta, valor, icono: Icono, color }) => (
+          <article key={etiqueta} className={styles.metric}>
+            <span className={styles.metricIcon}><Icono size={24} /></span>
+            <div><h2>{etiqueta}</h2><p className={color}>{valor}</p></div>
+          </article>
         ))}
-      </div>
+      </section>}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <Building2 size={11} />
-            <span>{jefeDeArea ? 'División asignada' : 'División (primero)'}</span>
-          </label>
-          {jefeDeArea ? (
-            <span className="h-8 rounded-lg border border-border bg-muted/40 px-3 text-[11px] leading-8 text-foreground">
-              {areas.find((a) => String(a.id) === areaId)?.nombre ?? 'Tu división'}
-            </span>
-          ) : (
-            <select value={areaId} onChange={(e) => setAreaId(e.target.value)} className="h-8 rounded-lg border border-border bg-background px-2 text-[11px] text-foreground focus:border-[#7c3aed]/50 focus:outline-none">
-              <option value="">Elegir división</option>
-              {areas.map((area) => <option key={area.id} value={String(area.id)}>{area.nombre}</option>)}
-            </select>
-          )}
+      {!jefeDeArea && (
+        <div className={styles.division}>
+          <label htmlFor="division-consolidacion"><Building2 size={16} aria-hidden="true" />División</label>
+          <SelectorDivision areas={areas} areaId={areaId} onChange={(id) => {
+            setUsuarioSeleccionadoId(null)
+            setAreaId(id)
+          }} />
         </div>
+      )}
       {areaId === '' ? (
         <p className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-          Selecciona una división para ver la consolidación por persona.
+          {jefeDeArea ? 'No hay una división asignada para consultar.' : 'Selecciona una división para ver la consolidación por persona.'}
         </p>
        ) : (<>
-       <div className="flex flex-wrap items-center gap-2">
+      <div className={styles.people} role="group" aria-label="Colaboradores">
         {gruposPorUsuario.map((grupo) => (
-          <button
-            key={grupo.key}
-            onClick={() => setUsuarioSeleccionadoId(grupo.usuarioId)}
-            title={grupo.nombre}
-            className={cn(
-              'flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors',
-              grupo.key === grupoActual?.key
-                ? 'border-[#7c3aed] bg-[#7c3aed]/10 text-[#c4b5fd]'
-                : 'border-border bg-card text-muted-foreground hover:border-border/60 hover:text-foreground',
-            )}
-          >
-            <span>{nombreLegible(grupo.nombre)}</span>
-            <span className="text-xs text-muted-foreground">{formatoHoras(grupo.totalHoras)}</span>
+          <button key={grupo.key} type="button" onClick={() => setUsuarioSeleccionadoId(grupo.usuarioId)}
+            title={grupo.nombre} aria-pressed={grupo.key === grupoActual?.key} className={styles.person}>
+            <strong>{nombreLegible(grupo.nombre)}</strong>
+            <span>{formatoHoras(grupo.totalHoras)}</span>
           </button>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 rounded-lg border border-border bg-card p-1 w-fit">
+      <div className={styles.toolbar}>
+        <div className={styles.tabs} role="group" aria-label="Filtrar facturación">
           {opciones.map((opcion) => (
-            <button
-              key={opcion.valor}
-              onClick={() => setFiltro(opcion.valor)}
-              className={cn(
-                'rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors',
-                filtro === opcion.valor
-                  ? 'bg-[#7c3aed] text-white'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
+            <button key={opcion.valor} type="button" onClick={() => setFiltro(opcion.valor)}
+              aria-pressed={filtro === opcion.valor}>
               {opcion.etiqueta}
             </button>
           ))}
         </div>
-        <div className="ml-auto flex items-end gap-1.5">
-          <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <CalendarDays size={11} />
-            <span>Desde</span>
-            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="h-8 rounded-lg border border-border bg-background px-2 text-[11px] text-foreground focus:border-[#7c3aed]/50 focus:outline-none" />
+        <div className={styles.dateRange}>
+          <label><CalendarDays size={16} aria-hidden="true" />Desde
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={styles.control} />
           </label>
-          <label className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <span>Hasta</span>
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="h-8 rounded-lg border border-border bg-background px-2 text-[11px] text-foreground focus:border-[#7c3aed]/50 focus:outline-none" />
+          <label>Hasta
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={styles.control} />
           </label>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <table className="w-full text-sm">
+      <section className={styles.panel} aria-label="Registros consolidados">
+        <div className={styles.tableScroll}>
+        <table className={styles.table}>
           <thead>
-            <tr className="border-b border-border">
+            <tr>
               {['Actividad', 'Usuario', 'Duración', 'Estado', 'Facturación', 'Fecha'].map((encabezado) => (
-                <th
-                  key={encabezado}
-                  className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
-                >
-                  {encabezado}
-                </th>
+                <th key={encabezado} scope="col">{encabezado}</th>
               ))}
             </tr>
           </thead>
@@ -328,7 +295,7 @@ export function ConsolidationTable() {
                     // `max-w` es necesario: en una tabla `w-full` sin anchos fijos
                     // el truncate no hace nada y el texto parte la fila.
                     <p
-                      className="max-w-[220px] truncate text-[11px] text-muted-foreground"
+                      className={styles.description}
                       title={actividad.descripcion}
                     >
                       {actividad.descripcion}
@@ -336,7 +303,7 @@ export function ConsolidationTable() {
                   )}
                 </td>
                 <td className="px-3 py-2 text-muted-foreground">{actividad.usuario_nombre ?? '—'}</td>
-                <td className="px-3 py-2 font-medium text-foreground">{formatDuracion(actividad)}</td>
+                <td className="font-semibold tabular-nums text-foreground">{formatDuracion(actividad)}</td>
                 <td className="px-3 py-2">
                   <StatusBadge estado={actividad.estado} />
                 </td>
@@ -355,28 +322,86 @@ export function ConsolidationTable() {
             )}
           </tbody>
         </table>
+        </div>
         {filtradas.length > REGISTROS_POR_PAGINA && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
+          <div className={styles.pagination}>
             <span>Mostrando {inicioPagina + 1}-{Math.min(inicioPagina + REGISTROS_POR_PAGINA, filtradas.length)} de {filtradas.length}</span>
             <div className="flex items-center gap-1.5">
-              <button type="button" onClick={() => setPagina((valor) => Math.max(1, valor - 1))} disabled={paginaActual === 1} className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[10px] transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" aria-label="Página anterior">
+              <button type="button" onClick={() => setPagina(paginaActual - 1)} disabled={paginaActual === 1} className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[10px] transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" aria-label="Página anterior">
                 <ChevronLeft size={12} />
                 Anterior
               </button>
               <span className="px-1 tabular-nums">{paginaActual} / {totalPaginas}</span>
-              <button type="button" onClick={() => setPagina((valor) => Math.min(totalPaginas, valor + 1))} disabled={paginaActual === totalPaginas} className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[10px] transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" aria-label="Página siguiente">
+              <button type="button" onClick={() => setPagina(paginaActual + 1)} disabled={paginaActual === totalPaginas} className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-[10px] transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40" aria-label="Página siguiente">
                 Siguiente
                 <ChevronRight size={12} />
               </button>
             </div>
           </div>
         )}
-      </div>
+      </section>
       </>)}
     </div>
   )
 }
 
+
+function SelectorDivision({ areas, areaId, onChange }: {
+  areas: Array<{ id: number; nombre: string }>
+  areaId: string
+  onChange: (id: string) => void
+}) {
+  const [abierto, setAbierto] = useState(false)
+  const raiz = useRef<HTMLDivElement>(null)
+  const control = useRef<HTMLButtonElement>(null)
+  const idLista = useId()
+  const nombre = areas.find((area) => String(area.id) === areaId)?.nombre
+
+  useEffect(() => {
+    if (!abierto) return
+    const cerrarFuera = (evento: PointerEvent) => {
+      if (evento.target instanceof Node && !raiz.current?.contains(evento.target)) setAbierto(false)
+    }
+    document.addEventListener('pointerdown', cerrarFuera)
+    return () => document.removeEventListener('pointerdown', cerrarFuera)
+  }, [abierto])
+
+  const elegir = (id: string) => {
+    if (id !== areaId) onChange(id)
+    setAbierto(false)
+    control.current?.focus()
+  }
+
+  return (
+    <div className={styles.divisionPicker} ref={raiz}
+      onBlur={(evento) => { if (evento.relatedTarget && !evento.currentTarget.contains(evento.relatedTarget)) setAbierto(false) }}
+      onKeyDown={(evento) => {
+        if (evento.key !== 'Escape' || !abierto) return
+        evento.preventDefault()
+        setAbierto(false)
+        control.current?.focus()
+      }}>
+      <button id="division-consolidacion" ref={control} type="button" className={styles.control} aria-expanded={abierto}
+        aria-controls={abierto ? idLista : undefined} onClick={() => setAbierto(!abierto)}>
+        <span>{nombre ?? 'Elegir división'}</span><ChevronDown size={17} aria-hidden="true" />
+      </button>
+      {abierto && <div id={idLista} className={styles.divisionMenu}>
+        <ul className={styles.divisionOptions} aria-label="Áreas">
+          {areas.map((area) => (
+            <li key={area.id}>
+              <button type="button" aria-pressed={String(area.id) === areaId} onClick={() => elegir(String(area.id))}>
+                <span title={area.nombre}>{area.nombre}</span>
+                {String(area.id) === areaId && <Check size={16} aria-hidden="true" />}
+              </button>
+            </li>
+          ))}
+          {!areas.length && <li className={styles.noDivisions}>No hay divisiones disponibles.</li>}
+        </ul>
+        {areaId && <button type="button" className={styles.clearDivision} onClick={() => elegir('')}>Quitar selección</button>}
+      </div>}
+    </div>
+  )
+}
 function formatDuracion(r: Actividad): string {
   if (!r.fin || !r.inicio) return '—'
   const totalSeg = Math.max(0, (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000 - (r.pausa_acumulada_segundos || 0))

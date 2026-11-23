@@ -32,6 +32,7 @@ export type Resumen = {
     cargo: string | null
     area_nombre: string
     registros: number
+    pendientes?: number
     horas: number
   }>
   por_dia: Array<{ dia: string; registros: number; horas: number }>

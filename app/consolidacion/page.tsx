@@ -19,7 +19,7 @@ export default function Consolidacion() {
   if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area' && usuario.rol !== 'socio')) return null
 
   return (
-    <MainLayout title="Consolidación" subtitle="Horas consolidadas de todos los consultores">
+    <MainLayout ancho="ancho" title="Consolidación" subtitle="Horas consolidadas de todos los consultores">
       <ConsolidationTable />
     </MainLayout>
   )

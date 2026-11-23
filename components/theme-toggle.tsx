@@ -1,32 +1,41 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Monitor, Moon, Sun } from 'lucide-react'
+import styles from '@/app/configuracion/configuracion.module.css'
+
+const temas = [
+  { id: 'claro', etiqueta: 'Claro', Icono: Sun },
+  { id: 'oscuro', etiqueta: 'Oscuro', Icono: Moon },
+] as const
+type Tema = (typeof temas)[number]['id']
 
 export function ThemeToggle() {
-  const [oscuro, setOscuro] = useState(true)
+  const [tema, setTema] = useState<Tema | null>(null)
 
   useEffect(() => {
-    const guardado = localStorage.getItem('tema')
-    const esOscuro = guardado !== 'claro'
-    setOscuro(esOscuro)
-    document.documentElement.classList.toggle('dark', esOscuro)
+    setTema(document.documentElement.classList.contains('dark') ? 'oscuro' : 'claro')
   }, [])
 
-  const alternar = () => {
-    const nuevo = !oscuro
-    setOscuro(nuevo)
-    document.documentElement.classList.toggle('dark', nuevo)
-    localStorage.setItem('tema', nuevo ? 'oscuro' : 'claro')
+  const elegir = (nuevo: Tema) => {
+    document.documentElement.classList.toggle('dark', nuevo === 'oscuro')
+    setTema(nuevo)
+    localStorage.setItem('tema', nuevo)
   }
 
   return (
-    <button
-      type="button"
-      onClick={alternar}
-      aria-label="Cambiar tema"
-      className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted"
-    >
-      {oscuro ? 'Claro' : 'Oscuro'}
-    </button>
+    <section className={styles.appearance} aria-labelledby="titulo-apariencia">
+      <div className={styles.panelHeading}>
+        <span className={styles.tile}><Monitor size={22} aria-hidden="true" /></span>
+        <div><h2 id="titulo-apariencia">Apariencia</h2><p>Cambia entre tema claro y oscuro.</p></div>
+      </div>
+      <div role="group" aria-label="Tema del sistema" className={styles.themeOptions}>
+        {temas.map(({ id, etiqueta, Icono }) => (
+          <button key={id} type="button" aria-pressed={tema === id} onClick={() => elegir(id)}>
+            <Icono size={18} aria-hidden="true" />{etiqueta}
+          </button>
+        ))}
+      </div>
+    </section>
   )
 }

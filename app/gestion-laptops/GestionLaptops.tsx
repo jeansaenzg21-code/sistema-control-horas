@@ -253,6 +253,8 @@ export default function GestionLaptops({ showHeading = false }: { showHeading?: 
   const field = (k:keyof Equipo,label:string) => <label className={styles.field} key={k}><span>{label}</span><input value={String(draft[k] ?? '')} onChange={e=>setDraft(p=>({...p,[k]:e.target.value}))}/></label>;
   const modalField = (k:keyof Equipo,label:string) => <label className={styles.field} key={k}><span>{label}</span><input value={String(modalDraft[k] ?? '')} onChange={e=>setModalDraft(p=>({...p,[k]:e.target.value}))}/></label>;
 
+  if (cargando) return <p role="status" className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">Cargando equipos…</p>
+  if (errorCarga && items.length === 0) return <p role="alert" className="rounded-xl border border-border bg-card p-4 text-sm text-destructive">{errorCarga} <button type="button" className="underline" onClick={() => void recargar()}>Reintentar</button></p>
   return <div className={styles.root}>
     <div className={styles.topline}>
       {showHeading && <div className={styles.heading}><Laptop size={27}/><div><h1>Gestión de Laptops</h1><p>Registra, asigna y administra todos los equipos</p></div></div>}

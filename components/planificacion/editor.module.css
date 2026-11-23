@@ -1,4 +1,4 @@
-.editor { --linea: rgba(255,255,255,.065); color: #e9e5f4; background: #14131d; border: 1px solid rgba(170,150,210,.18); border-radius: 20px; overflow: hidden; box-shadow: 0 14px 50px #0002; min-width: 0; }
+.editor { --linea: rgba(255,255,255,.065); color: #e9e5f4; background: var(--ad-panel-base, #14131d); border: 1px solid var(--ad-line, rgba(170,150,210,.18)); border-radius: 20px; overflow: hidden; box-shadow: 0 14px 50px #0002; min-width: 0; }
 .boton, .icono, .primario { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(180,163,212,.16); border-radius: 10px; background: #ffffff04; color: #d8d2e7; font-size: 12px; font-weight: 500; padding: 8px 11px; min-height: 34px; transition: background .15s, border-color .15s; white-space: nowrap; }
 .icono { padding: 7px; width: 34px; flex-shrink: 0; }
 .primario { background: linear-gradient(125deg,#7c3aed,#9333ea); color: white; border-color: #a78bfa66; box-shadow: 0 3px 14px #7c3aed26; }

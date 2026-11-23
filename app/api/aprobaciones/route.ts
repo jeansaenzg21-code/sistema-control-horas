@@ -94,7 +94,7 @@ export async function GET(request: Request) {
     } else if (esSupervisor(user)) {
       query += ' AND u.supervisor_id = ?'
       params.push(user.id)
-    } else if (esAdministrador(user)) {
+    } else if (esAdministrador(user) || esSocio(user)) {
       // El administrador solo revisa las actividades que envian los jefes de área.
       query += " AND u.rol = 'JEFE_AREA'"
     } else if (esJefeDeArea(user) && user.area_id != null) {

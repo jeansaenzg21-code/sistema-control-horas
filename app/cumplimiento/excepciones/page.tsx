@@ -10,12 +10,12 @@ export default function CumplimientoExcepciones() {
   const { usuario, cargando } = useAuth()
   const router = useRouter()
 
-  // Las excepciones son de administración: el socio no entra ni por URL.
+  const autorizado = usuario?.rol === 'admin' || usuario?.rol === 'socio' || (usuario?.rol === 'jefe_area' && usuario.area_id != null)
   useEffect(() => {
-    if (!cargando && usuario?.rol === 'socio') router.replace('/cumplimiento')
-  }, [cargando, usuario, router])
+    if (!cargando && !autorizado) router.replace('/cumplimiento')
+  }, [cargando, autorizado, router])
 
-  if (cargando || !usuario || usuario.rol === 'socio') return null
+  if (cargando || !autorizado) return null
 
   return <ExcepcionesAdmin />
 }

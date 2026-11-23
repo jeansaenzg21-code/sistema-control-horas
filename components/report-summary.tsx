@@ -1,50 +1,31 @@
-'use client'
-
-import { Clock, TrendingUp, Wallet, FileText } from 'lucide-react'
+import { Clock, TrendingUp, Layers3, FileText } from 'lucide-react'
 import type { Actividad } from '@/lib/types'
+import { segundosReporte } from '@/lib/reporte-horas'
 import { esFacturable, esNoFacturable, formatoHoras } from '@/lib/utils'
+import styles from './reportes.module.css'
 
-interface ReportSummaryProps {
-  registros: Actividad[]
-}
-
-export function ReportSummary({ registros }: ReportSummaryProps) {
-  const calcularHoras = (r: Actividad): number => {
-    if (!r.fin || !r.inicio) return 0
-    const diff = (new Date(r.fin).getTime() - new Date(r.inicio).getTime()) / 1000
-    return Math.max(0, (diff - (r.pausa_acumulada_segundos || 0)) / 3600)
+export function ReportSummary({ registros }: { registros: Actividad[] }) {
+  let total = 0
+  let facturables = 0
+  let noFacturables = 0
+  for (const registro of registros) {
+    const segundos = segundosReporte(registro)
+    total += segundos
+    if (registro.estado === 'APROBADA' && esFacturable(registro.facturable)) facturables += segundos
+    if (registro.estado === 'RECHAZADA' || (registro.estado === 'APROBADA' && esNoFacturable(registro.facturable))) noFacturables += segundos
   }
-
-  const total = registros.reduce((acc, r) => acc + calcularHoras(r), 0)
-  const facturables = registros
-    .filter((r) => r.estado === 'APROBADA' && esFacturable(r.facturable))
-    .reduce((acc, r) => acc + calcularHoras(r), 0)
-  const noFacturables = registros
-    .filter(
-      (r) =>
-        r.estado === 'RECHAZADA' ||
-        (r.estado === 'APROBADA' && esNoFacturable(r.facturable)),
-    )
-    .reduce((acc, r) => acc + calcularHoras(r), 0)
-
   const tarjetas = [
-    { etiqueta: 'Total de horas', valor: formatoHoras(total), icono: Clock, color: 'text-foreground' },
-    { etiqueta: 'Horas facturables', valor: formatoHoras(facturables), icono: TrendingUp, color: 'text-[#c4b5fd]' },
-    { etiqueta: 'Horas no facturables', valor: formatoHoras(noFacturables), icono: Wallet, color: 'text-muted-foreground' },
-    { etiqueta: 'Registros', valor: String(registros.length), icono: FileText, color: 'text-foreground' },
+    { etiqueta: 'Total de horas', valor: formatoHoras(total / 3600), icono: Clock, tono: 'violeta' },
+    { etiqueta: 'Horas facturables', valor: formatoHoras(facturables / 3600), icono: TrendingUp, tono: 'verde' },
+    { etiqueta: 'Horas no facturables', valor: formatoHoras(noFacturables / 3600), icono: Layers3, tono: 'azul' },
+    { etiqueta: 'Registros', valor: String(registros.length), icono: FileText, tono: 'ambar' },
   ]
-
-  return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      {tarjetas.map((tarjeta) => (
-        <div key={tarjeta.etiqueta} className="rounded-xl border border-border bg-card p-4">
-          <div className="mb-1 flex items-center gap-2">
-            <tarjeta.icono size={15} className="text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">{tarjeta.etiqueta}</span>
-          </div>
-          <p className={`text-xl font-bold ${tarjeta.color}`}>{tarjeta.valor}</p>
-        </div>
-      ))}
-    </div>
-  )
+  return <section className={styles.metrics} aria-label="Totales del reporte">
+    {tarjetas.map(({ etiqueta, valor, icono: Icono, tono }) => (
+      <article key={etiqueta} className={styles.metric} data-tono={tono}>
+        <span className={styles.metricIcon}><Icono size={24} /></span>
+        <div><h3>{etiqueta}</h3><strong>{valor}</strong></div>
+      </article>
+    ))}
+  </section>
 }

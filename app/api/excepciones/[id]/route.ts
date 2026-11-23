@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import type { ResultSetHeader } from 'mysql2'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import {
-  esAdmin,
+  alcanceExcepciones,
+  puedeGestionarExcepciones,
+  validarDestinatarioExcepcion,
   validarDatosExcepcion,
   existeDuplicadoExcepcion,
 } from '@/lib/excepciones'
@@ -13,7 +16,7 @@ export async function PUT(
 ) {
   try {
     const user = await getUserFromRequest(request)
-    if (!user || !esAdmin(user)) {
+    if (!user || !puedeGestionarExcepciones(user)) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
     const context = await getEmpresaContext(user)
@@ -25,14 +28,15 @@ export async function PUT(
       return NextResponse.json({ error: 'ID requerido.' }, { status: 400 })
     }
 
+    const alcance = alcanceExcepciones(user, context.activa.id)
     const [existe] = await pool.query(
       `SELECT e.id FROM excepciones e
-       LEFT JOIN usuarios eu ON eu.id = e.usuario_id
-       LEFT JOIN areas ea ON ea.id = eu.area_id
-       WHERE e.id = ? AND (e.usuario_id IS NULL OR ea.empresa_id = ?)`,
-      [id, context.activa.id]
+       LEFT JOIN usuarios u ON u.id = e.usuario_id
+       LEFT JOIN areas ar ON ar.id = u.area_id
+       WHERE e.id = ? AND (${alcance.sql})`,
+      [id, ...alcance.valores],
     )
-    if ((existe as Array<Record<string, unknown>>).length === 0) {
+    if (!(existe as unknown[]).length) {
       return NextResponse.json({ error: 'Excepción no encontrada.' }, { status: 404 })
     }
 
@@ -41,15 +45,9 @@ export async function PUT(
     if (!validado.ok) {
       return NextResponse.json({ error: validado.error }, { status: validado.status })
     }
-    if (validado.datos.usuario_id) {
-      const [usuarios] = await pool.query(
-        `SELECT u.id FROM usuarios u INNER JOIN areas ar ON ar.id = u.area_id
-         WHERE u.id = ? AND ar.empresa_id = ? AND u.activo = TRUE`,
-        [validado.datos.usuario_id, context.activa.id]
-      )
-      if ((usuarios as unknown[]).length === 0) {
-        return NextResponse.json({ error: 'El colaborador no pertenece a la empresa activa.' }, { status: 400 })
-      }
+    const destinatario = await validarDestinatarioExcepcion(validado.datos.usuario_id, user, context.activa.id)
+    if (destinatario) {
+      return NextResponse.json({ error: destinatario.error }, { status: destinatario.status })
     }
 
     const duplicado = await existeDuplicadoExcepcion(validado.datos, id)
@@ -60,12 +58,16 @@ export async function PUT(
       )
     }
 
-    await pool.query(
-      `UPDATE excepciones
-       SET fecha = ?, tipo = ?, usuario_id = ?, descripcion = ?
-       WHERE id = ?`,
-      [validado.datos.fecha, validado.datos.tipo, validado.datos.usuario_id, validado.datos.descripcion, id]
+    const { fecha, tipo, usuario_id, descripcion } = validado.datos
+    const [resultado] = await pool.query<ResultSetHeader>(
+      `UPDATE excepciones e
+       LEFT JOIN usuarios u ON u.id = e.usuario_id
+       LEFT JOIN areas ar ON ar.id = u.area_id
+       SET e.fecha = ?, e.tipo = ?, e.usuario_id = ?, e.descripcion = ?
+       WHERE e.id = ? AND (${alcance.sql})`,
+      [fecha, tipo, usuario_id, descripcion, id, ...alcance.valores],
     )
+    if (!resultado.affectedRows) return NextResponse.json({ error: 'Excepción no encontrada.' }, { status: 404 })
 
     return NextResponse.json({ ok: true })
   } catch (error) {
@@ -86,7 +88,7 @@ export async function DELETE(
 ) {
   try {
     const user = await getUserFromRequest(request)
-    if (!user || !esAdmin(user)) {
+    if (!user || !puedeGestionarExcepciones(user)) {
       return NextResponse.json({ error: 'No autorizado.' }, { status: 403 })
     }
     const context = await getEmpresaContext(user)
@@ -98,18 +100,15 @@ export async function DELETE(
       return NextResponse.json({ error: 'ID requerido.' }, { status: 400 })
     }
 
-    const [existe] = await pool.query(
-      `SELECT e.id FROM excepciones e
-       LEFT JOIN usuarios eu ON eu.id = e.usuario_id
-       LEFT JOIN areas ea ON ea.id = eu.area_id
-       WHERE e.id = ? AND (e.usuario_id IS NULL OR ea.empresa_id = ?)`,
-      [id, context.activa.id]
+    const alcance = alcanceExcepciones(user, context.activa.id)
+    const [resultado] = await pool.query<ResultSetHeader>(
+      `DELETE e FROM excepciones e
+       LEFT JOIN usuarios u ON u.id = e.usuario_id
+       LEFT JOIN areas ar ON ar.id = u.area_id
+       WHERE e.id = ? AND (${alcance.sql})`,
+      [id, ...alcance.valores],
     )
-    if ((existe as Array<Record<string, unknown>>).length === 0) {
-      return NextResponse.json({ error: 'Excepción no encontrada.' }, { status: 404 })
-    }
-
-    await pool.query('DELETE FROM excepciones WHERE id = ?', [id])
+    if (!resultado.affectedRows) return NextResponse.json({ error: 'Excepción no encontrada.' }, { status: 404 })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error al eliminar excepción:', error)

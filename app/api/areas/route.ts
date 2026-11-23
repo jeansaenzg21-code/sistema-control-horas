@@ -3,7 +3,7 @@ import pool from '@/lib/db'
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { esAdmin } from '@/lib/excepciones'
-import { esJefeDeArea } from '@/lib/permisos'
+import { esJefeDeArea, esSocio } from '@/lib/permisos'
 import { eliminarAreaCompleta } from '@/lib/eliminacion-registros'
 
 async function getContextoActivo(request: Request) {
@@ -34,10 +34,7 @@ export async function GET(request: Request) {
 
     const areaJefe = esJefeDeArea(context.user) ? context.user.area_id : null
     const filtroArea = areaJefe != null ? ' AND a.id = ?' : ''
-    // El administrador es el único que gestiona el estado de las divisiones, así
-    // que también es el único que necesita ver las deshabilitadas para poder
-    // volver a habilitarlas.
-    const filtroActivo = esAdmin(context.user) ? '' : ' AND a.activo = TRUE'
+    const filtroActivo = esAdmin(context.user) || esSocio(context.user) ? '' : ' AND a.activo = TRUE'
     const consultaConJefe = `
       SELECT a.id, a.empresa_id, a.nombre, a.descripcion, a.activo, a.jefe_id,
         jefe.nombre AS jefe_nombre,

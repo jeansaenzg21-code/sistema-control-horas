@@ -150,9 +150,23 @@ export async function obtenerPresupuestosDeCliente(
   empresaId: number,
   verImportes = false
 ): Promise<ResumenPresupuesto[]> {
+  const grupos = await obtenerPresupuestosPorCliente(empresaId, clienteId, verImportes)
+  return grupos[clienteId] ?? []
+}
+
+export async function obtenerPresupuestosPorCliente(
+  empresaId: number,
+  clienteId: number | null = null,
+  verImportes = false
+): Promise<Record<number, ResumenPresupuesto[]>> {
+  const filtro = clienteId === null
+    ? 'AND EXISTS (SELECT 1 FROM clientes c INNER JOIN areas a ON a.id = c.area_id WHERE c.id = p.cliente_id AND c.activo = TRUE AND a.empresa_id = p.empresa_id)'
+    : 'AND p.cliente_id = ?'
+  const parametros = clienteId === null ? [empresaId] : [empresaId, clienteId]
   const [presupuestos] = await pool.query<
     (RowDataPacket & {
       id: number
+      cliente_id: number
       version: number
       estado: ResumenPresupuesto['estado']
       archivo_nombre: string
@@ -166,18 +180,18 @@ export async function obtenerPresupuestosDeCliente(
       revisado_en: string | null
     })[]
   >(
-    `SELECT p.id, p.version, p.estado, p.archivo_nombre, p.archivo_hash,
+    `SELECT p.id, p.cliente_id, p.version, p.estado, p.archivo_nombre, p.archivo_hash,
             p.analisis, p.creado_en, p.creado_por, uc.nombre AS creador_nombre,
             p.revisado_por, u.nombre AS revisado_nombre, p.revisado_en
        FROM presupuestos p
        LEFT JOIN usuarios u ON u.id = p.revisado_por
        LEFT JOIN usuarios uc ON uc.id = p.creado_por
-      WHERE p.cliente_id = ? AND p.empresa_id = ?
+      WHERE p.empresa_id = ? ${filtro}
       ORDER BY p.version DESC`,
-    [clienteId, empresaId]
+    parametros
   )
 
-  if (presupuestos.length === 0) return []
+  if (presupuestos.length === 0) return {}
 
   const ids = presupuestos.map((p) => p.id)
 
@@ -260,7 +274,8 @@ export async function obtenerPresupuestosDeCliente(
     serviciosPorPresupuesto.set(s.presupuesto_id, lista)
   }
 
-  return presupuestos.map((p) => {
+  const grupos: Record<number, ResumenPresupuesto[]> = {}
+  for (const p of presupuestos) {
     const lista = serviciosPorPresupuesto.get(p.id) ?? []
     let analisis: unknown = null
     try {
@@ -271,7 +286,7 @@ export async function obtenerPresupuestosDeCliente(
     const totales = (analisis as { totales?: Record<string, number> } | null)?.totales ?? {}
     const observaciones = extraerObservaciones(analisis)
 
-    return {
+    const resumen: ResumenPresupuesto = {
       id: p.id,
       version: p.version,
       estado: p.estado,
@@ -294,5 +309,8 @@ export async function obtenerPresupuestosDeCliente(
       observaciones,
       servicios: lista,
     }
-  })
+    const grupo = grupos[p.cliente_id] ??= []
+    grupo.push(resumen)
+  }
+  return grupos
 }

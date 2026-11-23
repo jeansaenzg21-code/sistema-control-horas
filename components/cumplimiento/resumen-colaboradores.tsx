@@ -3,6 +3,7 @@
 import { AlertTriangle, MessageSquare, Users } from 'lucide-react'
 import type { ColaboradorCumplimiento } from '@/lib/cumplimiento'
 import type { CumplimientoObservacion } from '@/lib/observaciones-ui'
+import styles from './cumplimiento.module.css'
 import { cn, formatoHoras } from '@/lib/utils'
 
 interface Props {
@@ -42,39 +43,39 @@ export function ResumenColaboradores({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Users size={15} className="text-[#a78bfa]" />
+    <section className={styles.panel}>
+      <div className={styles.heading}>
+        <h2 className={styles.headingTitle}>
+          <Users size={21} aria-hidden="true" />
           Situación por colaborador
         </h2>
-        <span className="text-[11px] text-muted-foreground">
+        <span className={styles.count}>
           {colaboradores.length} colaborador(es)
         </span>
       </div>
 
-      <div className="w-full">
-        <table className="w-full table-fixed text-sm">
+      <div className={styles.tableScroll} role="region" aria-label="Situación por colaborador" tabIndex={0}>
+        <table className={styles.table}>
           <colgroup>
-            <col className="w-[22%]" />
+            <col className="w-[25%]" />
+            <col className="w-[11%]" />
             <col className="w-[12%]" />
-            <col className="w-[13%]" />
-            <col className="w-[8%]" />
-            <col className="w-[9%]" />
-            <col className="w-[9%]" />
-            <col className="w-[14%]" />
-            <col className="w-[13%]" />
+            <col className="w-[7%]" />
+            <col className="w-[7%]" />
+            <col className="w-[7%]" />
+            <col className="w-[19%]" />
+            <col className="w-[12%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-border text-left">
-              <th className="px-4 py-2 text-left text-[11px] font-medium text-muted-foreground">Colaborador</th>
-              <th className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Cobertura</th>
-              <th className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Estado</th>
-              <th className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Registros</th>
-              <th className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Horas</th>
-              <th className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Semanas</th>
-              <th className="px-2 py-2 text-left text-[11px] font-medium text-muted-foreground">Observación</th>
-              <th className="px-1 py-2 text-center text-[11px] font-medium text-muted-foreground">Observaciones</th>
+              <th scope="col" className="px-4 py-2 text-left text-[11px] font-medium text-muted-foreground">Colaborador</th>
+              <th scope="col" className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Cobertura</th>
+              <th scope="col" className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Estado</th>
+              <th scope="col" className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Registros</th>
+              <th scope="col" className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Horas</th>
+              <th scope="col" className="px-2 py-2 text-center text-[11px] font-medium text-muted-foreground">Semanas</th>
+              <th scope="col" className="px-2 py-2 text-left text-[11px] font-medium text-muted-foreground">Observación</th>
+              <th scope="col" className="px-1 py-2 text-center text-[11px] font-medium text-muted-foreground">Observaciones</th>
             </tr>
           </thead>
           <tbody>
@@ -99,9 +100,9 @@ export function ResumenColaboradores({
                   </td>
                   <td className="min-w-0 px-2 py-2 text-center align-middle">
                     <div className="flex min-w-0 items-center justify-center gap-2">
-                      <div className="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-[#7c3aed]/15">
+                      <div className={styles.coverage}>
                         <div
-                          className="h-full rounded-full bg-[#7c3aed]"
+                          className={styles.coverageFill}
                           style={{ width: `${Math.min(100, c.cobertura)}%` }}
                         />
                       </div>
@@ -144,11 +145,12 @@ export function ResumenColaboradores({
                       type="button"
                       onClick={() => onAbrirObservaciones?.(c)}
                       className={cn(
-                        'inline-flex w-full items-center justify-center gap-1 rounded-lg border px-1.5 py-1.5 text-xs font-medium transition-colors',
+                        'inline-flex w-full items-center justify-center gap-1.5 rounded-xl border px-1.5 py-1 text-xs font-medium transition-colors',
                         cantidad > 0
                           ? 'border-amber-500/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15'
                           : 'border-border text-muted-foreground hover:border-amber-500/35 hover:bg-amber-500/5 hover:text-amber-300',
                       )}
+                      aria-label={`Observaciones de ${c.nombre} (${cantidad})`}
                       title={cantidad > 0 ? `${cantidad} observación(es)` : 'Abrir observaciones'}
                     >
                       <MessageSquare size={13} />

@@ -151,6 +151,7 @@ export async function GET(request: Request) {
     const [porUsuario] = await pool.query<RowDataPacket[]>(
       `SELECT u.id AS usuario_id, u.nombre, u.cargo, ar.nombre AS area_nombre,
               COUNT(*) AS registros,
+              SUM(CASE WHEN a.estado = 'PENDIENTE_APROBACION' THEN 1 ELSE 0 END) AS pendientes,
               COALESCE(SUM(${HORAS}), 0) AS horas
        ${base}
        GROUP BY u.id, u.nombre, u.cargo, ar.nombre
@@ -213,6 +214,7 @@ export async function GET(request: Request) {
         cargo: r.cargo == null ? null : String(r.cargo),
         area_nombre: String(r.area_nombre),
         registros: Number(r.registros),
+        pendientes: Number(r.pendientes),
         horas: Number(r.horas),
       })),
       por_dia: porDia.map((r) => ({
