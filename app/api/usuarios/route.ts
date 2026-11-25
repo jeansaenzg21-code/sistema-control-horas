@@ -1,3 +1,4 @@
+import { tieneColumnasTrainee } from '@/lib/trainees-esquema'
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise'
@@ -9,9 +10,9 @@ import { leerJson } from '@/lib/validacion/leer-json'
 import { esquemaUsuario } from '@/lib/validacion/usuarios'
 import { hashearPassword, validarPassword } from '@/lib/validacion-password'
 
-const SELECT_USUARIOS = `
+const seleccionarUsuarios = (trainees: boolean) => `
   SELECT u.id, u.nombre, u.correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad,
-         u.supervisor_id, u.activo, u.created_at,
+         u.supervisor_id, u.activo, u.created_at, ${trainees ? '(u.trainee_inicio IS NOT NULL)' : '0'} AS es_trainee,
          a.nombre AS area_nombre,
          a.empresa_id AS empresa_id
   FROM usuarios u
@@ -117,7 +118,7 @@ export async function GET(request: Request) {
     // Los administradores no pertenecen a una división (area_id NULL), pero sí
     // deben aparecer en el listado de la empresa activa: son quienes gestionan
     // todas sus áreas. El resto de perfiles sigue saliendo por su área.
-    let query = `${SELECT_USUARIOS}
+    let query = `${seleccionarUsuarios(await tieneColumnasTrainee())}
       WHERE (a.empresa_id = ?
          OR (u.area_id IS NULL AND u.rol IN ('ADMINISTRACION', 'ADMIN')))`
     const params: number[] = [context.empresaId]
@@ -278,7 +279,7 @@ export async function POST(request: Request) {
       id = result.insertId
     }
 
-    const [rows] = await pool.query(`${SELECT_USUARIOS} WHERE u.id = ?`, [id])
+    const [rows] = await pool.query(`${seleccionarUsuarios(await tieneColumnasTrainee())} WHERE u.id = ?`, [id])
     await registrarAuditoria({
       empresaId: context.empresaId,
       usuarioId: context.user.id,

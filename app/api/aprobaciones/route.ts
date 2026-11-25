@@ -65,7 +65,7 @@ export async function GET(request: Request) {
 
     let query = `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
       a.inicio, a.fin, a.estado, a.revisado_por, a.revisado_en, a.observacion_revision, a.created_at,
-      u.nombre AS usuario_nombre, u.cargo, u.especialidad, u.supervisor_id,
+      COALESCE(NULLIF(u.nombre, ''), u.correo) AS usuario_nombre, u.cargo, u.especialidad, u.supervisor_id,
       u.area_id, ar.nombre AS area_nombre,
       ta.nombre AS tipo_actividad_nombre,
       c.nombre AS cliente_nombre,

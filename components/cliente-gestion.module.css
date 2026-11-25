@@ -1,0 +1,32 @@
+.management { min-width: 0; container: cliente-detalle / inline-size; }
+
+@container cliente-detalle (width < 580px) {
+  .metrics > div > div { flex-direction: column; }
+  .metrics > div > div p { min-height: 0; white-space: normal; overflow-wrap: anywhere; }
+  .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tabs button { min-height: 42px; justify-content: center; }
+  .teamTable { display: block; min-width: 0; }
+  .teamTable colgroup { display: none; }
+  .teamTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .teamTable :is(tbody, tfoot) { display: block; }
+  .teamTable tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 9px 12px;
+    padding: 12px;
+  }
+  .teamTable td { display: block; min-width: 0; padding: 0; text-align: left; overflow-wrap: anywhere; }
+  .teamTable td:first-child, .teamTable td[data-actions], .teamTable tfoot td[colspan] { grid-column: 1 / -1; }
+  .teamTable td[data-actions]:empty { display: none; }
+  .teamTable td:first-child :global(.truncate) { white-space: normal; }
+  .teamTable td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    color: var(--muted-foreground);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .teamTable td[data-actions] button { min-height: 40px; }
+}

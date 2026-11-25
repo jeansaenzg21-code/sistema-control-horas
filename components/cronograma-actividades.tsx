@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BarChart3, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Clock3, Layers3, List, TriangleAlert, X } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
@@ -125,19 +125,19 @@ export function CronogramaActividades() {
         {isError && !data ? <p role="alert" className={styles.message}>No se pudo cargar el cronograma. <button type="button" onClick={() => void refetch()}>Reintentar</button></p>
           : !data ? <p role="status" className={styles.message}>Cargando actividades…</p>
             : <section className={styles.panel} aria-label="Actividades del período">
-              {!registros.length && <p className={styles.message}>No hay actividades registradas esta semana.</p>}
+              {!registros.length && <p className={styles.message + (vista === 'lista' ? '' : ' ' + styles.emptyCalendar)}>No hay actividades registradas esta semana.</p>}
               {vista === 'lista' ? <div className={styles.list}>
                 {porDia.filter(({ registros: filas }) => filas.length > 0).map(({ fechaDia, registros: filas }) =>
                   <section key={fechaDia}><h3>{diaCorto.format(fecha(fechaDia))}</h3>{filas.map((registro) => <button type="button" key={registro.id} onClick={() => setDetalle(registro)}><span><strong>{titulo(registro)}</strong><small>{registro.cliente_nombre || 'Sin cliente'} · {tramo(registro)}</small></span><StatusBadge estado={registro.estado} /></button>)}</section>,
                 )}
               </div> : <div className={styles.scroll}>
-                <div className={styles.calendar} style={{ gridTemplateColumns: '53px repeat(' + agenda.length + ', minmax(' + (vista === 'dia' ? '0' : '120px') + ', 1fr))' }}>
+                <div className={styles.calendar} data-week={vista === 'semana'} style={{ '--day-width': vista === 'dia' ? '0px' : undefined, gridTemplateColumns: 'var(--axis-width, 53px) repeat(' + agenda.length + ', minmax(var(--day-width, 120px), 1fr))' } as CSSProperties}>
                   <div className={styles.dayHeading} aria-hidden="true" />
                   {agenda.map(({ fechaDia, filas }) => <div className={styles.dayHeading} key={fechaDia} data-today={fechaDia === hoy}><strong>{diaCorto.format(fecha(fechaDia))}</strong><small>{horas(filas.reduce((suma, fila) => suma + segundosReporte(fila), 0))}</small></div>)}
                   <div className={styles.axis} aria-hidden="true">
                     {Array.from({ length: horasVisibles + 1 }, (_, indice) => <span key={indice}>{etiquetaHora((primeraHora + indice) * 60)}</span>)}
                   </div>
-                  {agenda.map(({ fechaDia, bloques: eventos, carriles }) => <div key={fechaDia} className={styles.track}>
+                  {agenda.map(({ fechaDia, bloques: eventos, carriles }) => <div key={fechaDia} className={styles.track} data-today={fechaDia === hoy}>
                     {eventos.map(({ registro, inicio, fin, carril }) => <button key={registro.id} type="button" className={styles.event} data-status={registro.estado} aria-label={titulo(registro) + ', ' + tramo(registro)} title={titulo(registro) + ' · ' + tramo(registro)} onClick={() => setDetalle(registro)} style={{
                       top: 'calc(var(--hour) * ' + (inicio / 60 - primeraHora) + ')',
                       height: 'calc(var(--hour) * ' + ((fin - inicio) / 60) + ' - 2px)',
@@ -154,11 +154,11 @@ export function CronogramaActividades() {
             </section>}
       </div>
       <aside className={styles.aside} aria-label="Resumen del cronograma">
-        {detalle && <section className={styles.panel}>
+        {detalle && <section className={styles.panel + ' ' + styles.wideMobile}>
           <h3><CalendarDays size={17} />Detalle de actividad <button type="button" onClick={() => setDetalle(null)} aria-label="Cerrar detalle"><X size={17} /></button></h3>
           <div className={styles.detail}><strong>{titulo(detalle)}</strong><StatusBadge estado={detalle.estado} /><p>{detalle.cliente_nombre || 'Sin cliente'} · {tramo(detalle)}</p>{detalle.descripcion && detalle.descripcion !== titulo(detalle) && <p>{detalle.descripcion}</p>}</div>
         </section>}
-        <section className={styles.panel}>
+        <section className={styles.panel + ' ' + styles.wideMobile}>
           <h3><BarChart3 size={18} />Resumen de la semana</h3>
           <div className={styles.metrics}>
             {[['Horas registradas', total], ['Facturables', facturables], ['No facturables', noFacturables], ['Por definir', porDefinir]].map(([etiqueta, valor]) =>
@@ -180,7 +180,7 @@ export function CronogramaActividades() {
               <button type="button" key={registro.id} onClick={() => setDetalle(registro)}><span><strong>{titulo(registro)}</strong><small>{registro.cliente_nombre || 'Sin cliente'} · {horas(segundosReporte(registro))}</small></span><ChevronRight size={16} /></button>,
             ) : <p>No hay registros pendientes esta semana.</p>}</div>
           </section>
-          <section className={styles.panel}>
+          <section className={styles.panel + ' ' + styles.wideMobile + ' ' + styles.recent}>
             <h3><Clock3 size={18} />Actividad reciente</h3>
             <div className={styles.entries}>{recientes.length ? recientes.map((registro) =>
               <button type="button" key={registro.id} onClick={() => setDetalle(registro)}><span><strong>{titulo(registro)}</strong><small>{new Date(registro.created_at).toLocaleString('es-PE', { timeZone: PERU, dateStyle: 'short', timeStyle: 'short' })}</small></span><ChevronRight size={16} /></button>,

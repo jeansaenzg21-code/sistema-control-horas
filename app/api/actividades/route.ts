@@ -136,7 +136,7 @@ export async function GET(request: Request) {
     const servicioJoin = tieneServicio ? 'LEFT JOIN presupuesto_servicios ps ON ps.id = a.presupuesto_servicio_id' : ''
     let query = `SELECT a.id, a.usuario_id, a.cliente_id, a.tipo_actividad_id, a.descripcion, a.facturable,
       ${proyectoCampos} ${servicioCampos} a.inicio, a.fin, a.estado, a.revisado_por, a.revisado_en, a.observacion_revision, a.created_at,
-      u.nombre AS usuario_nombre, u.cargo, u.especialidad, u.area_id,
+      COALESCE(NULLIF(u.nombre, ''), u.correo) AS usuario_nombre, u.cargo, u.especialidad, u.area_id,
       ta.nombre AS tipo_actividad_nombre,
       ar.nombre AS area_nombre,
       c.nombre AS cliente_nombre,

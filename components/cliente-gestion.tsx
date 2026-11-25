@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
+import styles from './cliente-gestion.module.css'
 import {
   AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, FileSpreadsheet,
   Loader2, UserPlus, UsersRound,
@@ -378,7 +379,7 @@ export function ClienteGestion({
 
   return (
 
-    <div className="space-y-4">
+    <div className={styles.management + ' space-y-4'}>
 
       {/* El nombre y el área los muestra la cabecera de la página. Aquí queda la
 
@@ -490,7 +491,7 @@ export function ClienteGestion({
 
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+          <div className={styles.metrics + ' grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5'}>
 
             <Kpi
 
@@ -567,7 +568,7 @@ export function ClienteGestion({
           {/* Planificación está siempre disponible: el usuario puede crear su
               propio cronograma aunque el Excel no traiga la hoja de Gantt. */}
 
-          <div className="flex flex-wrap gap-1.5 border-b border-border pb-2" role="tablist" aria-label="Secciones de gestión integral">
+          <div className={styles.tabs + ' flex flex-wrap gap-1.5 border-b border-border pb-2'} role="tablist" aria-label="Secciones de gestión integral">
 
             {pestanas.map(([clave, texto, Icono]) => (
 
@@ -836,16 +837,16 @@ function PanelEquipoCliente({ datos, onActualizado }: { datos: Gestion; onActual
       </p>}
       {datos.equipoOutsourcing.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[500px] text-left text-xs">
+          <table className={styles.teamTable + ' w-full min-w-[500px] text-left text-xs'}>
             <thead className="bg-muted/30 text-[10px] text-muted-foreground">
               <tr><th className="px-4 py-2">Integrante</th><th className="px-3 py-2">Función</th><th className="px-3 py-2 text-right">Bolsa de horas</th><th className="px-4 py-2 text-right">Registradas</th></tr>
             </thead>
             <tbody>{datos.equipoOutsourcing.map((persona) => (
               <tr key={`${persona.usuarioId ?? persona.nombre}-${persona.funcion}`} className="border-t border-border/60">
                 <td className="px-4 py-2.5 font-medium">{persona.nombre}{persona.cargo ? <span className="ml-1 text-[10px] text-muted-foreground">· {persona.cargo}</span> : null}{persona.area && persona.area !== datos.cliente.area && <span className="block text-[10px] font-normal text-sky-300">Pertenece a {persona.area}</span>}</td>
-                <td className="px-3 py-2.5">{persona.funcion === 'ENCARGADO' ? 'Encargado' : 'Asistente'}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{persona.horasBolsa > 0 ? horas(persona.horasBolsa) : 'Sin bolsa asignada'}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{persona.horasRegistradas === null ? '—' : horas(persona.horasRegistradas)}</td>
+                <td data-label="Función" className="px-3 py-2.5">{persona.funcion === 'ENCARGADO' ? 'Encargado' : 'Asistente'}</td>
+                <td data-label="Bolsa de horas" className="px-3 py-2.5 text-right tabular-nums">{persona.horasBolsa > 0 ? horas(persona.horasBolsa) : 'Sin bolsa asignada'}</td>
+                <td data-label="Registradas" className="px-4 py-2.5 text-right tabular-nums">{persona.horasRegistradas === null ? '—' : horas(persona.horasRegistradas)}</td>
               </tr>
       ))}</tbody>
           </table>
@@ -928,7 +929,7 @@ function PanelEquipo({
 
               las columnas de la derecha. */}
 
-          <table className="w-full table-fixed border-collapse text-left text-[11px]">
+          <table className={styles.teamTable + ' w-full table-fixed border-collapse text-left text-[13px]'}>
 
             <colgroup>
 
@@ -990,9 +991,9 @@ function PanelEquipo({
 
                         <div className="min-w-0">
 
-                          <p className="truncate text-[11px] font-semibold text-[#e8e9f3]" title={persona.nombre}>{persona.nombre}</p>
+                          <p className="truncate text-[13px] font-semibold text-[#e8e9f3]" title={persona.nombre}>{persona.nombre}</p>
 
-                          <p className={`mt-0.5 truncate text-[10px] ${sinBolsa ? 'text-amber-300' : 'text-[#9ba4b8]'}`}>
+                          <p className={`mt-0.5 truncate text-xs ${sinBolsa ? 'text-amber-300' : 'text-[#9ba4b8]'}`}>
 
                             {persona.rol}
 
@@ -1008,7 +1009,7 @@ function PanelEquipo({
 
                           {!persona.esDelAreaDelCliente && persona.area && (
 
-                            <span className="mt-0.5 block truncate text-[9px] text-sky-300/80" title={`Área: ${persona.area}`}>
+                            <span className="mt-0.5 block truncate text-[11px] text-sky-300/80" title={`Área: ${persona.area}`}>
 
                               de {persona.area}
 
@@ -1022,7 +1023,7 @@ function PanelEquipo({
 
                     </td>
 
-                    <td className="px-2 py-3 font-semibold tabular-nums">
+                    <td data-label="Asignadas" className="px-2 py-3 font-semibold tabular-nums">
 
                       {persona.asignado > 0 ? (
 
@@ -1036,31 +1037,31 @@ function PanelEquipo({
 
                       {persona.asignado === 0 && (
 
-                        <span className="block text-[10px] font-medium text-[#8a93a8]">propuestas</span>
+                        <span className="block text-xs font-medium text-[#8a93a8]">propuestas</span>
 
                       )}
 
                     </td>
 
-                    <td className="px-2 py-3 tabular-nums">{horas(persona.registrado)}</td>
+                    <td data-label="Registradas" className="px-2 py-3 tabular-nums">{horas(persona.registrado)}</td>
 
-                    <td className={`px-2 py-3 font-semibold tabular-nums ${sinBolsa ? 'text-amber-300' : 'text-[#d8e0ef]'}`}>
+                    <td data-label="Saldo" className={`px-2 py-3 font-semibold tabular-nums ${sinBolsa ? 'text-amber-300' : 'text-[#d8e0ef]'}`}>
 
                       {persona.disponible === null ? '—' : horas(persona.disponible)}
 
                     </td>
 
-                    <td className="px-2 py-3">
+                    <td data-label="Consumo" className="px-2 py-3">
 
                       {persona.asignado > 0
 
                         ? <BarraProgreso total={persona.asignado} consumidas={persona.registrado} />
 
-                        : <span className="text-[10px] text-[#8a93a8]">sin consumo</span>}
+                        : <span className="text-xs text-[#8a93a8]">sin consumo</span>}
 
                     </td>
 
-                    {mostrarAcciones && <td className="py-3 pl-2 pr-3 text-right">
+                    {mostrarAcciones && <td data-actions className="py-3 pl-2 pr-3 text-right">
                       {!persona.tieneRegistros && persona.asignacionIds.length > 0 && <SelectorArea
                         etiqueta="Cambiar persona"
                         candidatos={datos.candidatos.filter((candidato) => candidato.id !== persona.usuarioId)}
@@ -1093,7 +1094,7 @@ function PanelEquipo({
 
                     <div className="flex min-w-0 items-center gap-2.5">
 
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-dashed border-amber-500/40 text-[10px] font-bold text-amber-300">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-dashed border-amber-500/40 text-xs font-bold text-amber-300">
 
                         {inicialesDe(a.etiqueta ?? '—')}
 
@@ -1101,13 +1102,13 @@ function PanelEquipo({
 
                       <div className="min-w-0">
 
-                        <p className="truncate text-[11px] font-semibold text-amber-200" title={a.etiqueta ?? 'Sin persona en el Excel'}>
+                        <p className="truncate text-[13px] font-semibold text-amber-200" title={a.etiqueta ?? 'Sin persona en el Excel'}>
 
                           {a.etiqueta ?? 'Sin persona en el Excel'}
 
                         </p>
 
-                        <p className="mt-0.5 truncate text-[10px] text-[#b9a98a]" title={a.detalle.join('\n')}>
+                        <p className="mt-0.5 truncate text-xs text-[#b9a98a]" title={a.detalle.join('\n')}>
 
                           {a.categorias.filter(Boolean).join(' / ') || 'Sin categoría'} ·{' '}
 
@@ -1121,13 +1122,13 @@ function PanelEquipo({
 
                   </td>
 
-                  <td className="px-2 py-3 font-semibold tabular-nums text-amber-200">
+                  <td data-label="Asignadas" className="px-2 py-3 font-semibold tabular-nums text-amber-200">
 
                     {horas(a.horas)}
 
                     {a.bloques > 1 && (
 
-                      <span className="block text-[10px] font-medium text-amber-300/80">
+                      <span className="block text-xs font-medium text-amber-300/80">
 
                         {a.bloques} bloques del Excel
 
@@ -1137,19 +1138,19 @@ function PanelEquipo({
 
                   </td>
 
-                  <td className="px-2 py-3 tabular-nums text-[#8a93a8]">—</td>
+                  <td data-label="Registradas" className="px-2 py-3 tabular-nums text-[#8a93a8]">—</td>
 
-                  <td className="px-2 py-3 tabular-nums text-[#8a93a8]">—</td>
+                  <td data-label="Saldo" className="px-2 py-3 tabular-nums text-[#8a93a8]">—</td>
 
-                  <td className="px-2 py-3">
+                  <td data-label="Consumo" className="px-2 py-3">
 
-                    <span className="text-[10px] text-amber-300/80">sin repartir</span>
+                    <span className="text-xs text-amber-300/80">sin repartir</span>
 
                   </td>
 
                   {puedeRepartir && (
 
-                    <td className="py-3 pl-2 pr-3 text-right">
+                    <td data-actions className="py-3 pl-2 pr-3 text-right">
 
                       <SelectorArea
 
@@ -1177,11 +1178,11 @@ function PanelEquipo({
 
                 <tr className="border-t border-amber-500/25 bg-amber-500/[0.08]">
 
-                  <td className="px-4 py-2.5 text-[11px] font-semibold text-amber-200">Pendiente de repartir</td>
+                  <td className="px-4 py-2.5 text-[13px] font-semibold text-amber-200">Pendiente de repartir</td>
 
-                  <td className="px-2 py-2.5 text-[11px] font-bold text-amber-200">{horas(totalSinRepartir)}</td>
+                  <td className="px-2 py-2.5 text-[13px] font-bold text-amber-200">{horas(totalSinRepartir)}</td>
 
-                  <td colSpan={puedeRepartir ? 4 : 3} className="px-2 py-2.5 text-[10px] text-amber-200/80">
+                  <td colSpan={mostrarAcciones ? 4 : 3} className="px-2 py-2.5 text-xs text-amber-200/80">
 
                     No se imputan a nadie hasta que se repartan.
 
@@ -1304,7 +1305,7 @@ function PanelServicios({ datos }: { datos: Gestion }) {
                   )}
                 </div>
                 <div className="min-w-0 border-t border-border/50 pt-2 lg:border-l lg:border-t-0 lg:py-0 lg:pl-4">
-                  <div className="grid grid-cols-4 gap-2 text-[9px]">
+                  <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
                     <div><span className="block text-muted-foreground">Bolsa</span><strong className="mt-1 block whitespace-nowrap text-[11px] tabular-nums">{horas(servicio.horas)}</strong></div>
                     <div><span className="block text-muted-foreground">Repartidas</span><strong className="mt-1 block whitespace-nowrap text-[11px] tabular-nums">{horas(repartidas)}</strong></div>
                     <div><span className="block text-muted-foreground">Registradas</span><strong className="mt-1 block whitespace-nowrap text-[11px] tabular-nums">{servicio.consumo === 'sin_imputar' ? '—' : horas(servicio.registrado)}</strong></div>
@@ -1424,7 +1425,7 @@ function SelectorArea({
 
     const left = Math.min(
 
-      Math.max(8, r.left + r.width - ANCHO),
+      Math.max(8, r.left + r.width - Math.min(ANCHO, window.innerWidth - 16)),
 
       Math.max(8, window.innerWidth - ANCHO - 8)
 
@@ -1579,7 +1580,7 @@ function SelectorArea({
 
             }
 
-            className="fixed z-[100] w-[288px] rounded-xl border border-border bg-popover p-1.5 shadow-[0_16px_40px_#0009]"
+            className="fixed z-[100] w-[288px] max-w-[calc(100vw-16px)] rounded-xl border border-border bg-popover p-1.5 shadow-[0_16px_40px_#0009]"
 
           >
 

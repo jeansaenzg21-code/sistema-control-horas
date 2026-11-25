@@ -142,6 +142,7 @@ export function nombreCorto(nombre: string | null | undefined, correo?: string |
 
 /** Primer nombre y primer apellido en el formato de la lista de personal. */
 export function primerNombreYApellido(nombre: string, correo?: string | null): string {
+  if (/^[^\s@]+@[^\s@]+$/.test(nombre.trim())) return nombre.trim()
   const partes = nombre.trim().split(/\s+/).filter(Boolean)
   const datosCorreo = pilaYApellidoDesdeCorreo(correo, partes)
   const apellidoCorreo = datosCorreo?.apellido

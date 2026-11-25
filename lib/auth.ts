@@ -1,3 +1,4 @@
+import { tieneColumnasTrainee, CONDICION_TRAINEE } from '@/lib/trainees-esquema'
 import { randomBytes, createHash } from 'crypto'
 import { RowDataPacket } from 'mysql2'
 import pool from './db'
@@ -40,6 +41,7 @@ export interface SessionUser {
   cargo: string | null
   especialidad: string | null
   activo: boolean
+  es_trainee?: boolean
   empresa_id: number | null
 }
 
@@ -127,11 +129,13 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
   }
   if (!token || token.length < 10) return null
 
+  const trainees = await tieneColumnasTrainee()
   const [rows] = await pool.query(
-    `SELECT s.usuario_id, s.empresa_id, u.nombre, u.correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad, u.activo
+    `SELECT s.usuario_id, s.empresa_id, u.nombre, u.correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad, u.activo, ${trainees ? '(u.trainee_inicio IS NOT NULL)' : '0'} AS es_trainee
      FROM sesiones s
      INNER JOIN usuarios u ON u.id = s.usuario_id
-     WHERE s.token = ? AND s.expira_en > NOW()`,
+     WHERE s.token = ? AND s.expira_en > NOW()
+       ${trainees ? CONDICION_TRAINEE : ''}`,
     [hashToken(token)]
   )
 
@@ -154,7 +158,8 @@ export async function getUserFromRequest(request: Request): Promise<SessionUser 
 
   const usuario: SessionUser = {
     id: Number(s.usuario_id),
-    nombre: String(s.nombre),
+    nombre: String(s.nombre || s.correo || ''),
+    es_trainee: Boolean(Number(s.es_trainee)),
     correo: String(s.correo),
     usuario: String(s.usuario),
     rol: String(s.rol),
@@ -296,6 +301,7 @@ export async function createSession(usuarioId: number, dispositivo?: string | nu
   // migracion viene a quitar.
   const tokenHash = hashToken(token)
   const refreshHash = hashToken(refreshToken)
+  const trainees = await tieneColumnasTrainee()
   const expiraAcceso = caducidadTokenAcceso()
   const expiraRenovacion = masDias(REFRESH_TOKEN_DAYS)
   const empresaId = await getDefaultEmpresaId(usuarioId)
@@ -340,6 +346,7 @@ export async function renovarSession(
   
   // Lo que se busca en la base es el HASH del token de renovacion.
   const refreshHash = hashToken(refreshToken)
+  const trainees = await tieneColumnasTrainee()
 
   const conexion = await pool.getConnection()
   try {
@@ -352,8 +359,9 @@ export async function renovarSession(
       `SELECT s.id, s.usuario_id, u.activo
          FROM sesiones s
          INNER JOIN usuarios u ON u.id = s.usuario_id
-        WHERE s.refresh_token = ?
-           OR (s.refresh_anterior = ? AND s.refresh_anterior_expira_en > NOW())
+        WHERE (s.refresh_token = ?
+           OR (s.refresh_anterior = ? AND s.refresh_anterior_expira_en > NOW()))
+          ${trainees ? CONDICION_TRAINEE : ''}
         FOR UPDATE`,
       [refreshHash, refreshHash]
     )

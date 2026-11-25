@@ -100,8 +100,8 @@ export function ActivityForm() {
   }
 
   return (
-    <form onSubmit={manejarEnvio} className="space-y-5">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <form onSubmit={manejarEnvio} className="space-y-5 max-md:space-y-3">
+      <div className="grid grid-cols-1 gap-4 max-md:gap-3 md:grid-cols-2 lg:grid-cols-4">
         <div>
           <label className="mb-1.5 block text-sm font-medium text-foreground">
             Tipo de actividad
@@ -219,7 +219,7 @@ export function ActivityForm() {
           {enRefrigerio ? 'Refrigerio fijo de 1:00 p. m. a 2:00 p. m. No se pueden iniciar actividades.' : 'La fecha y hora se registran automáticamente. Solo puede existir una actividad activa.'}
         </p>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <button type="button" onClick={guardarBorrador} disabled={!claveBorrador || cargando} className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-muted px-4 py-2.5 text-sm font-semibold hover:border-violet-500/60 disabled:opacity-50">
+          <button type="button" data-draft-action onClick={guardarBorrador} disabled={!claveBorrador || cargando} className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-muted px-4 py-2.5 max-md:order-1 text-sm font-semibold hover:border-violet-500/60 disabled:opacity-50">
             <Save size={16} /> Guardar borrador
           </button>
         <button
@@ -232,7 +232,10 @@ export function ActivityForm() {
           ) : (
             <Play size={16} />
           )}
-          {cargando ? 'Iniciando...' : 'Registrar actividad'}
+          {cargando ? 'Iniciando...' : <>
+            <span className="hidden md:inline">Registrar actividad</span>
+            <span className="md:hidden">Iniciar actividad</span>
+          </>}
         </button>
         </div>
       </div>
