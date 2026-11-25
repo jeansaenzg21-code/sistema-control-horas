@@ -101,6 +101,7 @@ function Resumen({ registros, periodo, cargando }: { registros: Actividad[]; per
   const trazo = puntos.map(({ x, y }) => x + ',' + y).join(' ')
   return <div className={styles.resumen}>
     <section className={styles.panel} aria-label="Resumen de solicitudes">
+      <h2 className={`${styles.heading} ${styles.soloMovil}`}><Layers3 size={19} />Resumen</h2>
       <div className={styles.resumenEstados}>
         <div className={styles.ring} style={sectores.length ? { background: 'conic-gradient(' + sectores.join(',') + ')' } : undefined}>
           <div><strong>{Math.round(datos[0].porcentaje)}%</strong><span>Aprobación</span></div>
@@ -141,6 +142,7 @@ type Props = {
   area: string
   busqueda: string
   filtro: FiltroAdmin
+  solicitudesPersonales: boolean
   puedeRevisar: boolean
   filtrarDivision: boolean
   periodo: PeriodoAprobaciones
@@ -168,7 +170,7 @@ export function AprobacionesAdminVista(props: Props) {
   const { registros, filas, filtro, area, busqueda, areas, periodo, pagina, paginas, seleccionadas, pendientesSeleccionables, todasSeleccionadas, procesando, cargando } = props
   const pendientes = registros.filter((fila) => fila.estado === 'PENDIENTE_APROBACION').length
   const seleccionar = props.puedeRevisar && filtro === 'pendientes'
-  return <div className={styles.vista}>
+  return <div className={`${styles.vista} ${props.solicitudesPersonales ? styles.personal : ""}`}>
     <Resumen registros={registros} periodo={periodo} cargando={cargando} />
     <div className={styles.toolbar}>
       <div className={styles.tabs} role="group" aria-label="Estado de la solicitud">
@@ -200,14 +202,14 @@ export function AprobacionesAdminVista(props: Props) {
                 <td><div className={styles.cliente}><span aria-hidden="true">{iniciales}</span><div><strong>{cliente}</strong><small>{fila.area_nombre || 'Sin división'}</small></div></div></td>
                 <td><button type="button" className={styles.solicitud} title={fila.descripcion || undefined} onClick={() => props.onDetalle(fila)}>{fila.tipo_actividad_nombre || 'Registro de horas'}</button>
                   {faltantes.length > 0 && <small className={styles.faltantes} title={textoDatosFaltantes(faltantes)}><AlertTriangle size={13} />Datos pendientes</small>}</td>
-                <td>{fechaCorta(fechaLocalISO(fila.inicio))}</td>
+                <td className={styles.fechaActividad}><CalendarDays className={styles.soloMovil} size={13} aria-hidden="true" />{fechaCorta(fechaLocalISO(fila.inicio))}</td>
                 <td><strong>{props.duracion(fila)}</strong><div><FacturableBadge valor={fila.facturable} /></div></td>
                 <td title={fila.usuario_nombre}>{fila.usuario_nombre ? primerNombreYApellido(fila.usuario_nombre) : '—'}</td>
                 <td><StatusBadge estado={fila.estado} /></td>
                 <td>{fechaCorta(fechaDeRegistro(fila))}</td>
                 <td><div className={styles.acciones}>
                   {props.puedeRevisar && pendiente && <><button type="button" className={styles.primary} disabled={procesando === 'aprobar-' + fila.id} onClick={() => props.onAprobar(fila)}><Check size={16} /> Aprobar</button><button type="button" className={styles.control} onClick={() => props.onRechazar(fila)}><X size={16} /> Rechazar</button></>}
-                  <button type="button" className={styles.control} aria-label={'Ver detalle del registro ' + fila.id} onClick={() => props.onDetalle(fila)}><Eye size={16} /></button>
+                  <button type="button" className={styles.control} aria-label={'Ver detalle del registro ' + fila.id} onClick={() => props.onDetalle(fila)}><Eye className={styles.iconoDetalle} size={16} /><ChevronRight className={styles.soloMovil} size={17} /></button>
                 </div></td>
               </tr>
             })}
