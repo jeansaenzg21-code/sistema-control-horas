@@ -97,6 +97,14 @@ export function SettingsClientePresupuestos({
   }, [cargar])
 
   async function importar(archivo: File) {
+    if (!puedeImportar || subiendo || presupuestos === null) return
+    if (presupuestos.length > 0 && !window.confirm(
+      'Ya hay un presupuesto cargado. ¿Deseas reemplazarlo con este archivo? Si el archivo es distinto, se guardará como una nueva versión.'
+    )) {
+      if (inputArchivo.current) inputArchivo.current.value = ''
+      return
+    }
+
     setSubiendo(true)
     setError(null)
     setExito(null)
@@ -205,6 +213,7 @@ export function SettingsClientePresupuestos({
                 </p>
                 <button
                   type="button"
+                  disabled={presupuestos === null}
                   onClick={() => inputArchivo.current?.click()}
                   className="mt-3 rounded-lg bg-[#7c3aed] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#6d28d9]"
                 >

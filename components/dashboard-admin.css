@@ -418,3 +418,44 @@
   .mobile-hours-nav { padding-inline: 10px; gap: 5px; }
   .mobile-hours-nav a { min-height: 49px; font-size: 12px; }
 }
+
+.volver-cliente-movil { display: none; }
+@media (max-width: 767px) {
+  .admin-shell > div > header[data-detalle-movil] {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center; column-gap: 5px; min-height: 62px; padding: 8px 10px;
+  }
+  header[data-detalle-movil] > div:first-child {
+    display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center;
+  }
+  header[data-detalle-movil] > div:last-child { width: auto; align-items: center; }
+  header[data-detalle-movil] button[aria-label="Notificaciones"] {
+    display: grid; place-items: center; width: 44px; height: 44px; padding: 0;
+  }
+  header[data-detalle-movil] > div:first-child > div:last-child:has(h1 + p) {
+    padding-block-start: 14px;
+  }
+  .admin-shell > div > header[data-detalle-movil] h1 + p { line-height: 14px; }
+  header[data-detalle-movil] .admin-brand { display: none; }
+  .volver-cliente-movil {
+    display: grid; flex: none; place-items: center; width: 44px; height: 44px;
+    border: 1px solid var(--border); border-radius: 12px; color: var(--foreground);
+  }
+  .admin-shell > div > header[data-detalle-movil] h1 {
+    font-size: clamp(15px, 4vw, 18px); white-space: normal; overflow-wrap: anywhere;
+  }
+}
+
+.periodo-revision-movil { display: contents; }
+@media (max-width: 767px) {
+  .admin-shell > div > header:has(.periodo-revision-movil) {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center; gap: 4px; padding-inline: 10px;
+  }
+  .admin-shell > div > header:has(.periodo-revision-movil) > div:last-child { display: contents; }
+  .admin-shell > div > header:has(.periodo-revision-movil) h1,
+  .admin-shell > div > header:has(.periodo-revision-movil) h1 + p {
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  .periodo-revision-movil { display: block; grid-row: 2; grid-column: 1 / -1; justify-self: start; }
+}

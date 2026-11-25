@@ -19,10 +19,11 @@ interface MainLayoutProps {
    * donde 1280 px dejaba las columnas apretadas y con scroll horizontal.
    */
   headerActions?: React.ReactNode
+  onVolverMovil?: () => void
   ancho?: 'normal' | 'ancho'
 }
 
-export function MainLayout({ children, title, subtitle, ancho = 'normal', headerActions }: MainLayoutProps) {
+export function MainLayout({ children, title, subtitle, ancho = 'normal', headerActions, onVolverMovil }: MainLayoutProps) {
   const { usuario, empresaActiva, cargando } = useAuth()
   const esAdmin = usuario?.rol === 'admin'
   const claveSidebar = esAdmin ? 'admin-sidebar-minimizada' : 'sidebar-minimizada'
@@ -117,6 +118,7 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal', header
         <Header
 
           actions={headerActions}
+          onVolverMovil={onVolverMovil}
           title={title}
           subtitle={subtitle}
           onAbrirMenu={() => setMenuAbierto(true)}

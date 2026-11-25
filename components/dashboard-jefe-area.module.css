@@ -101,3 +101,55 @@
 }
 .trendHeader > :last-child:not(:first-child) { margin: 0 0 8px 12px; }
 .panel:has(> .trendHeader) { overflow: visible; }
+
+.movil { display: none; }
+.periodoEscritorio { display: contents; }
+
+@media (max-width: 767px) {
+  .dashboard, .periodoEscritorio { display: none; }
+  .movil { display: grid; gap: 13px; min-width: 0; }
+  .saludo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .saludo h2 { font-size: 23px; font-weight: 750; line-height: 1.15; }
+  .saludo p, .cobertura p { color: var(--muted-foreground); font-size: 13px; }
+  .saludo > div:last-child { position: relative; }
+  .saludo > div:last-child > button { min-height: 44px; text-transform: capitalize; }
+  .saludo > div:last-child > form { inset-inline: auto 0; width: min(300px, 86vw); }
+  .cobertura, .metricasMovil article, .vistasMovil, .alertasMovil, .carteraMovil, .accesosMovil a {
+    border: 1px solid var(--border); border-radius: 14px; background: var(--ad-panel, var(--card));
+  }
+  .cobertura {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px;
+    border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
+    background: linear-gradient(130deg, color-mix(in srgb, var(--primary) 15%, var(--card)), var(--card));
+  }
+  .cobertura h2 { color: var(--ad-accent-ink, var(--primary)); font-weight: 650; font-size: 14px; }
+  .cobertura strong { display: block; font-size: 34px; line-height: 1.15; }
+  .anilloMovil { display: grid; place-items: center; border-radius: 50%; width: 71px; aspect-ratio: 1; flex: none; }
+  .anilloMovil svg { box-sizing: content-box; background: var(--card); border-radius: 50%; padding: 15px; color: var(--ad-accent-ink, var(--primary)); }
+  .metricasMovil, .vistasMovil, .accesosMovil { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .metricasMovil article { display: grid; place-items: center; gap: 3px; padding: 8px 3px; text-align: center; font-size: 11px; color: var(--muted-foreground); }
+  .metricasMovil svg { color: var(--ad-accent-ink, var(--primary)); }
+  .metricasMovil strong { color: var(--foreground); font-size: 16px; line-height: 1.2; }
+  .vistasMovil { gap: 2px; padding: 3px; }
+  .vistasMovil button { display: flex; align-items: center; justify-content: center; gap: 5px; border-radius: 10px; min-height: 44px; font-size: 13px; }
+  .vistasMovil button[aria-pressed="true"] { background: #7730b4; color: white; font-weight: 650; }
+  .tituloMovil { font-weight: 720; font-size: 17px; margin-bottom: 6px; }
+  .movil [data-tono="rosa"] { --tone: #f14d83; }
+  .movil [data-tono="turquesa"] { --tone: #1dc99b; }
+  .movil [data-tono="celeste"] { --tone: #459be6; }
+  .alertasMovil li + li { border-top: 1px solid var(--border); }
+  .alertasMovil a { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 8px; padding: 7px 9px; }
+  .alertasMovil small { display: block; color: var(--muted-foreground); font-size: 11px; }
+  .alertasMovil strong { font-size: 13px; }
+  .alertasMovil b { color: var(--tone, var(--ad-accent-ink, var(--primary))); font-size: 17px; }
+  .accesosMovil { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .accesosMovil a { display: grid; justify-items: center; gap: 4px; padding: 7px 2px; font-size: 12px; background: color-mix(in srgb, var(--tone, var(--primary)) 10%, var(--card)); }
+  .carteraMovil { padding: 9px 11px 12px; }
+  .enlaceCartera { display: flex; align-items: center; gap: 7px; font-weight: 700; }
+  .enlaceCartera > svg { margin-inline-start: auto; }
+  .barraCartera { display: flex; height: 10px; border-radius: 20px; overflow: hidden; background: var(--muted); margin-block: 8px; }
+  .carteraMovil ul { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; }
+  .carteraMovil li { display: flex; align-items: center; gap: 4px; }
+  .carteraMovil li i { width: 8px; aspect-ratio: 1; border-radius: 50%; }
+  .equipoMovil li { display: flex; align-items: center; justify-content: space-between; gap: 7px; padding: 8px 10px; font-size: 12px; border-top: 1px solid var(--border); }
+}

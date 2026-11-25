@@ -95,3 +95,64 @@
 .table .clientGroup:has(:focus-visible) {
   background-color: color-mix(in srgb, var(--muted) 75%, var(--card));
 }
+
+.carteraMovil { display: none; }
+
+@media (max-width: 767px) {
+  [data-cartera-jefe] .carteraEscritorio,
+  [data-cartera-jefe] .aside > .panel:has(.distribution) { display: none; }
+  [data-cartera-jefe] .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  [data-cartera-jefe] .metrics > * p:first-child { min-height: 0; }
+  .carteraMovil { display: grid; gap: 10px; }
+  .carteraMovil .heading { padding: 10px 12px 0; border: 0; font-size: 16px; }
+  .carteraMovil .distribution { grid-template-columns: minmax(68px, .8fr) minmax(137px, 1.2fr); padding: 11px; }
+  .carteraMovil .distribution ul { border-inline-start: 1px solid var(--border); padding-inline-start: 8px; gap: 6px; font-size: 12px; }
+  .carteraMovil .distribution li { gap: 4px; }
+  .carteraMovil .donut { max-width: 124px; }
+  .filtrosMoviles, .busquedaMovil { display: flex; align-items: center; gap: 5px; }
+  .filtrosMoviles { flex-wrap: wrap; }
+  .filtrosMoviles button, .busquedaMovil > button {
+    display: inline-flex; justify-content: center; align-items: center; gap: 4px; min-height: 42px;
+    padding: 5px 8px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--card); font-size: 12px; font-weight: 650;
+  }
+  .filtrosMoviles button:not([aria-expanded]) { flex: 1 0 auto; }
+  .filtrosMoviles button[aria-pressed="true"], .filtrosMoviles button[data-activo="true"] {
+    border-color: var(--primary); background: color-mix(in srgb, var(--primary) 26%, var(--card));
+  }
+  .filtrosMoviles button span { padding: 1px 5px; border-radius: 999px; background: var(--secondary); }
+  .busquedaMovil label {
+    display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1;
+    padding-inline: 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted-foreground);
+  }
+  .busquedaMovil label svg { flex: none; }
+  .busquedaMovil input { width: 100%; min-height: 42px; min-width: 0; color: var(--foreground); background: transparent; font-size: 16px; }
+  .busquedaMovil > button { padding-inline: 10px; background: var(--primary); color: var(--primary-foreground); }
+  .listaMovil { display: grid; gap: 6px; }
+  .tarjetaMovil { min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 13px; background: var(--card); }
+  .encabezadoCliente, .encabezadoCliente > button { display: flex; align-items: center; min-width: 0; gap: 8px; }
+  .encabezadoCliente > button { flex: 1; min-height: 42px; text-align: left; overflow-wrap: anywhere; }
+  .encabezadoCliente > button strong { display: block; font-size: 14px; line-height: 1.2; }
+  .encabezadoCliente small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted-foreground); }
+  .encabezadoCliente > div > button { display: none; }
+  .encabezadoCliente > div > div > button { min-height: 42px; }
+  .datosCliente {
+    display: grid; grid-template-columns: auto minmax(42px, 1fr) auto auto; align-items: center; gap: 5px;
+    margin-top: 6px; font-size: 11px; color: var(--muted-foreground);
+  }
+  .datosCliente > span:first-child strong { color: var(--foreground); }
+  .datosCliente .status { padding-inline: 5px; text-align: center; }
+  .consumoMovil { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .consumoMovil i { flex: 1; height: 5px; border-radius: 999px; background: var(--muted); overflow: hidden; }
+  .consumoMovil b { display: block; height: 100%; background: var(--primary); border-radius: inherit; }
+  .asistenteMovil { margin-top: 8px; color: var(--ad-accent-ink, var(--primary)); font-size: 12px; }
+}
+
+@media (max-width: 767px) {
+  [data-cartera-jefe] .metrics > div { min-height: 88px; padding-block: 9px; }
+  [data-cartera-jefe] .metrics > div > div > div { display: flex; flex-direction: column; gap: 4px; }
+  [data-cartera-jefe] .metrics > div p:nth-child(2) { order: -1; margin-top: 0; }
+  [data-cartera-jefe] .metrics > div p:first-child { font-size: 12px; color: var(--muted-foreground); }
+  [data-cartera-jefe] .metrics > div p:nth-child(3) { margin-top: 0; color: var(--muted-foreground); }
+  [data-cartera-jefe] .metrics > div p + div { margin-top: 1px; }
+}

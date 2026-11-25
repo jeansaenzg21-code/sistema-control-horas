@@ -1,11 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import styles from './cliente-gestion.module.css'
 import {
-  AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, FileSpreadsheet,
+  AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Clock, FileSpreadsheet, Layers3, Pencil,
   Loader2, UserPlus, UsersRound,
 } from 'lucide-react'
 
@@ -20,12 +20,26 @@ import {
 import { palabras } from '@/lib/presupuestos/nombres'
 
 import { useAuth } from '@/lib/auth-context'
+import { subscribeClientesChanges } from '@/lib/events'
 
 import { PanelCronogramaCliente, type TareaCronograma } from './cronograma-cliente'
 
 
 
 type Tab = 'equipo' | 'servicios' | 'planificacion' | 'desviaciones'
+
+const consultaMovil = '(max-width: 767px)'
+
+function suscribirVistaMovil(actualizar: () => void) {
+  const consulta = window.matchMedia(consultaMovil)
+  consulta.addEventListener('change', actualizar)
+  return () => consulta.removeEventListener('change', actualizar)
+}
+
+function esVistaMovil() {
+  return window.matchMedia(consultaMovil).matches
+}
+
 
 
 
@@ -225,6 +239,11 @@ export function ClienteGestion({
 }) {
 
   const [tab, setTab] = useState<Tab>('equipo')
+  const [tabMovil, setTabMovil] = useState<Tab>('equipo')
+  const [verEquipoCompleto, setVerEquipoCompleto] = useState(false)
+  const [carteraMovil, setCarteraMovil] = useState<ClienteCartera['estado'][] | null>(null)
+  const [errorCarteraMovil, setErrorCarteraMovil] = useState(false)
+  const vistaMovil = useSyncExternalStore(suscribirVistaMovil, esVistaMovil, () => false)
 
   const { usuario } = useAuth()
 
@@ -272,7 +291,10 @@ export function ClienteGestion({
 
 
 
-  useEffect(() => { void cargar() }, [cargar])
+  useEffect(() => {
+    void cargar()
+    return subscribeClientesChanges(() => { void cargar() })
+  }, [cargar])
 
 
 
@@ -354,6 +376,40 @@ export function ClienteGestion({
 
 
 
+  useEffect(() => {
+    if (!vistaMovil) return
+    let vigente = true
+    const cargarCartera = async () => {
+      try {
+        const respuesta = await fetch('/api/clientes/cartera')
+        if (!respuesta.ok) throw new Error('Cartera no disponible')
+        const cartera: { clientes: ClienteCartera[] } = await respuesta.json()
+        if (vigente) {
+          setCarteraMovil(cartera.clientes.map(({ estado }) => estado))
+          setErrorCarteraMovil(false)
+        }
+      } catch {
+        if (vigente) setErrorCarteraMovil(true)
+      }
+    }
+    void cargarCartera()
+    const cancelar = subscribeClientesChanges(() => { void cargarCartera() })
+    return () => { vigente = false; cancelar() }
+  }, [vistaMovil])
+
+  const distribucionMovil = [
+    { estado: 'EN_CURSO', titulo: 'En curso', color: '#8d58f5' },
+    { estado: 'EN_RIESGO', titulo: 'En riesgo', color: '#f35a86' },
+    { estado: 'PENDIENTE', titulo: 'Pendientes', color: '#f8c643' },
+    { estado: 'SIN_PRESUPUESTO', titulo: 'Sin bolsa', color: '#77738a' },
+  ].map((fila) => ({ ...fila, cantidad: carteraMovil?.filter((estado) => estado === fila.estado).length ?? 0 }))
+  let avanceCartera = 0
+  const segmentosMoviles = distribucionMovil.filter(({ cantidad }) => cantidad > 0).map(({ cantidad, color }) => {
+    const inicio = avanceCartera
+    avanceCartera += cantidad / (carteraMovil?.length || 1) * 100
+    return color + ' ' + inicio + '% ' + avanceCartera + '%'
+  })
+
   const presupuesto = datos?.presupuestos.find((p) => p.id === datos.presupuestoVigente) ?? null
 
 
@@ -373,19 +429,27 @@ export function ClienteGestion({
 
   ]
 
-  const tabActiva = tab
-
-
+  const tabActiva = vistaMovil ? tabMovil : tab
+  const equipoResumen = (datos?.cliente.esOutsourcing
+    ? datos.equipoOutsourcing.map((persona) => ({ ...persona, registrado: persona.horasRegistradas, asignado: persona.horasBolsa, horasPropuestas: 0 }))
+    : datos?.equipo ?? []).slice(0, 3).map((persona) => {
+    const usaPropuesta = persona.asignado <= 0 && persona.horasPropuestas > 0
+    const bolsa = usaPropuesta ? persona.horasPropuestas : persona.asignado
+    const consumo = bolsa > 0 && persona.registrado != null ? Math.round(persona.registrado / bolsa * 100) : null
+    return { ...persona, consumo, usaPropuesta }
+  })
+  const totalEquipo = datos?.cliente.esOutsourcing ? datos.equipoOutsourcing.length : datos?.equipo.length ?? 0
+  const escalaConsumo = Math.ceil(Math.max(100, ...equipoResumen.map(({ consumo }) => consumo ?? 0)) / 100) * 100
 
   return (
 
-    <div className={styles.management + ' space-y-4'}>
+    <div className={styles.management + ' space-y-4' + (vistaMovil && puedeEditarCliente ? ' ' + styles.conAccionesMoviles : '')}>
 
       {/* El nombre y el área los muestra la cabecera de la página. Aquí queda la
 
           barra de acciones y de dónde sale el presupuesto. */}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className={styles.accionesEscritorio + " flex flex-wrap items-center justify-between gap-2"}>
 
         <button type="button" onClick={onVolver} className="flex items-center gap-1.5 rounded-lg border border-border bg-secondary px-2.5 py-1.5 text-xs text-[#e7e9f3] transition hover:border-primary hover:bg-accent/15">
 
@@ -413,10 +477,6 @@ export function ClienteGestion({
 
                   className={BOTON}
 
-                  disabled={(datos?.presupuestos.length ?? 0) > 0}
-
-                  title={(datos?.presupuestos.length ?? 0) > 0 ? 'Ya hay un presupuesto cargado' : undefined}
-
                   onClick={() => onImportarPresupuesto(cliente)}
 
                 >
@@ -439,6 +499,17 @@ export function ClienteGestion({
 
 
 
+      <div className={styles.cabeceraMovil}>
+        <Estado valor={cliente.estado} />
+      </div>
+
+      {vistaMovil && puedeEditarCliente && <div className={styles.accionesMoviles}>
+        {usuario?.rol !== 'admin' && <button type="button" onClick={() => onImportarPresupuesto(cliente)}>
+          <FileSpreadsheet size={17} />Importar presupuesto
+        </button>}
+        <button type="button" onClick={() => onEditar(cliente)}><Pencil size={17} />Editar cliente</button>
+      </div>}
+
       {cargando ? (
 
         <div className={`${PANEL} flex items-center justify-center gap-2 px-4 py-10 text-sm text-[#a1a8bd]`}>
@@ -455,7 +526,21 @@ export function ClienteGestion({
 
         <>
 
-          <div className={`${PANEL} flex flex-wrap items-center justify-between gap-3 px-4 py-3`}>
+          {vistaMovil && tabMovil !== 'servicios' && <section className={styles.resumenCarteraMovil} aria-label="Resumen de la cartera">
+            <h2><Layers3 size={19} aria-hidden="true" />Cartera de clientes</h2>
+            {errorCarteraMovil ? <p role="status">Cartera no disponible.</p> : carteraMovil === null ? <p role="status">Cargando cartera…</p> :
+              <div className={styles.distribucionMovil}>
+                <div className={styles.anilloCarteraMovil} style={{ background: segmentosMoviles.length ? 'conic-gradient(' + segmentosMoviles.join(',') + ')' : 'var(--muted)' }}>
+                  <div><strong>{carteraMovil.length}</strong><span>Clientes</span></div>
+                </div>
+                <ul>{distribucionMovil.map(({ estado, titulo, color, cantidad }) => <li key={estado}>
+                  <i style={{ background: color }} aria-hidden="true" /><span>{titulo}</span>
+                  <span><strong>{cantidad}</strong> ({carteraMovil.length ? Math.round(cantidad / carteraMovil.length * 100) : 0} %)</span>
+                </li>)}</ul>
+              </div>}
+          </section>}
+          {(!vistaMovil || tabMovil !== 'servicios') && <>
+          <div className={`${PANEL} ${styles.presupuesto} flex flex-wrap items-center justify-between gap-3 px-4 py-3`}>
 
             <div className="flex min-w-0 items-center gap-2.5">
 
@@ -469,14 +554,14 @@ export function ClienteGestion({
 
                   {presupuesto
 
-                    ? `${presupuesto.archivoNombre} · v${presupuesto.version} · ${presupuesto.estado}`
+                    ? `${presupuesto.archivoNombre}${vistaMovil ? '' : ` · v${presupuesto.version} · ${presupuesto.estado}`}`
 
                     : 'Sin presupuesto importado'}
 
                 </p>
 
+                {vistaMovil && presupuesto && <p className="mt-1 text-xs text-muted-foreground">v{presupuesto.version} · {presupuesto.estado}</p>}
               </div>
-
             </div>
 
             {datos.presupuestos.length > 1 && (
@@ -565,10 +650,47 @@ export function ClienteGestion({
 
 
 
+          </>}
+          {vistaMovil && <div className={styles.tabsMoviles} role="group" aria-label="Secciones de gestión integral">
+            {pestanas.filter(([clave]) => clave !== 'planificacion').map(([clave, texto, Icono]) => (
+              <button type="button" key={clave} aria-label={texto} title={texto} aria-pressed={tabMovil === clave} onClick={() => setTabMovil(clave)}><Icono size={20} aria-hidden="true" /></button>
+            ))}
+          </div>}
+
+          {vistaMovil && tabMovil === 'equipo' && !verEquipoCompleto && <section className={styles.equipoResumen}>
+            <div className={styles.tituloEquipo}>
+              <UsersRound size={20} aria-hidden="true" />
+              <div><h2>Equipo y bolsas de horas</h2><p>Colaboradores del cliente</p></div>
+              <button type="button" onClick={() => setVerEquipoCompleto(true)}>Ver todo ({totalEquipo}) <ChevronRight size={15} /></button>
+            </div>
+            {equipoResumen.length ? <ul>{equipoResumen.map((persona, indice) => (
+              <li key={persona.usuarioId ?? persona.nombre + indice}>
+                <details>
+                  <summary>
+                    <Avatar iniciales={inicialesDe(persona.nombre)} color={colorDeCliente(persona.usuarioId ?? indice)} />
+                    <div><strong>{persona.nombre}</strong><small>{persona.cargo}</small>
+                      {persona.consumo !== null && <div className={styles.progresoResumen}>
+                        <span aria-hidden="true"><i style={{ width: persona.consumo / escalaConsumo * 100 + '%' }} /></span>
+                        <span>{persona.consumo} %</span>
+                        {persona.usaPropuesta && <small title="Consumo sobre las horas propuestas">propuesta</small>}
+                      </div>}
+                    </div>
+                    <b>{persona.registrado == null ? '—' : horas(persona.registrado)}</b>
+                    <ChevronRight size={15} aria-hidden="true" />
+                  </summary>
+                  <dl className={styles.detalleBolsaResumen}>
+                    <dt>Horas asignadas</dt><dd>{persona.asignado > 0 ? horas(persona.asignado) : 'Sin bolsa activa'}</dd>
+                    {persona.horasPropuestas > 0 && <><dt>Horas propuestas</dt><dd>{horas(persona.horasPropuestas)}</dd></>}
+                  </dl>
+                </details>
+              </li>
+            ))}</ul> : <p className={styles.equipoVacio}>Aún no hay colaboradores asignados.</p>}
+          </section>}
+
           {/* Planificación está siempre disponible: el usuario puede crear su
               propio cronograma aunque el Excel no traiga la hoja de Gantt. */}
 
-          <div className={styles.tabs + ' flex flex-wrap gap-1.5 border-b border-border pb-2'} role="tablist" aria-label="Secciones de gestión integral">
+          {!vistaMovil && <div className={styles.tabs + ' flex flex-wrap gap-1.5 border-b border-border pb-2'} role="tablist" aria-label="Secciones de gestión integral">
 
             {pestanas.map(([clave, texto, Icono]) => (
 
@@ -594,21 +716,21 @@ export function ClienteGestion({
 
             ))}
 
-          </div>
+          </div>}
 
+          {vistaMovil && tabMovil === 'equipo' && verEquipoCompleto && <button type="button" className={BOTON} onClick={() => setVerEquipoCompleto(false)}>Volver al resumen del equipo</button>}
 
-
-          {tabActiva === 'equipo' && (datos.cliente.esOutsourcing
+          {tabActiva === 'equipo' && (!vistaMovil || verEquipoCompleto) && (datos.cliente.esOutsourcing
             ? <PanelEquipoCliente datos={datos} onActualizado={cargar} />
             : <PanelEquipo datos={datos} asignando={asignando} onAsignar={asignar} />)}
 
 
 
-          {tabActiva === 'servicios' && <PanelServicios datos={datos} />}
+          {tabActiva === 'servicios' && <PanelServicios datos={datos} vistaMovil={vistaMovil} />}
 
 
 
-          {tabActiva === 'planificacion' && (
+          {!vistaMovil && tabActiva === 'planificacion' && (
             <PanelCronogramaCliente
               clienteId={datos.cliente.id}
               clienteNombre={datos.cliente.nombre}
@@ -1207,7 +1329,7 @@ function PanelEquipo({
 }
 
 
-function PanelServicios({ datos }: { datos: Gestion }) {
+function PanelServicios({ datos, vistaMovil }: { datos: Gestion; vistaMovil: boolean }) {
   const [mostrarConsolidados, setMostrarConsolidados] = useState(false)
 
   // Se usan las filas que entrega gestion: cada ID es una bolsa del Excel.
@@ -1251,6 +1373,69 @@ function PanelServicios({ datos }: { datos: Gestion }) {
   const totalConsolidado = consolidados.reduce((n, s) => n + s.horas, 0)
   const totalBolsas = servicios.reduce((n, s) => n + s.horas, 0)
   const diferenciaConsolidacion = totalConsolidado - totalBolsas
+
+  if (vistaMovil) {
+    const integrantes = new Set(servicios.flatMap((servicio) =>
+      (porServicio.get(servicio.id) ?? []).filter((persona) => !persona.sinRepartir).map((persona) => persona.clave)
+    )).size
+    return <div className={styles.serviciosMoviles}>
+      <section className={styles.tarjetaServicio}>
+        <CabeceraPanel icono={<Layers3 size={22} />} titulo="Servicios y bolsas de horas"
+          descripcion={servicios.length + ' servicios · bolsas, integrantes y consumo'} />
+        <dl className={styles.indicadoresServicios}>
+          <div><Layers3 size={18} /><dt>Servicios</dt><dd>{servicios.length}</dd></div>
+          <div><UsersRound size={18} /><dt>Integrantes</dt><dd>{integrantes}</dd></div>
+          <div><Clock size={18} /><dt>Horas propuestas</dt><dd>{horas(datos.indicadores.horasPropuestas)}</dd></div>
+        </dl>
+      </section>
+      {!servicios.length && <p className="text-sm text-muted-foreground">Este presupuesto no contiene bolsas individuales.</p>}
+      {servicios.map((servicio, indice) => {
+        const personas = porServicio.get(servicio.id) ?? []
+        const repartidas = total(servicio)
+        const diferencia = servicio.horas - repartidas
+        return <details className={styles.tarjetaServicio} key={servicio.id} open={indice === 0}>
+          <summary>
+            <span className={styles.iconoServicio} data-color={indice % 3}><FileSpreadsheet size={20} /></span>
+            <span><strong>{servicio.nombre}</strong><small>{servicio.activo ? 'Bolsa activa' : 'Sin bolsa activa'}</small></span>
+            <ChevronDown className={styles.flechaServicio} size={17} aria-hidden="true" />
+          </summary>
+          <div className={styles.cuerpoServicio}>
+            <div className={styles.detalleServicio}>
+              <div>
+                <h4><UsersRound size={15} /> Integrantes ({personas.filter((persona) => !persona.sinRepartir).length})</h4>
+                {personas.length ? <ul>{personas.map((persona) => (
+                  <li key={persona.clave} data-pendiente={persona.sinRepartir}>
+                    <i aria-hidden="true" /><span>{persona.nombre}{persona.sinRepartir ? ' · sin identificar' : ''}</span><strong>{horas(persona.horas)}</strong>
+                  </li>
+                ))}</ul> : <p>Sin integrantes declarados.</p>}
+              </div>
+              <dl>
+                <dt>Bolsa</dt><dd>{horas(servicio.horas)}</dd>
+                <dt>Repartidas</dt><dd>{horas(repartidas)}</dd>
+                <dt>Registradas</dt><dd>{servicio.consumo === 'sin_imputar' ? '—' : horas(servicio.registrado)}</dd>
+                {servicio.saldo !== null && <><dt>Saldo</dt><dd>{horas(servicio.saldo)}</dd></>}
+              </dl>
+            </div>
+            {(!servicio.activo || Math.abs(diferencia) > 0.01) && <div className={styles.avisoServicio}>
+              {!servicio.activo && <p>Bolsa no activa. Sus horas aún no cuentan como contratadas.</p>}
+              {diferencia > 0.01 && <p>{horas(diferencia)} aún sin distribuir.</p>}
+              {diferencia < -0.01 && <p>{horas(-diferencia)} distribuidas por encima de la bolsa.</p>}
+            </div>}
+          </div>
+        </details>
+      })}
+      {consolidados.length > 0 && <details className={styles.tarjetaServicio}>
+        <summary>
+          <span className={styles.iconoServicio}><FileSpreadsheet size={19} /></span>
+          <span><strong>Consolidados de referencia</strong><small>No generan bolsas adicionales</small></span>
+          <span className={styles.totalServicio}>{horas(totalConsolidado)} <ChevronDown className={styles.flechaServicio} size={15} /></span>
+        </summary>
+        <ul className={styles.consolidadosMoviles}>{consolidados.map((servicio) => (
+          <li key={servicio.id}><span>{servicio.nombre}</span><strong>{horas(servicio.horas)}</strong></li>
+        ))}</ul>
+      </details>}
+    </div>
+  }
 
   return <div className="space-y-3">
     <section className={`${PANEL} min-w-0 overflow-hidden`}>

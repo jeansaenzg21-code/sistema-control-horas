@@ -17,9 +17,9 @@ export default function ClientesPage() {
   // La cabecera la fija la vista, no esta pagina: al abrir un cliente el titulo
   // tiene que cambiar, y la cabecera es el sitio natural para ese titulo en vez
   // de repetirlo dentro del contenido.
-  const [cabecera, setCabecera] = useState({ titulo: TITULO_CARPETA, subtitulo: SUBTITULO_CARPETA })
-  const cambiarCabecera = useCallback((titulo: string, subtitulo: string) => {
-    setCabecera((actual) => (actual.titulo === titulo && actual.subtitulo === subtitulo ? actual : { titulo, subtitulo }))
+  const [cabecera, setCabecera] = useState<{ titulo: string; subtitulo: string; onVolverMovil?: () => void }>({ titulo: TITULO_CARPETA, subtitulo: SUBTITULO_CARPETA })
+  const cambiarCabecera = useCallback((titulo: string, subtitulo: string, onVolverMovil?: () => void) => {
+    setCabecera((actual) => (actual.titulo === titulo && actual.subtitulo === subtitulo && actual.onVolverMovil === onVolverMovil ? actual : { titulo, subtitulo, onVolverMovil }))
   }, [])
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export default function ClientesPage() {
   if (cargando || !usuario || (usuario.rol !== 'admin' && usuario.rol !== 'jefe_area' && usuario.rol !== 'socio')) return null
 
   return (
-    <MainLayout title={cabecera.titulo} subtitle={cabecera.subtitulo} ancho="ancho">
+    <MainLayout title={cabecera.titulo} subtitle={cabecera.subtitulo} onVolverMovil={cabecera.onVolverMovil} ancho="ancho">
       {usuario?.rol === 'admin' || usuario?.rol === 'socio' ? <ClientesAdmin onCabecera={cambiarCabecera} /> : <SettingsClients onCabecera={cambiarCabecera} />}
     </MainLayout>
   )

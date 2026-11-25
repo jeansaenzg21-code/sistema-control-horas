@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowRight, BarChart3, BriefcaseBusiness, CheckCircle2, ChevronRight, Clock, FileText, Layers3, LayoutGrid, UsersRound, Zap, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, ArrowRight, BarChart3, BriefcaseBusiness, CalendarCheck, CheckCircle2, ChevronRight, Clock, FileText, Layers3, LayoutGrid, UsersRound, Zap, type LucideIcon } from 'lucide-react'
 import { MainLayout } from './main-layout'
 import { SelectorDivision } from './selector-division'
 import { PeriodoAprobacionesControl } from './aprobaciones-admin-vista'
@@ -16,6 +16,7 @@ import { formatoHoras, nombreCorto, primerNombreYApellido } from '@/lib/utils'
 import styles from './dashboard-jefe-area.module.css'
 
 const meses = new Intl.DateTimeFormat('es-PE', { month: 'long', timeZone: 'UTC' })
+const mesCorto = new Intl.DateTimeFormat('es-PE', { month: 'short', year: 'numeric', timeZone: 'UTC' })
 const fechaCorta = new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 const fechaRegistro = new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' })
 const accesos = [
@@ -87,7 +88,8 @@ function TendenciaCumplimiento({ datos, usuarios }: { datos: CumplimientoReporte
 
 export function DashboardJefeArea() {
   const [rango, setRango] = useState(rangoDelMes)
-  const { usuarios, cargarUsuarios } = useAuth()
+  const [vistaMovil, setVistaMovil] = useState('Resumen')
+  const { usuario, usuarios, cargarUsuarios } = useAuth()
   const datos = useDatosJefeArea(rango)
   useEffect(() => { if (!usuarios.length) void cargarUsuarios() }, [usuarios.length, cargarUsuarios])
 
@@ -148,10 +150,75 @@ export function DashboardJefeArea() {
     { etiqueta: 'Colaboradores sin registro', valor: sinRegistro ?? '—', href: '/cumplimiento', icono: UsersRound, tono: 'violeta' },
   ]
 
+  const cobertura = datos.cumplimiento?.resumen.cobertura
+  const carteraMovil = cartera.filter((fila, indice) => indice !== 3 || fila.cantidad > 0)
+  const periodoMovil = rango.desde && rango.desde.slice(0, 7) === rango.hasta.slice(0, 7)
+    ? mesCorto.format(new Date(rango.desde + 'T00:00:00Z'))
+    : undefined
   return <MainLayout title="Panel del Jefe de Área" subtitle="Seguimiento del equipo, cumplimiento, aprobaciones y cartera de clientes" ancho="ancho"
-    headerActions={<PeriodoAprobacionesControl periodo={rango} onChange={setRango} permitirTodas={false} />}>
+    headerActions={<div className={styles.periodoEscritorio}><PeriodoAprobacionesControl periodo={rango} onChange={setRango} permitirTodas={false} /></div>}>
     {datos.error && <p role="alert" className="ad-error">No se pudieron cargar todos los indicadores.</p>}
     {datos.inicial && <p role="status" className="rounded-xl border border-border bg-card px-4 py-4 text-sm text-muted-foreground">Cargando el panel del área…</p>}
+    {!datos.inicial && <div className={styles.movil} aria-busy={datos.cargando}>
+      <div className={styles.saludo}>
+        <div><h2>{usuario?.nombre ? 'Hola, ' + primerNombreYApellido(usuario.nombre, usuario.correo).split(' ')[0] : 'Hola'}</h2><p>Así está tu área.</p></div>
+        <PeriodoAprobacionesControl periodo={rango} onChange={setRango} permitirTodas={false} etiqueta={periodoMovil} />
+      </div>
+      <section className={styles.cobertura}>
+        <div><h2>Cumplimiento del área</h2><strong>{metricas[2].valor}</strong><p>Cobertura de días exigibles</p></div>
+        <span className={styles.anilloMovil} style={{ background: 'conic-gradient(var(--primary) ' + (cobertura ?? 0) + '%, var(--muted) 0)' }}><CalendarCheck size={25} aria-hidden="true" /></span>
+      </section>
+      <section className={styles.metricasMovil} aria-label="Indicadores del equipo">
+        {[metricas[1], { ...metricas[0], etiqueta: 'Clientes' }, metricas[4]].map(({ etiqueta, icono: Icono, valor }) => (
+          <article key={etiqueta}><Icono size={20} aria-hidden="true" /><strong>{valor}</strong><span>{etiqueta}</span></article>
+        ))}
+      </section>
+      <div className={styles.vistasMovil} role="group" aria-label="Vista del panel">
+        {[{ nombre: 'Resumen', Icono: CalendarCheck }, { nombre: 'Equipo', Icono: UsersRound }, { nombre: 'Cartera', Icono: BriefcaseBusiness }].map(({ nombre, Icono }) => (
+          <button key={nombre} type="button" aria-pressed={vistaMovil === nombre} onClick={() => setVistaMovil(nombre)}><Icono size={17} aria-hidden="true" />{nombre}</button>
+        ))}
+      </div>
+      {vistaMovil === 'Resumen' && <>
+        <section>
+          <h2 className={styles.tituloMovil}>Requiere tu atención</h2>
+          <ul className={styles.alertasMovil}>
+            {[
+              { ...alertas[1], detalle: 'Revisar bolsas de horas' },
+              { ...alertas[2], detalle: 'Seguimiento del equipo' },
+              { ...alertas[0], etiqueta: 'Registros por aprobar', detalle: 'Solicitudes pendientes', icono: CheckCircle2, tono: 'turquesa' },
+            ].map(({ etiqueta, detalle, valor, href, icono: Icono, tono }) => (
+              <li key={href}><Link href={href} data-tono={tono}><span className={styles.icon}><Icono size={19} /></span><span><strong>{etiqueta}</strong><small>{detalle}</small></span><b>{valor}</b><ChevronRight size={15} /></Link></li>
+            ))}
+          </ul>
+        </section>
+        <section>
+          <h2 className={styles.tituloMovil}>Accesos rápidos</h2>
+          <div className={styles.accesosMovil}>{accesos.map(({ href, icono: Icono, tono }, indice) => (
+            <Link key={href} href={href} data-tono={tono}><span className={styles.icon}><Icono size={19} /></span>{['Aprobar', 'Equipo', 'Cartera', 'Reporte'][indice]}</Link>
+          ))}</div>
+        </section>
+      </>}
+      {vistaMovil === 'Equipo' && <>
+        <TendenciaCumplimiento datos={datos.cumplimiento} usuarios={usuarios} />
+        <section className={styles.panel}>
+          <Cabecera icono={UsersRound} titulo="Desempeño del equipo" enlace={{ href: '/cumplimiento', texto: 'Ver equipo' }} />
+          <ul className={styles.equipoMovil}>{equipo.map((persona) => <li key={persona.id}>
+            <div className={styles.person}><Avatar iniciales={inicialesDe(persona.corto)} color={colorDeCliente(persona.id)} /><div><strong>{persona.corto}</strong><small>{persona.cargo || 'Colaborador'}</small></div></div>
+            <span>{formatoHoras(persona.horas)} · {persona.cobertura == null ? '—' : persona.cobertura + '%'}</span>
+          </li>)}</ul>
+          {!equipo.length && <p className={styles.empty}>Sin colaboradores para mostrar.</p>}
+        </section>
+      </>}
+      {vistaMovil !== 'Equipo' && <section className={styles.carteraMovil}>
+        <Link href="/clientes" className={styles.enlaceCartera}><span className={styles.icon}><BriefcaseBusiness size={20} /></span><h2>Estado de la cartera</h2><ChevronRight size={17} /></Link>
+        <div className={styles.barraCartera} aria-hidden="true">{carteraMovil.filter((fila) => fila.cantidad > 0).map((fila) => (
+          <span key={fila.nombre} style={{ flexGrow: fila.cantidad, background: fila.color }} />
+        ))}</div>
+        {datos.cartera ? <ul>{carteraMovil.map((fila, indice) => (
+          <li key={fila.nombre}><i style={{ background: fila.color }} />{fila.cantidad} {indice === 1 ? 'Alerta' : fila.nombre} ({clientes.length ? Math.round(fila.cantidad / clientes.length * 100) : 0}%)</li>
+        ))}</ul> : <p className={styles.empty}>Cartera no disponible.</p>}
+      </section>}
+    </div>}
     {!datos.inicial && <div className={styles.dashboard} aria-busy={datos.cargando}>
       <section className={styles.metrics} aria-label="Indicadores del equipo">
         {metricas.map(({ etiqueta, valor, detalle, icono: Icono, tono }) => <article key={etiqueta} className={styles.metric} data-tono={tono}>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useId, useState } from 'react'
-import { AlertTriangle, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, Layers3, Search, X } from 'lucide-react'
+import { AlertTriangle, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, Layers3, Search, User, X } from 'lucide-react'
 import type { Actividad } from '@/lib/actividad-context'
 import { datosFaltantesActividad, textoDatosFaltantes } from '@/lib/cumplimiento'
 import { fechaLocalISO, primerNombreYApellido } from '@/lib/utils'
@@ -24,12 +24,12 @@ function periodoTendencia(periodo: PeriodoAprobaciones) {
   return { desde: lunes.toISOString().slice(0, 10), hasta: domingo.toISOString().slice(0, 10) }
 }
 
-export function PeriodoAprobacionesControl({ periodo, onChange, permitirTodas = true }: { periodo: PeriodoAprobaciones; onChange: (periodo: PeriodoAprobaciones) => void; permitirTodas?: boolean }) {
+export function PeriodoAprobacionesControl({ periodo, onChange, permitirTodas = true, etiqueta }: { etiqueta?: string; periodo: PeriodoAprobaciones; onChange: (periodo: PeriodoAprobaciones) => void; permitirTodas?: boolean }) {
   const [abierto, setAbierto] = useState(false)
   const [borrador, setBorrador] = useState(periodo)
   return <div className={styles.periodo}>
     <button type="button" className={styles.control} aria-expanded={abierto} onClick={() => { setBorrador(periodo); setAbierto(!abierto) }}>
-      <CalendarDays size={19} />{periodo.desde ? fechaCorta(periodo.desde) + ' – ' + fechaCorta(periodo.hasta) : 'Todas las fechas'}<ChevronDown size={16} />
+      <CalendarDays size={19} />{etiqueta ?? (periodo.desde ? fechaCorta(periodo.desde) + ' – ' + fechaCorta(periodo.hasta) : 'Todas las fechas')}<ChevronDown size={16} />
     </button>
     {abierto && <form className={styles.popover} onKeyDown={(evento) => { if (evento.key === 'Escape') setAbierto(false) }} onSubmit={(evento) => { evento.preventDefault(); onChange(borrador); setAbierto(false) }}>
       <DateRangeFilter {...borrador} onChange={(desde, hasta) => setBorrador({ desde, hasta })} />
@@ -116,7 +116,7 @@ function Resumen({ registros, periodo, cargando }: { registros: Actividad[]; per
       <h2 className={styles.heading}><CalendarDays size={19} /> Tendencia de solicitudes <small>{rangoVisible}</small></h2>
       {diasPorPunto > 1 && <p className={styles.trendNote}>Totales agrupados en bloques de {diasPorPunto} días.</p>}
       {!maximo && <p role="status" className={styles.trendNote}>{cargando ? 'Cargando tendencia…' : 'No hay solicitudes en estas fechas.'}</p>}
-      <div className={styles.trend}>
+      <div className={styles.trend} data-sin-registros={!maximo}>
         <svg viewBox={'0 0 ' + anchoGrafico + ' 160'} style={puntos.length > 7 ? { minWidth: anchoGrafico } : undefined}
           role="img" aria-label={puntosPorPeriodo.map(({ fechas, total }) => fechas + ': ' + total).join(', ')}>
           <defs><linearGradient id={id} x2="0" y2="1"><stop stopColor="#a038f1" stopOpacity=".63" /><stop offset="100%" stopColor="#a038f1" stopOpacity="0" /></linearGradient></defs>
@@ -142,7 +142,6 @@ type Props = {
   area: string
   busqueda: string
   filtro: FiltroAdmin
-  solicitudesPersonales: boolean
   puedeRevisar: boolean
   filtrarDivision: boolean
   periodo: PeriodoAprobaciones
@@ -170,7 +169,7 @@ export function AprobacionesAdminVista(props: Props) {
   const { registros, filas, filtro, area, busqueda, areas, periodo, pagina, paginas, seleccionadas, pendientesSeleccionables, todasSeleccionadas, procesando, cargando } = props
   const pendientes = registros.filter((fila) => fila.estado === 'PENDIENTE_APROBACION').length
   const seleccionar = props.puedeRevisar && filtro === 'pendientes'
-  return <div className={`${styles.vista} ${props.solicitudesPersonales ? styles.personal : ""}`}>
+  return <div className={styles.vista} data-revision={props.puedeRevisar}>
     <Resumen registros={registros} periodo={periodo} cargando={cargando} />
     <div className={styles.toolbar}>
       <div className={styles.tabs} role="group" aria-label="Estado de la solicitud">
@@ -183,7 +182,7 @@ export function AprobacionesAdminVista(props: Props) {
         </select>}
       </div>
     </div>
-    <section className={styles.panel} aria-busy={cargando}>
+    <section className={`${styles.panel} ${styles.listaSolicitudes}`} aria-busy={cargando}>
       <h2 className={styles.heading}><Layers3 size={20} />{seleccionar ? 'Solicitudes por aprobar' : props.puedeRevisar ? 'Solicitudes de aprobación' : 'Mis solicitudes'}</h2>
       <div className={styles.tableScroll}>
         <table className={styles.table}>
@@ -197,14 +196,14 @@ export function AprobacionesAdminVista(props: Props) {
               const iniciales = fila.cliente_nombre?.trim().split(/\s+/).slice(0, 2).map((parte) => parte.charAt(0)).join('') || '—'
               const pendiente = fila.estado === 'PENDIENTE_APROBACION'
               const faltantes = pendiente ? datosFaltantesActividad(fila) : []
-              return <tr key={fila.id}>
-                {seleccionar && <td><input type="checkbox" aria-label={'Seleccionar registro ' + fila.id} checked={seleccionadas.has(fila.id)} onChange={() => props.onSeleccionar(fila.id)} /></td>}
+              return <tr key={fila.id} data-pendiente={props.puedeRevisar && pendiente}>
+                {seleccionar && <td className={styles.seleccionMovil}><label><input type="checkbox" aria-label={'Seleccionar registro ' + fila.id} checked={seleccionadas.has(fila.id)} onChange={() => props.onSeleccionar(fila.id)} /></label></td>}
                 <td><div className={styles.cliente}><span aria-hidden="true">{iniciales}</span><div><strong>{cliente}</strong><small>{fila.area_nombre || 'Sin división'}</small></div></div></td>
                 <td><button type="button" className={styles.solicitud} title={fila.descripcion || undefined} onClick={() => props.onDetalle(fila)}>{fila.tipo_actividad_nombre || 'Registro de horas'}</button>
                   {faltantes.length > 0 && <small className={styles.faltantes} title={textoDatosFaltantes(faltantes)}><AlertTriangle size={13} />Datos pendientes</small>}</td>
                 <td className={styles.fechaActividad}><CalendarDays className={styles.soloMovil} size={13} aria-hidden="true" />{fechaCorta(fechaLocalISO(fila.inicio))}</td>
-                <td><strong>{props.duracion(fila)}</strong><div><FacturableBadge valor={fila.facturable} /></div></td>
-                <td title={fila.usuario_nombre}>{fila.usuario_nombre ? primerNombreYApellido(fila.usuario_nombre) : '—'}</td>
+                <td className={styles.duracion}><strong><Clock size={14} className={styles.iconoRevision} aria-hidden="true" />{props.duracion(fila)}</strong><div><FacturableBadge valor={fila.facturable} /></div></td>
+                <td className={styles.responsable} title={fila.usuario_nombre}><User size={14} className={styles.iconoRevision} aria-hidden="true" />{fila.usuario_nombre ? primerNombreYApellido(fila.usuario_nombre) : '—'}</td>
                 <td><StatusBadge estado={fila.estado} /></td>
                 <td>{fechaCorta(fechaDeRegistro(fila))}</td>
                 <td><div className={styles.acciones}>

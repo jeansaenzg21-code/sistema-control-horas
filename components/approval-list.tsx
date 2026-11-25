@@ -650,7 +650,6 @@ export function ApprovalList({ periodo }: { periodo: PeriodoAprobaciones }) {
           busqueda={busquedaAdmin}
           filtro={filtro}
           puedeRevisar={esRevisor}
-          solicitudesPersonales={esPersonal}
           filtrarDivision={esAdmin || esSocio}
           periodo={periodo}
           pendientesSeleccionables={pendientesIds.length}

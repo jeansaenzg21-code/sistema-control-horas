@@ -113,10 +113,10 @@ export default function ClienteDetallePage() {
   }
 
   return (
-    <MainLayout title={cliente.nombre} subtitle={usuario?.rol === 'jefe_area' && cliente.area_id === usuario.area_id ? 'Gestión integral' : `${cliente.area_nombre} · gestión integral`} ancho="ancho">
+    <MainLayout title={cliente.nombre} subtitle={usuario?.rol === 'jefe_area' && cliente.area_id === usuario.area_id ? 'Gestión integral' : `${cliente.area_nombre} · gestión integral`} ancho="ancho" onVolverMovil={() => router.push('/clientes')}>
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/clientes" className="flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted">
+          <Link href="/clientes" className="hidden md:flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted">
             <ArrowLeft size={12} /> Clientes
           </Link>
           <button

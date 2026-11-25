@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, Menu } from 'lucide-react'
+import { ArrowLeft, Bell, User, CheckCheck, ArrowRight, Settings, LogOut, ChevronDown, Menu } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useNotificaciones } from '@/lib/notificaciones-context'
 import { Logo } from './logo'
@@ -13,10 +13,11 @@ interface HeaderProps {
   subtitle?: string
 
   actions?: React.ReactNode
+  onVolverMovil?: () => void
   onAbrirMenu: () => void
 }
 
-export function Header({ title, subtitle, onAbrirMenu, actions }: HeaderProps) {
+export function Header({ title, subtitle, onAbrirMenu, actions, onVolverMovil }: HeaderProps) {
   const { usuario, logout } = useAuth()
   const { notificaciones, noLeidas, marcarLeida, marcarTodasLeidas } = useNotificaciones()
   const rolVisible = usuario?.rol === 'admin' ? 'Administrador'
@@ -72,7 +73,7 @@ export function Header({ title, subtitle, onAbrirMenu, actions }: HeaderProps) {
   }
 
   return (
-    <header className="no-print sticky top-0 z-30 flex min-h-14 items-center justify-between gap-2 border-b border-border bg-header px-4 py-2 sm:px-6">
+    <header data-detalle-movil={onVolverMovil ? true : undefined} className="no-print sticky top-0 z-30 flex min-h-14 items-center justify-between gap-2 border-b border-border bg-header px-4 py-2 sm:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           type="button"
@@ -82,6 +83,9 @@ export function Header({ title, subtitle, onAbrirMenu, actions }: HeaderProps) {
         >
           <Menu size={20} />
         </button>
+        {onVolverMovil && <button type="button" onClick={onVolverMovil} aria-label="Volver a la cartera" className="volver-cliente-movil">
+          <ArrowLeft size={20} aria-hidden="true" />
+        </button>}
         <div className="admin-brand"><Logo size={54} /><div><strong>Paredes Cano</strong><small>Registro de horas</small></div></div>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-bold tracking-tight text-foreground">{title}</h1>

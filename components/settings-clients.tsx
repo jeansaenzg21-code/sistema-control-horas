@@ -58,7 +58,7 @@ const formularioVacio: FormularioCliente = {
 const TITULO_CARPETA = 'Cartera de clientes'
 const SUBTITULO_CARPETA = 'Presupuestos, bolsas de horas y desviaciones desde una sola vista.'
 
-export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, subtitulo: string) => void }) {
+export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, subtitulo: string, onVolverMovil?: () => void) => void }) {
   const { cargando, cargarClientes, actualizarCliente, eliminarCliente } = useClientes()
   const { areas } = useAreas()
   const { usuario, usuarios } = useAuth()
@@ -107,6 +107,8 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
   // La cabecera sigue a la vista: cartera o ficha del cliente. Al abrir un
   // cliente, el titulo pasa a ser su nombre y el subtitulo su contexto, para no
   // repetir el mismo rotulo dentro del contenido.
+  const volverACartera = useCallback(() => setClienteAbierto(null), [])
+
   useEffect(() => {
     if (!onCabecera) return
     if (!clienteAbierto) {
@@ -114,8 +116,8 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
       return
     }
     onCabecera(clienteAbierto.nombre, usuario?.rol === 'jefe_area' && clienteAbierto.area_id === usuario.area_id
-      ? 'Gestión integral' : `${clienteAbierto.area_nombre} · gestión integral`)
-  }, [onCabecera, clienteAbierto, usuario?.rol, usuario?.area_id])
+      ? 'Gestión integral' : `${clienteAbierto.area_nombre} · gestión integral`, volverACartera)
+  }, [onCabecera, clienteAbierto, usuario?.rol, usuario?.area_id, volverACartera])
 
   const iniciarEdicion = useCallback((cliente: ClienteCartera) => {
     setFormulario({
@@ -176,7 +178,7 @@ export function SettingsClients({ onCabecera }: { onCabecera?: (titulo: string, 
       {clienteAbierto ? (
         <ClienteGestion
           cliente={clienteAbierto}
-          onVolver={() => setClienteAbierto(null)}
+          onVolver={volverACartera}
           onEditar={(c) => { iniciarEdicion(c); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
           onImportarPresupuesto={(c) => setPresupuestosDe({ id: c.id, nombre: c.nombre })}
         />

@@ -8,7 +8,7 @@ import {
 
   AlertTriangle, BarChart3, Clock3, Eye, FileSpreadsheet,
 
-  Flag, Hourglass, Layers3, MoreHorizontal, Pencil, Search, Trash2, TrendingUp,
+  Flag, Hourglass, Layers3, MoreHorizontal, Pencil, Search, SlidersHorizontal, Trash2, TrendingUp,
 
   Wallet, X,
 
@@ -283,6 +283,8 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
 
   const [busqueda, setBusqueda] = useState('')
 
+  const [mostrarFiltrosMoviles, setMostrarFiltrosMoviles] = useState(false)
+
   const [mostrarBusqueda, setMostrarBusqueda] = useState(false)
 
   const [filtro, setFiltro] = useState<Filtro>('todos')
@@ -414,8 +416,24 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
 
   if (error || !datos || !totales) return <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-4 text-sm text-rose-300">{error ?? 'No se pudo cargar la cartera.'}<button type="button" onClick={() => { setCargando(true); void cargar() }} className="ml-3 rounded-lg border border-rose-400/40 px-3 py-1 text-xs">Reintentar</button></div>
 
+  const esJefeArea = usuario?.rol === 'jefe_area'
+  const graficoDistribucion = (
+    <section className={styles.panel}>
+              <h2 className={styles.heading}><Layers3 size={20} aria-hidden="true" />Distribución de la cartera del área</h2>
+              <div className={styles.distribution}>
+                <div className={styles.donut} style={{ background: segmentos.length ? 'conic-gradient(' + segmentos.join(',') + ')' : 'var(--muted)' }}>
+                  <div><strong>{cartera.length}</strong><span>Clientes</span></div>
+                </div>
+                <ul>{distribucion.map(({ clave, texto, color, cantidad }) => <li key={clave}>
+                  <i style={{ background: color }} aria-hidden="true" />
+                  <span>{texto}</span><strong>{cantidad}</strong><span>{Math.round(porcion(cantidad))} %</span>
+                </li>)}</ul>
+              </div>
+            </section>
+  )
+
   return (
-    <div className={styles.cartera}>
+    <div className={styles.cartera} data-cartera-jefe={esJefeArea || undefined}>
       {/* Dos columnas independientes: los cuatro indicadores y la cartera a la izquierda;
           distribución y alertas comienzan ARRIBA, en el espacio liberado a la derecha. */}
       <section aria-label="Cartera y alertas" className={styles.layout}>
@@ -427,8 +445,54 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
             <Kpi icono={<TrendingUp size={19} />} etiqueta="Clientes en riesgo" valor={String(riesgo)} nota={'De ' + cartera.length + ' clientes del área'} tono="rojo" />
           </section>
 
+          {esJefeArea && <div className={styles.carteraMovil}>
+            {graficoDistribucion}
+            <div className={styles.filtrosMoviles} role="group" aria-label="Estado del cliente">
+              {FILTROS.slice(0, 3).map(({ clave, texto }, indice) => (
+                <button key={clave} type="button" aria-pressed={clave === filtro} onClick={() => { setFiltro(clave); setMostrarFiltrosMoviles(false) }}>
+                  {texto}<span>{indice === 0 ? cartera.length : distribucion[indice - 1].cantidad}</span>
+                </button>
+              ))}
+              <button type="button" aria-label="Más filtros de estado" aria-expanded={mostrarFiltrosMoviles} data-activo={FILTROS.slice(3).some(({ clave }) => filtro === clave)} onClick={() => setMostrarFiltrosMoviles((valor) => !valor)}><SlidersHorizontal size={17} /></button>
+            </div>
+            {mostrarFiltrosMoviles && <div className={styles.filtrosMoviles} role="group" aria-label="Otros estados">
+              {FILTROS.slice(3).map(({ clave, texto }) => (
+                <button key={clave} type="button" aria-pressed={clave === filtro} onClick={() => setFiltro(clave)}>
+                  {texto}<span>{distribucion.find((estado) => estado.clave === clave)?.cantidad}</span>
+                </button>
+              ))}
+            </div>}
+            <div className={styles.busquedaMovil}>
+              <label><Search size={16} aria-hidden="true" /><input type="search" value={busqueda} onChange={(evento) => setBusqueda(evento.target.value)} aria-label="Buscar cliente" placeholder="Buscar cliente…" /></label>
+              <button type="button" onClick={onImportarClientes}><FileSpreadsheet size={16} aria-hidden="true" />Importar</button>
+            </div>
+            <ul className={styles.listaMovil}>
+              {clientes.map((cliente) => {
+                const consumo = porcentajeConsumo(cliente.horasContratadas, cliente.horasConsumidas)
+                const estado = distribucion.find(({ clave }) => coincideFiltro(cliente.estado, clave))
+                return <li key={cliente.id} className={styles.tarjetaMovil}>
+                  <div className={styles.encabezadoCliente}>
+                    <button type="button" onClick={() => onAbrirGestion(cliente)}>
+                      <Avatar iniciales={inicialesDe(cliente.nombre)} color={colorDeCliente(cliente.id)} />
+                      <span><strong>{cliente.nombre}</strong>{cliente.ruc && <small>RUC {cliente.ruc}</small>}</span>
+                    </button>
+                    <AccionesCliente cliente={cliente} onEditar={onEditar} onEliminar={onEliminar} onImportarPresupuesto={onImportarPresupuesto} onAbrirGestion={onAbrirGestion} soloLectura={soloLectura} />
+                  </div>
+                  <div className={styles.datosCliente}>
+                    <span>Consumidas <strong>{horas(cliente.horasConsumidas)}</strong></span>
+                    <span className={styles.consumoMovil}><i aria-hidden="true"><b style={{ width: Math.min(100, consumo) + '%' }} /></i>{cliente.horasContratadas > 0 ? porcentaje(consumo) : '—'}</span>
+                    <span className={styles.status} data-estado={cliente.estado}>{estado?.texto}</span>
+                    {cliente.horasExcedidas > 0 ? <strong className="text-rose-300">+{horas(cliente.horasExcedidas)}</strong> : <span>Sin exceso</span>}
+                  </div>
+                  {cliente.mi_funcion === 'ENCARGADO' && onSolicitarAsistente && <button type="button" className={styles.asistenteMovil} onClick={() => onSolicitarAsistente(cliente)}>Solicitar asistente</button>}
+                </li>
+              })}
+            </ul>
+            {!clientes.length && <p className="py-6 text-center text-sm text-muted-foreground">{cartera.length ? 'No encontramos clientes para esos filtros.' : 'Todavía no hay clientes registrados.'}</p>}
+          </div>}
+
           {/* La barra termina exactamente donde termina la tabla; Nuevo cliente queda a su derecha. */}
-          <div className={`${PANEL} !rounded-xl min-w-0 overflow-hidden border-border px-2.5 py-2`}>
+          <div className={`${PANEL} !rounded-xl min-w-0 overflow-hidden border-border px-2.5 py-2 ${styles.carteraEscritorio}`}>
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <div role="tablist" aria-label="Filtrar clientes" className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                 {FILTROS.map(({ clave, texto }) => {
@@ -444,7 +508,7 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
             {(mostrarBusqueda || busqueda) && <div className="relative mt-1.5 w-full"><Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#929bb1]" /><input autoFocus value={busqueda} onChange={(e) => setBusqueda(e.target.value)} aria-label="Buscar cliente en la cartera del área" placeholder="Buscar cliente, RUC o servicio..." className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-9 text-sm text-foreground outline-none placeholder:text-[#858fa6] focus:border-violet-500" />{busqueda && <button type="button" onClick={() => setBusqueda('')} aria-label="Limpiar búsqueda" className="absolute right-3 top-1/2 -translate-y-1/2 text-[#a5acc2]"><X size={14} /></button>}</div>}
           </div>
 
-          <div className={`${PANEL} min-w-0 overflow-hidden !rounded-xl`}>
+          <div className={`${PANEL} min-w-0 overflow-hidden !rounded-xl ${styles.carteraEscritorio}`}>
             <div className={styles.clientScroll}>
               <table className={styles.table}>
                 <colgroup><col style={{ width: '26%' }} /><col style={{ width: '14%' }} /><col style={{ width: '14%' }} /><col style={{ width: '13%' }} /><col style={{ width: '13%' }} /><col style={{ width: '11%' }} /><col className={styles.actionsColumn} /></colgroup>
@@ -499,18 +563,7 @@ export function CarteraClientes({ onEditar, onEliminar, onImportarPresupuesto, o
         </div>
 
         <aside aria-label="Distribución y alertas" className={styles.aside}>
-            <section className={styles.panel}>
-              <h2 className={styles.heading}><Layers3 size={20} aria-hidden="true" />Distribución de la cartera del área</h2>
-              <div className={styles.distribution}>
-                <div className={styles.donut} style={{ background: segmentos.length ? 'conic-gradient(' + segmentos.join(',') + ')' : 'var(--muted)' }}>
-                  <div><strong>{cartera.length}</strong><span>Clientes</span></div>
-                </div>
-                <ul>{distribucion.map(({ clave, texto, color, cantidad }) => <li key={clave}>
-                  <i style={{ background: color }} aria-hidden="true" />
-                  <span>{texto}</span><strong>{cantidad}</strong><span>{Math.round(porcion(cantidad))} %</span>
-                </li>)}</ul>
-              </div>
-            </section>
+            {graficoDistribucion}
             <details className={`${PANEL} min-w-0 overflow-hidden !rounded-xl ${styles.breakdown}`}>
               <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Distribución por cliente</summary>
               <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3"><div className="flex min-w-0 flex-wrap items-center gap-2"><BarChart3 size={17} className="shrink-0 text-violet-400" /><h2 className="text-sm font-semibold text-foreground">Distribución por cliente</h2></div><label className="shrink-0"><span className="sr-only">Métrica del gráfico</span><select value={modoGrafico} onChange={(e) => setModoGrafico(e.target.value as 'auto' | 'horas' | 'propuestas' | 'servicios')} className="max-w-[105px] rounded-md border border-border bg-secondary px-1.5 py-1.5 text-[9px] text-[#e0deec] outline-none"><option value="auto">Automático</option><option value="horas">Contratadas</option><option value="propuestas">Propuestas</option><option value="servicios">Servicios</option></select></label></div>
