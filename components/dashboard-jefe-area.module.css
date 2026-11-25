@@ -71,7 +71,10 @@
 .shortcuts a { display: grid; justify-items: center; align-content: center; gap: 5px; min-height: 70px; padding: 6px; border-radius: 11px; border: 1px solid var(--border); background: var(--ad-raised,var(--muted)); text-align: center; font-size: 13px; }
 .alerts a:hover, .shortcuts a:hover { border-color: var(--ad-selected-border,var(--primary)); }
 .empty { padding: 12px; text-align: center; color: var(--muted-foreground); font-size: 13px; }
-@container jefe (width < 1190px) {
+@container jefe (width >= 1100px) {
+  .body { min-height: calc(100dvh - 205px); }
+}
+@container jefe (width < 1100px) {
   .body { grid-template-columns: minmax(0,1fr); }
   .shortcuts { grid-template-columns: repeat(4,minmax(0,1fr)); }
 }
@@ -86,3 +89,15 @@
   .metric .icon { flex-basis: 28px; width: 28px; }
   .metric .icon svg { width: 17px; }
 }
+.trendHeader {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-inline-end: 12px;
+}
+.trendHeader > :last-child:not(:first-child) { margin: 0 0 8px 12px; }
+.panel:has(> .trendHeader) { overflow: visible; }

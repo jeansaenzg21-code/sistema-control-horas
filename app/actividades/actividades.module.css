@@ -32,3 +32,75 @@
 
 .newActivityPanel { padding: clamp(18px, 2.25vw, 30px); }
 .newActivityPanel .formHeader { padding-block-end: 16px; margin-block-end: 18px; }
+
+.modeHeading { display: none; }
+
+@media screen and (max-width: 767px) {
+  .module { gap: 13px; min-width: 0; }
+  .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; }
+  .tabs button { justify-content: center; gap: 4px; min-width: 0; min-height: 43px; padding: 4px 1px; font-size: 11px; line-height: 1.15; text-align: center; }
+  .tabs button svg { flex: none; width: 13px; height: 13px; }
+  .desktopTabLabel { display: none; }
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr); align-items: center; gap: 8px; padding: 10px; border-radius: 14px; }
+  .date { gap: 4px; font-size: 11px; }
+  .date svg { flex: none; width: 13px; }
+  .greeting { font-size: clamp(15px, 4.5vw, 22px); }
+  .hero > div:first-child > p:last-of-type { font-size: 12px; }
+  .summary { padding-inline-start: 7px; border-inline-start: 1px solid var(--border); gap: 4px; }
+  .stat { min-width: 0; min-height: 64px; padding: 4px 1px; gap: 2px; border-radius: 9px; }
+  .stat svg { width: 16px; height: 16px; }
+  .stat p:last-child { font-size: clamp(8px, 2.1vw, 11px); }
+  .stat p:first-of-type { font-size: 16px; }
+  .modeHeading { display: block; margin-bottom: 6px; font-size: 15px; font-weight: 650; }
+  .modes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0; border: 0; background: transparent; }
+  .mode { gap: 5px; padding: 5px; min-height: 47px; border: 1px solid var(--border); background-color: var(--card); }
+  .modeIcon { width: 26px; height: 29px; }
+  .modeIcon svg { width: 14px; }
+  .modeCheck { width: 14px; height: 14px; }
+  .modeCheck svg { width: 10px; }
+  .modeTitle { font-size: 12px; line-height: 1.15; }
+  .modeDescription { display: none; }
+  .formPanel, .newActivityPanel { padding: 12px; border-radius: 14px; }
+  .formHeader, .newActivityPanel .formHeader { gap: 8px; padding-block-end: 8px; margin-block-end: 10px; }
+  .formHeader h2 { font-size: 16px; }
+  .formHeader p { font-size: 12px; line-height: 1.2; }
+  .formHeader > div:first-child { width: 36px; height: 36px; }
+  .newActivityPanel :is(input, select, textarea):not([type="checkbox"]) { font-size: 16px; }
+}
+@media screen and (max-width: 350px) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .summary { padding-inline-start: 0; border-inline-start: 0; }
+}
+
+
+@media screen and (max-width: 767px) {
+  .module { gap: 14px; }
+  .tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tabs button { padding-block: 8px; }
+  .tabs button svg { width: 19px; height: 19px; }
+  .hero { gap: 10px; padding: 10px 12px; }
+  .date { margin-bottom: 5px; text-transform: none; }
+  .greeting { letter-spacing: -.02em; }
+  .stat { min-height: 62px; background: color-mix(in srgb, var(--muted) 82%, var(--card)); }
+  .modes { gap: 8px; }
+  .mode { min-height: 44px; padding-inline: 7px; }
+  .mode[aria-pressed="true"] {
+    border-color: var(--ad-selected-border, var(--primary));
+    background-color: color-mix(in srgb, var(--primary) 15%, var(--card));
+  }
+  .newActivityPanel { padding: 11px 14px 14px; }
+  .newActivityPanel .formHeader { border-bottom: 0; padding-bottom: 0; margin-bottom: 13px; }
+  .newActivityPanel form > div:first-child { grid-template-columns: minmax(0, 1fr); }
+  .newActivityPanel label { font-weight: 600; }
+  .newActivityPanel :is(input, select, textarea):not([type="checkbox"]) { min-width: 0; width: 100%; }
+  .newActivityPanel textarea { min-height: 68px; }
+  .newActivityPanel form button[type="submit"] {
+    min-height: 46px; width: 100%; border: 1px solid #a061fd; border-radius: 10px;
+    background: linear-gradient(110deg, #7431d5, #8239ee);
+    font-size: 15px;
+  }
+  .newActivityPanel [data-draft-action] {
+    min-height: 36px; margin-inline: auto; padding-block: 4px; border-color: transparent; background: transparent;
+    color: var(--muted-foreground); font-size: 12px;
+  }
+}

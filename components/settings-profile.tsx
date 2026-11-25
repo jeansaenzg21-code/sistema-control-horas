@@ -21,6 +21,13 @@ export function SettingsProfile() {
   const [guardando, setGuardando] = useState(false)
 
   if (!usuario) return null
+  if (usuario.es_trainee) return (
+    <section className="rounded-2xl border border-border bg-card p-5">
+      <h2 className="font-semibold">Mi perfil</h2>
+      <p className="mt-2 text-sm text-muted-foreground">Cuenta trainee</p>
+      <p className="break-all text-sm">{usuario.correo}</p>
+    </section>
+  )
 
   const limpiarPassword = () => { setPassword(''); setConfirmacion('') }
   const cancelar = () => {

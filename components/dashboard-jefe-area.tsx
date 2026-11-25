@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, ArrowRight, BarChart3, BriefcaseBusiness, CheckCircle2, ChevronRight, Clock, FileText, Layers3, LayoutGrid, UsersRound, Zap, type LucideIcon } from 'lucide-react'
 import { MainLayout } from './main-layout'
+import { SelectorDivision } from './selector-division'
 import { PeriodoAprobacionesControl } from './aprobaciones-admin-vista'
 import { Avatar, colorDeCliente, inicialesDe } from './cartera-ui'
 import { useAuth } from '@/lib/auth-context'
@@ -11,7 +12,7 @@ import { evaluarBolsaHoras } from '@/lib/bolsa-horas'
 import type { CumplimientoReporte } from '@/lib/cumplimiento'
 import { obtenerEstiloEstado } from '@/lib/estado'
 import { rangoDelMes, useDatosJefeArea } from '@/lib/use-dashboard-jefe'
-import { formatoHoras, nombreCorto } from '@/lib/utils'
+import { formatoHoras, nombreCorto, primerNombreYApellido } from '@/lib/utils'
 import styles from './dashboard-jefe-area.module.css'
 
 const meses = new Intl.DateTimeFormat('es-PE', { month: 'long', timeZone: 'UTC' })
@@ -32,12 +33,18 @@ function Cabecera({ icono: Icono, titulo, descripcion, enlace }: { icono: Lucide
   </div>
 }
 
-function TendenciaCumplimiento({ datos }: { datos: CumplimientoReporte | null | undefined }) {
+function TendenciaCumplimiento({ datos, usuarios }: { datos: CumplimientoReporte | null | undefined; usuarios: { id: number; correo?: string | null }[] }) {
   const id = useId()
+  const [colaboradorId, setColaboradorId] = useState('')
+  const colaboradores = datos?.colaboradores ?? []
+  const seleccionado = colaboradores.find((persona) => String(persona.id) === colaboradorId)
+  const personas = seleccionado ? [seleccionado] : colaboradores
+  const opciones = colaboradores.map(({ id, nombre }) => ({ id, nombre: primerNombreYApellido(nombre, usuarios.find((usuario) => usuario.id === id)?.correo) }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   const semanas = (datos?.periodo.semanas ?? []).map((semana) => {
     let exigibles = 0
     let reportados = 0
-    for (const colaborador of datos?.colaboradores ?? []) {
+    for (const colaborador of personas) {
       for (const dia of colaborador.dias) {
         if (dia.fecha < semana.inicio || dia.fecha > semana.fin) continue
         if (dia.estado === 'reportado' || dia.estado === 'pendiente' || dia.estado === 'incompleto') exigibles++
@@ -51,8 +58,18 @@ function TendenciaCumplimiento({ datos }: { datos: CumplimientoReporte | null | 
   }))
   const trazo = puntos.map(({ x, y }) => x + ',' + y).join(' ')
   return <section className={styles.panel}>
-    <Cabecera icono={BarChart3} titulo="Cumplimiento del equipo"
+    <div className={styles.trendHeader}>
+    <Cabecera icono={BarChart3} titulo={seleccionado ? "Cumplimiento individual" : "Cumplimiento del equipo"}
       descripcion={datos ? 'Días reportados sobre días exigibles · ' + meses.format(new Date(datos.periodo.hasta + 'T00:00:00Z')) : 'Días reportados sobre días exigibles'} />
+    {opciones.length > 0 && <SelectorDivision
+      areas={opciones}
+      areaId={seleccionado ? colaboradorId : ''}
+      onChange={setColaboradorId}
+      etiqueta="Filtrar cumplimiento por colaborador"
+      etiquetaOpciones="Colaboradores"
+      todas="Todo el equipo"
+    />}
+    </div>
     {puntos.length ? <svg className={styles.chart} viewBox="0 0 620 143" role="img"
       aria-label={puntos.map(({ fin, porcentaje }) => fechaCorta.format(new Date(fin + 'T00:00:00Z')) + ': ' + porcentaje + '%').join(', ')}>
       <defs><linearGradient id={id} x2="0" y2="1"><stop stopColor="#a53cf2" stopOpacity=".65" /><stop offset="100%" stopColor="#a53cf2" stopOpacity="0" /></linearGradient></defs>
@@ -144,7 +161,7 @@ export function DashboardJefeArea() {
       <div className={styles.body}>
         <div className={styles.overview}>
           <div className={styles.chartRow}>
-            <TendenciaCumplimiento datos={datos.cumplimiento} />
+            <TendenciaCumplimiento datos={datos.cumplimiento} usuarios={usuarios} />
             <section className={styles.panel}>
               <Cabecera icono={Layers3} titulo="Distribución de horas" descripcion="Según la clasificación de facturación" />
               <div className={styles.billing}>

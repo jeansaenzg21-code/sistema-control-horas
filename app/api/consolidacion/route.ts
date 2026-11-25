@@ -59,7 +59,7 @@ export async function GET(request: Request) {
     }
 
     const [filas] = await pool.query<RowDataPacket[]>(
-      `SELECT x.usuario_id, u.nombre AS usuario_nombre, u.cargo,
+      `SELECT x.usuario_id, COALESCE(NULLIF(u.nombre, ''), u.correo) AS usuario_nombre, u.cargo,
               COUNT(*) AS registros,
               COALESCE(SUM(x.segundos), 0) AS total_segundos,
               COALESCE(SUM(CASE WHEN x.estado = 'APROBADA' AND x.facturable = 1 THEN x.segundos ELSE 0 END), 0) AS facturadas_segundos,
@@ -83,7 +83,7 @@ export async function GET(request: Request) {
             WHERE ${where.join(' AND ')}
          ) x
          INNER JOIN usuarios u ON u.id = x.usuario_id
-        GROUP BY x.usuario_id, u.nombre, u.cargo
+        GROUP BY x.usuario_id, u.nombre, u.correo, u.cargo
         ORDER BY total_segundos DESC, u.nombre ASC`,
       params
     )

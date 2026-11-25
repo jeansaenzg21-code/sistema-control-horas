@@ -6,7 +6,7 @@ import {
   Settings,
   ChevronsLeft,
   ChevronsRight,
-  ListTodo,
+  Clock,
   CheckCircle,
   BarChart3,
   CalendarCheck,
@@ -55,7 +55,7 @@ const navItems: NavItem[] = [
   { label: 'Clientes', href: '/clientes', icon: <Users size={19} />, roles: ROLES_CONSULTA },
   // El supervisor siempre estuvo aquí aunque tampoco pueda registrar horas: su
   // módulo es el de aprobaciones, al que entra desde este enlace.
-  { label: 'Actividades', href: '/actividades', icon: <ListTodo size={19} />, roles: ['personal', 'supervisor', 'jefe_area'] },
+  { label: 'Registro de horas', href: '/actividades', icon: <Clock size={19} />, roles: ['personal', 'supervisor', 'jefe_area'] },
   { label: 'Aprobaciones', href: '/aprobaciones', icon: <CheckCircle size={19} />, roles: ['admin', 'supervisor', 'personal', 'jefe_area', 'socio'] },
   { label: 'Consolidación', href: '/consolidacion', icon: <BarChart3 size={19} />, roles: ROLES_CONSULTA },
   { label: 'Cumplimiento', href: '/cumplimiento', icon: <CalendarCheck size={19} />, roles: ROLES_CONSULTA },

@@ -39,7 +39,7 @@ export function SettingsUsers({ areaId }: SettingsUsersProps) {
   const [areaDestino, setAreaDestino] = useState<Record<number, string>>({})
   const [transfiriendoId, setTransfiriendoId] = useState<number | null>(null)
 
-  const usuariosArea = usuarios.filter((u) => u.area_id === areaId && u.rol === 'personal')
+  const usuariosArea = usuarios.filter((u) => u.area_id === areaId && u.rol === 'personal' && !u.es_trainee)
   const enModoEdicion = formularioAbierto
 
   const comenzarNuevo = () => {

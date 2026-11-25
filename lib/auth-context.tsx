@@ -32,6 +32,7 @@ export interface Usuario {
   area_id: number | null
   cargo: string | null
   especialidad: string | null
+  es_trainee?: boolean
   supervisor_id: number | null
   activo: boolean
   created_at: string
@@ -72,7 +73,8 @@ function mapRol(dbRol: string): Rol {
 function normalizeUsuario(raw: Record<string, unknown>): Usuario {
   return {
     id: Number(raw.id),
-    nombre: String(raw.nombre || ''),
+    nombre: String(raw.nombre || raw.correo || ''),
+    es_trainee: Boolean(Number(raw.es_trainee ?? 0)),
     correo: String(raw.correo || ''),
     usuario: String(raw.usuario || ''),
     rol: mapRol(String(raw.rol || 'PERSONAL')),

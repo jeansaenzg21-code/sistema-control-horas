@@ -1,3 +1,4 @@
+import { tieneColumnasTrainee } from '@/lib/trainees-esquema'
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
@@ -135,6 +136,7 @@ export async function POST(request: Request) {
       tiposPorArea.set(filaAreaId, info)
     }
 
+    const columnaTrainee = (await tieneColumnasTrainee()) ? 'u.trainee_inicio' : 'NULL'
     const diaValido = new Set(NOMBRES_DIAS.map((dia) => dia.dia_semana))
     const usuariosVistos = new Set<string>()
     const creados: number[] = []
@@ -178,21 +180,25 @@ export async function POST(request: Request) {
         const sinCeros = dni?.replace(/^0+(?=\d)/, '') ?? usuario
         const [existentes] = await pool.query(
           dni
-            ? `SELECT u.id, u.rol, u.usuario, u.nombre, u.correo, a.empresa_id
+            ? `SELECT u.id, u.rol, u.usuario, u.nombre, u.correo, ${columnaTrainee} AS trainee_inicio, a.empresa_id
                FROM usuarios u LEFT JOIN areas a ON a.id = u.area_id
                WHERE u.usuario IN (?, ?) OR (? <> '' AND u.correo = ?)`
-            : `SELECT id, rol, usuario, nombre, correo, NULL AS empresa_id
-               FROM usuarios WHERE usuario = ? OR (? <> '' AND correo = ?) LIMIT 1`,
+            : `SELECT id, rol, usuario, nombre, correo, ${columnaTrainee} AS trainee_inicio, NULL AS empresa_id
+               FROM usuarios u WHERE usuario = ? OR (? <> '' AND correo = ?) LIMIT 1`,
           dni ? [usuario, sinCeros, correo, correo] : [usuario, correo, correo]
         )
         const coincidencias = existentes as Array<{
-          id: number; rol: string; usuario: string; nombre: string; correo: string | null; empresa_id: number | null
+          id: number; rol: string; usuario: string; nombre: string; correo: string | null; trainee_inicio: unknown; empresa_id: number | null
         }>
         if (dni && coincidencias.length > 1) {
           errores.push({ fila: numFila, error: 'El DNI o el correo coincide con más de una cuenta. Revisa la fila.' })
           continue
         }
         const existente = coincidencias[0]
+        if (existente?.trainee_inicio != null) {
+          errores.push({ fila: numFila, error: 'Convierte esta cuenta desde Trainees de la división.' })
+          continue
+        }
         const corregirDni = Boolean(dni && existente && existente.usuario === sinCeros && sinCeros !== usuario)
         if (dni && existente && existente.empresa_id !== context.activa.id) {
           errores.push({ fila: numFila, error: 'La cuenta coincidente no pertenece a la empresa activa.' })

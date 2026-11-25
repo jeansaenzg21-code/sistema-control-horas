@@ -1,5 +1,5 @@
 
-.layout { display: grid; gap: 15px; min-width: 0; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 15px; min-width: 0; }
 .navigation {
   display: flex; flex-wrap: wrap; gap: 5px;
   border-bottom: 1px solid var(--border);

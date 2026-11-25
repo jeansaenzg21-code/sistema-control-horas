@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/lib/auth-context'
 import { opcionesApi } from '@/lib/api-cliente'
@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { AlertTriangle, ArrowUpRight, BarChart3, BriefcaseBusiness, CalendarDays, ChevronDown, ChevronRight, CircleCheck, Clock, FileText, Layers, LayoutGrid, Target, Users, Zap, type LucideIcon } from 'lucide-react'
 import { DateRangeFilter } from './date-range-filter'
 import { MainLayout } from './main-layout'
+import { SelectorDivision } from './selector-division'
 import { formatoHoras, primerNombreYApellido } from '@/lib/utils'
 
 type Metric = { titulo: string; valor: string; detalle: string; icono: LucideIcon; tono: string }
@@ -39,7 +40,6 @@ export function DashboardAdminVista({ desde, hasta, onChange, cargando, listo, r
   const [division, setDivision] = useState<number | null>(null)
   const [fechasAbiertas, setFechasAbiertas] = useState(false)
   const [rango, setRango] = useState({ desde, hasta })
-  const etiquetaDivision = useId()
   const fecha = (valor: string) => valor.split('-').reverse().join('/')
   const divisionActiva = division === null ? undefined : divisiones.find((fila) => fila.id === division)
   const horasDiarias = useQuery({
@@ -58,6 +58,8 @@ export function DashboardAdminVista({ desde, hasta, onChange, cargando, listo, r
       .map((persona) => ({ ...persona, nombre: primerNombreYApellido(persona.nombre, persona.correo), horas: horasDiarias.data?.get(persona.id) ?? 0 }))
       .sort((a, b) => b.horas - a.horas || a.nombre.localeCompare(b.nombre, 'es'))
     : divisiones
+  const columnas = Math.max(1, visibles.length)
+  const anchoColumna = divisionActiva ? 120 : 80
   const maxHoras = Math.max(0, ...visibles.map((fila) => fila.horas))
   const unidad = divisionActiva ? 2 : 10
   const paso = Math.max(unidad, Math.ceil(maxHoras / (unidad * 4)) * unidad)
@@ -118,17 +120,16 @@ export function DashboardAdminVista({ desde, hasta, onChange, cargando, listo, r
             ))}
           </section>
           <div className="ad-panels">
-            <section className="ad-card ad-panel">
+            <section className="ad-card ad-panel ad-hours-panel">
               <div className="ad-heading">
                 <h2><BarChart3 />Horas registradas por división</h2>
-                <label className="ad-select ad-outline">
-                  <span className="sr-only" id={etiquetaDivision}>Filtrar horas por división</span>
-                  <select aria-labelledby={etiquetaDivision} value={divisionActiva?.id ?? ''} onChange={(event) => setDivision(event.target.value ? Number(event.target.value) : null)}>
-                    <option value="">Todas las divisiones</option>
-                    {divisiones.filter((fila) => fila.id !== null).map((fila) => <option key={fila.id} value={fila.id ?? ''}>{fila.nombre}</option>)}
-                  </select>
-                  <ChevronDown size={16} aria-hidden="true" />
-                </label>
+                <SelectorDivision
+                  etiqueta="Filtrar horas por división"
+                  todas="Todas las divisiones"
+                  areas={divisiones.flatMap(({ id, nombre }) => id === null ? [] : [{ id, nombre }])}
+                  areaId={divisionActiva?.id == null ? '' : String(divisionActiva.id)}
+                  onChange={(id) => setDivision(id ? Number(id) : null)}
+                />
               </div>
               {divisionActiva && <p className="px-4 text-xs text-muted-foreground">Horas del {fecha(hasta)} · {visibles.length} integrantes</p>}
               {divisionActiva && horasDiarias.isError ? (
@@ -138,7 +139,7 @@ export function DashboardAdminVista({ desde, hasta, onChange, cargando, listo, r
               ) : <div className="ad-chart">
                 <div className="ad-axis" aria-hidden="true">{[4, 3, 2, 1, 0].map((i) => <span key={i}>{i * paso}h</span>)}</div>
                 <div className="ad-chart-scroll">
-                  <div className="ad-bars" style={{ gridTemplateColumns: 'repeat(' + Math.max(1, visibles.length) + ', minmax(' + (divisionActiva ? 120 : 80) + 'px, 1fr))' }}>
+                  <div className="ad-bars" style={{ minWidth: columnas * anchoColumna, gridTemplateColumns: 'repeat(' + columnas + ', minmax(0, 1fr))' }}>
                     {visibles.map((fila) => (
                       <div className="ad-bar-group" key={fila.id ?? fila.nombre}>
                         <div className="ad-bar-track"><div aria-hidden="true" className="ad-bar" style={{ height: (fila.horas / (paso * 4) * 100) + '%' }} /></div>

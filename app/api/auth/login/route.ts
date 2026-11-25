@@ -1,3 +1,4 @@
+import { tieneColumnasTrainee, CONDICION_TRAINEE } from '@/lib/trainees-esquema'
 import { NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import pool from '@/lib/db'
@@ -50,9 +51,11 @@ export async function POST(request: Request) {
       )
     }
 
+    const trainees = await tieneColumnasTrainee()
     const [rows] = await pool.query(
-      `SELECT id, nombre, correo, usuario, password_hash, rol, area_id, cargo, especialidad, activo
-       FROM usuarios WHERE usuario = ?`,
+      `SELECT u.id, u.nombre, u.correo, u.usuario, u.password_hash, u.rol, u.area_id, u.cargo, u.especialidad, u.activo,
+              ${trainees ? '(u.trainee_inicio IS NOT NULL)' : '0'} AS es_trainee
+       FROM usuarios u WHERE u.usuario = ? ${trainees ? CONDICION_TRAINEE : ''}`,
       [usuarioClave]
     )
     const usuarios = rows as Array<Record<string, unknown>>

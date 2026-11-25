@@ -5,6 +5,7 @@ import { ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp, Plus, Power, Se
 import { useAreas, type Area } from '@/lib/areas-context'
 import { useAuth } from '@/lib/auth-context'
 import { SettingsUsers } from './settings-users'
+import { SettingsTrainees } from './settings-trainees'
 import { SettingsImportarPersonal } from './settings-importar-personal'
 
 function etiquetaRol(rol: string): string {
@@ -373,6 +374,7 @@ export function SettingsAreas() {
           </div>
         </div>
 
+        <SettingsTrainees key={area.id} areaId={area.id} />
         <SettingsUsers areaId={area.id} />
       </div>
     )

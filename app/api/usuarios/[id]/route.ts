@@ -1,3 +1,4 @@
+import { tieneColumnasTrainee } from '@/lib/trainees-esquema'
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise'
@@ -7,9 +8,9 @@ import { esJefeDeArea } from '@/lib/permisos'
 import { hashearPassword, validarPassword } from '@/lib/validacion-password'
 import { eliminarUsuarioCompleto } from '@/lib/eliminacion-registros'
 
-const SELECT_USUARIO = `
+const seleccionarUsuario = (trainees: boolean) => `
   SELECT u.id, u.nombre, COALESCE(u.correo, '') AS correo, u.usuario, u.rol, u.area_id, u.cargo, u.especialidad,
-         u.supervisor_id, u.activo, u.created_at,
+         u.supervisor_id, u.activo, u.created_at, ${trainees ? 'u.trainee_inicio' : 'NULL'} AS trainee_inicio,
          a.nombre AS area_nombre,
          a.empresa_id AS empresa_id
   FROM usuarios u
@@ -100,7 +101,7 @@ async function getUsuarioDeEmpresa(id: number, empresaId: number) {
   // Los administradores tienen area_id NULL y no cuelgan de ninguna empresa por
   // área. Se incluyen para que otro administrador pueda editarlos o eliminarlos.
   const [rows] = await pool.query(
-    `${SELECT_USUARIO}
+    `${seleccionarUsuario(await tieneColumnasTrainee())}
       WHERE u.id = ?
         AND (a.empresa_id = ? OR (u.area_id IS NULL AND u.rol IN ('ADMINISTRACION', 'ADMIN')))`,
     [id, empresaId]
@@ -139,6 +140,9 @@ export async function PUT(
       }
     }
 
+    if (usuarioObjetivo?.trainee_inicio != null || context.user.es_trainee) {
+      return NextResponse.json({ error: 'Gestiona esta cuenta desde Trainees de la división.' }, { status: 403 })
+    }
     const body = await request.json()
     const { nombre, correo, usuario, password, rol, area_id, cargo, especialidad, activo } = body
     if (!adminUsuario && (rol != null || area_id != null || (jefeUsuario && usuario != null))) {
@@ -289,7 +293,7 @@ export async function PUT(
     if (rolNuevo && rolNuevo !== 'JEFE_AREA' && String(usuarioObjetivo?.rol) === 'JEFE_AREA' && await tieneColumnaJefeArea()) {
       await pool.query('UPDATE areas SET jefe_id = NULL WHERE jefe_id = ?', [id])
     }
-    const [rows] = await pool.query(`${SELECT_USUARIO} WHERE u.id = ?`, [id])
+    const [rows] = await pool.query(`${seleccionarUsuario(await tieneColumnasTrainee())} WHERE u.id = ?`, [id])
     return NextResponse.json({ usuario: (rows as unknown[])[0] })
   } catch (error) {
     console.error('Error al actualizar usuario:', error)
@@ -325,6 +329,9 @@ export async function DELETE(
     const usuarioObjetivo = await getUsuarioDeEmpresa(id, context.empresaId)
     if (!usuarioObjetivo) {
       return NextResponse.json({ error: 'Usuario no encontrado.' }, { status: 404 })
+    }
+    if (usuarioObjetivo.trainee_inicio != null) {
+      return NextResponse.json({ error: 'Da de baja la cuenta desde Trainees de la división.' }, { status: 409 })
     }
     if (jefeUsuario && (
       String(usuarioObjetivo.rol) !== 'PERSONAL'

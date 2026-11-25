@@ -145,7 +145,7 @@ export default function Actividades() {
     day: 'numeric',
     month: 'long',
   })
-  const primerNombre = nombreParaSaludo(usuario.nombre, usuario.correo)
+  const primerNombre = usuario.es_trainee ? usuario.correo : nombreParaSaludo(usuario.nombre, usuario.correo)
 
   const pestañas: { id: Pestana; etiqueta: string; icono: React.ReactNode }[] = [
     { id: 'registrar', etiqueta: 'Registrar', icono: <Play size={16} /> },
@@ -174,7 +174,7 @@ export default function Actividades() {
 
   return (
     <MainLayout
-      title="Actividades"
+      title="Registro de horas"
       ancho="ancho"
       subtitle="Registro, seguimiento y cronograma de mis actividades."
     >
@@ -206,6 +206,7 @@ export default function Actividades() {
             <button
               key={p.id}
               type="button"
+              aria-label={p.etiqueta}
               aria-current={pestana === p.id ? true : undefined}
               onClick={() => setPestana(p.id)}
               className={cn(
@@ -216,7 +217,7 @@ export default function Actividades() {
               )}
             >
               {p.icono}
-              {p.etiqueta}
+              <span className={styles.desktopTabLabel}>{p.etiqueta}</span>
             </button>
           ))}
         </nav>
@@ -286,6 +287,8 @@ export default function Actividades() {
               </div>
             </div>
 
+            <div>
+            <h2 className={styles.modeHeading}>Modo de registro</h2>
             <div className={styles.modes}>
               <OpcionModo
                 activo={modoRegistro === 'tiempo-real'}
@@ -301,6 +304,7 @@ export default function Actividades() {
                 titulo="Al final del día"
                 descripcion="Carga tus actividades con hora de inicio y fin cuando termines la jornada."
               />
+            </div>
             </div>
 
             {modoRegistro === 'tiempo-real' ? (
@@ -398,10 +402,10 @@ function OpcionModo({
         {icono}
       </span>
       <span className="min-w-0">
-        <span className={cn('block text-base font-semibold', activo ? 'text-foreground' : 'text-foreground/90')}>
+        <span className={cn(styles.modeTitle, 'block text-base font-semibold', activo ? 'text-foreground' : 'text-foreground/90')}>
           {titulo}
         </span>
-        <span className="mt-0.5 block text-sm leading-snug text-muted-foreground">{descripcion}</span>
+        <span className={styles.modeDescription + ' mt-0.5 block text-sm leading-snug text-muted-foreground'}>{descripcion}</span>
       </span>
       <span className={styles.modeCheck} aria-hidden="true">{activo && <Check size={14} />}</span>
     </button>

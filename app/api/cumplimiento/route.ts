@@ -179,7 +179,7 @@ export async function GET(request: Request) {
     })
 
     // ---- 2. Colaboradores y jefes de área activos ----
-    let queryColab = `SELECT u.id, u.nombre, u.cargo,
+    let queryColab = `SELECT u.id, COALESCE(NULLIF(u.nombre, ''), u.correo) AS nombre, u.cargo,
         COALESCE(ar.nombre, '') AS area_nombre
        FROM usuarios u
        LEFT JOIN areas ar ON ar.id = u.area_id
