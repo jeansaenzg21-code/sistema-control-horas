@@ -70,6 +70,17 @@ const navItemsTI: NavItem[] = [
   { label: 'Gestión de Laptops', href: '/gestion-laptops', icon: <ClipboardList size={19} />, roles: ROLES_MODULOS_TI, visiblePara: puedeVerGestionLaptops },
 ]
 
+export function obtenerModulosVisibles(usuario: Usuario | null) {
+  const puedeVer = (item: NavItem) =>
+    item.roles.includes(usuario?.rol ?? 'personal')
+    && (!item.visiblePara || item.visiblePara(usuario))
+
+  return {
+    itemsVisibles: navItems.filter(puedeVer),
+    itemsTIVisibles: navItemsTI.filter(puedeVer),
+  }
+}
+
 export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }: SidebarProps) {
   const [vistaRapida, setVistaRapida] = useState(false)
   const puedeDesplegar = minimizada
@@ -83,14 +94,7 @@ export function Sidebar({ abierto, minimizada, onAlternarMinimizado, onCerrar }:
   }
   const pathname = usePathname()
   const { usuario } = useAuth()
-  const itemsVisibles = navItems.filter((item) => (
-    item.roles.includes(usuario?.rol ?? 'personal')
-    && (!item.visiblePara || item.visiblePara(usuario))
-  ))
-  const itemsTIVisibles = navItemsTI.filter((item) => (
-    item.roles.includes(usuario?.rol ?? 'personal')
-    && (!item.visiblePara || item.visiblePara(usuario))
-  ))
+  const { itemsVisibles, itemsTIVisibles } = obtenerModulosVisibles(usuario)
 
   const renderItem = (item: NavItem) => {
     const inicio = item.href === '/'

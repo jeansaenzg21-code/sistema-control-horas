@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { CalendarCheck, CheckCircle, Clock, House, Menu } from 'lucide-react'
-import { Sidebar } from './sidebar'
+import { obtenerModulosVisibles, Sidebar } from './sidebar'
 import { Header } from './header'
 import { useAuth } from '@/lib/auth-context'
 import { cn } from '@/lib/utils'
@@ -31,13 +30,15 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal', header
   const pathname = usePathname()
   const registroHoras = pathname === '/actividades'
   const navegacionMovil = Boolean(usuario && empresaActiva)
-  const verEquipo = esAdmin || usuario?.rol === 'jefe_area' || usuario?.rol === 'socio'
-  const verHoras = usuario?.rol === 'jefe_area' || usuario?.rol === 'personal' || usuario?.rol === 'supervisor'
-  const accesosMoviles = [
-    ...(verEquipo ? [{ href: '/', texto: 'Inicio', Icono: House }, { href: '/cumplimiento', texto: 'Equipo', Icono: CalendarCheck }] : []),
-    ...(verHoras ? [{ href: '/actividades', texto: 'Horas', Icono: Clock }] : []),
-    { href: '/aprobaciones', texto: usuario?.rol === 'personal' ? 'Solicitudes' : usuario?.rol === 'socio' ? 'Aprobaciones' : 'Aprobar', Icono: CheckCircle },
-  ]
+  const { itemsVisibles, itemsTIVisibles } = obtenerModulosVisibles(usuario)
+  const etiquetasMoviles: Record<string, string> = {
+    '/': 'Inicio',
+    '/actividades': 'Horas',
+    '/aprobaciones': usuario?.rol === 'personal' ? 'Solicitudes' : usuario?.rol === 'socio' ? 'Aprobaciones' : 'Aprobar',
+    '/cumplimiento': 'Equipo',
+  }
+  const accesosMoviles = [...itemsVisibles, ...itemsTIVisibles]
+  const barraMovil = useRef<HTMLElement>(null)
   const activoMovil = (href: string) => pathname === href || (href !== '/' && pathname.startsWith(href + '/'))
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [sidebarMinimizada, setSidebarMinimizada] = useState<boolean | null>(null)
@@ -56,6 +57,17 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal', header
     const guardada = localStorage.getItem(claveSidebar)
     setSidebarMinimizada(guardada === null || guardada === 'true')
   }, [claveSidebar])
+
+  useEffect(() => {
+    const barra = barraMovil.current
+    const enlace = barra?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (!barra || !enlace || !barra.clientWidth) return
+
+    const limites = barra.getBoundingClientRect()
+    const activo = enlace.getBoundingClientRect()
+    if (activo.left < limites.left) barra.scrollLeft += activo.left - limites.left
+    if (activo.right > limites.right) barra.scrollLeft += activo.right - limites.right
+  }, [pathname, navegacionMovil])
 
   // Al cambiar de modulo el cajon movil debe quedar cerrado, aunque la
   // navegacion no venga de un enlace del propio menu.
@@ -115,18 +127,13 @@ export function MainLayout({ children, title, subtitle, ancho = 'normal', header
             {children}
           </div>
         </main>
-        {navegacionMovil && <nav className="mobile-hours-nav no-print" aria-label="Navegación móvil">
-          {accesosMoviles.map(({ href, texto, Icono }) => (
+        {navegacionMovil && <nav ref={barraMovil} className="mobile-hours-nav no-print" aria-label="Navegación móvil">
+          {accesosMoviles.map(({ href, label, icon }) => (
             <Link key={href} href={href} aria-current={activoMovil(href) ? 'page' : undefined}>
-              <Icono size={19} aria-hidden="true" />{texto}
+              <span aria-hidden="true">{icon}</span>
+              {etiquetasMoviles[href] ?? label}
             </Link>
           ))}
-          <button
-            type="button"
-            aria-expanded={menuAbierto}
-            data-current={!accesosMoviles.some(({ href }) => activoMovil(href))}
-            onClick={() => setMenuAbierto(true)}
-          ><Menu size={20} aria-hidden="true" />Más</button>
         </nav>}
       </div>
     </div>

@@ -395,16 +395,18 @@
   .mobile-hours .app-module-content { padding: 7px 10px calc(68px + env(safe-area-inset-bottom)); }
   .mobile-hours-nav {
     display: flex; position: fixed; z-index: 25; inset: auto 0 0;
-    justify-content: space-around; align-items: stretch; gap: 3px;
+    align-items: stretch; gap: 3px;
+    overflow-x: auto; scrollbar-width: none;
     padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--border); background: var(--header);
   }
-  .mobile-hours-nav :is(a, button) {
-    display: grid; flex: 1; min-width: 0; justify-items: center; align-content: center;
+  .mobile-hours-nav a {
+    display: grid; flex: 1 0 auto; min-width: 64px; justify-items: center; align-content: center;
+    white-space: nowrap;
     gap: 3px; min-height: 45px; padding: 3px; border-radius: 9px;
     font-size: 11px; color: var(--muted-foreground);
   }
-  .mobile-hours-nav :is([aria-current="page"], [data-current="true"]) { color: var(--foreground); background: color-mix(in srgb, var(--primary) 22%, var(--card)); }
+  .mobile-hours-nav [aria-current="page"] { color: var(--foreground); background: color-mix(in srgb, var(--primary) 22%, var(--card)); }
 }
 
 
@@ -414,5 +416,5 @@
   .mobile-module-nav .app-module-content { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   .mobile-hours .app-module-content { padding-inline: 12px; }
   .mobile-hours-nav { padding-inline: 10px; gap: 5px; }
-  .mobile-hours-nav :is(a, button) { min-height: 49px; font-size: 12px; }
+  .mobile-hours-nav a { min-height: 49px; font-size: 12px; }
 }
