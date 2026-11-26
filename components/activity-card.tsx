@@ -1,5 +1,6 @@
 'use client'
 
+import { inicioPausaRefrigerio } from '@/lib/refrigerio'
 import { useEffect, useState } from 'react'
 import { CalendarDays, Clock3, FolderKanban, Pause, Play, Square, Tag, UserRound } from 'lucide-react'
 import { useActividad } from '@/lib/actividad-context'
@@ -37,7 +38,8 @@ export function ActivityCard() {
     if (!actividadActual) return 0
     if (pausada && tiempoPausaMs != null) return tiempoPausaMs
     const inicioMs = new Date(actividadActual.inicio).getTime()
-    const ahoraMs = enCurso ? Date.now() : inicioMs
+    const corte = inicioPausaRefrigerio(new Date(actividadActual.ultima_reanudacion ?? actividadActual.inicio))
+    const ahoraMs = enCurso ? (corte?.getTime() ?? Date.now()) : inicioMs
     const finMs = actividadActual.fin ? new Date(actividadActual.fin).getTime() : ahoraMs
     const totalBruto = Math.max(0, finMs - inicioMs)
     return Math.max(0, totalBruto - (actividadActual.pausa_acumulada_segundos || 0) * 1000)

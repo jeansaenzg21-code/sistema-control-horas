@@ -9,12 +9,16 @@ export function esHorarioRefrigerio(fecha: Date = new Date()): boolean {
   return new Date(fecha.getTime() - DESFASE_PERU_MS).getUTCHours() === 13
 }
 
+/** Primer inicio de refrigerio que alcanza un tramo continuo de trabajo. */
+export function inicioPausaRefrigerio(inicio: Date, ahora = new Date()): Date | null {
+  const fechaPeru = new Date(inicio.getTime() - DESFASE_PERU_MS)
+  let corte = Date.UTC(fechaPeru.getUTCFullYear(), fechaPeru.getUTCMonth(), fechaPeru.getUTCDate(), 18)
+  if (inicio.getTime() >= corte + UNA_HORA_MS) corte += UN_DIA_MS
+  corte = Math.max(corte, inicio.getTime())
+  return corte <= ahora.getTime() ? new Date(corte) : null
+}
+
 /** Evita imputar tiempo al refrigerio incluso al cargar bloques retroactivos. */
 export function cruzaRefrigerio(inicio: Date, fin: Date): boolean {
-  const fechaPeru = new Date(inicio.getTime() - DESFASE_PERU_MS)
-  let inicioRefrigerio = Date.UTC(
-    fechaPeru.getUTCFullYear(), fechaPeru.getUTCMonth(), fechaPeru.getUTCDate(), 18,
-  )
-  if (inicio.getTime() >= inicioRefrigerio + UNA_HORA_MS) inicioRefrigerio += UN_DIA_MS
-  return inicio.getTime() < inicioRefrigerio + UNA_HORA_MS && fin.getTime() > inicioRefrigerio
+  return inicioPausaRefrigerio(inicio, new Date(fin.getTime() - 1)) !== null
 }

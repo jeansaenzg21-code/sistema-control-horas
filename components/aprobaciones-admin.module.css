@@ -31,7 +31,7 @@
 .tabs button { border-color: transparent; }
 .tabs button:hover, .control:hover:not(:disabled) { background: var(--muted); }
 .tabs button[aria-pressed="true"], .primary { border-color: var(--ad-selected-border,var(--primary)); background: var(--ad-selected,var(--primary)); color: white; }
-.tabs button span { min-width: 20px; padding: 0 5px; text-align: center; border-radius: 99px; background: #b166e041; }
+.tabs button span:not(.etiquetaFiltro) { min-width: 20px; padding: 0 5px; text-align: center; border-radius: 99px; background: #b166e041; }
 .primary:hover:not(:disabled) { filter: brightness(1.2); }
 .control:disabled, .primary:disabled { opacity: .45; cursor: default; }
 .busqueda label { display: flex; align-items: center; gap: 7px; padding-inline: 9px; border: 1px solid var(--border); border-radius: 10px; color: var(--muted-foreground); }
@@ -180,28 +180,11 @@
   .vista .cliente small, .vista .faltantes { font-size: 10px; }
   .vista .solicitud { background: transparent; padding: 0; font-size: 12px; overflow-wrap: anywhere; }
   .vista .acciones .control { width: 34px; min-height: 44px; border: 0; }
-  .vista[data-revision="true"] .table td:nth-last-child(4) {
-    display: block;
-    grid-area: 3 / 1 / 4 / 3;
-    color: var(--muted-foreground);
-    overflow-wrap: anywhere;
-  }
-  .vista[data-revision="true"] .table td:nth-last-child(5) {
-    display: block;
-    grid-area: 3 / 3 / 4 / -1;
-    text-align: right;
-    padding-inline-end: 6px;
-  }
-  .vista .table tr[data-pendiente="true"] td:last-child { grid-area: 4 / 2 / 5 / -1; }
-  .vista .table tr > .seleccionMovil { grid-area: 4 / 1; }
-  .vista .table tr[data-pendiente="true"] .acciones { flex-wrap: wrap; }
-  .vista .table tr[data-pendiente="true"] .acciones button { min-height: 44px; }
-  .vista .table tr[data-pendiente="true"] .acciones .control:not([aria-label]) { width: auto; border: 1px solid var(--border); }
   .vista .busqueda select { min-width: min(125px, 100%); }
   .vista .table td.empty { grid-area: 1 / 1 / 2 / -1; }
 }
 
-.iconoRevision { display: none; }
+.tarjetasRevision { display: none; }
 
 @media (max-width: 767px) {
   .vista[data-revision="true"] { gap: 9px; }
@@ -212,52 +195,43 @@
   .vista[data-revision="true"] .trend svg { height: clamp(64px, 20vw, 115px); }
   .vista[data-revision="true"] .trend[data-sin-registros="true"] { display: none; }
   .vista[data-revision="true"] .trendNote:last-of-type { padding-bottom: 9px; }
-  .vista[data-revision="true"] .tabs button { border-radius: 999px; }
+  .vista[data-revision="true"] .tabs button { border-radius: 999px; min-height: 44px; }
+  .vista[data-revision="true"] .tabs button > span { display: none; }
   .vista[data-revision="true"] .busqueda label { border-radius: 12px; background: var(--ad-raised, var(--card)); }
 
   .vista[data-revision="true"] .listaSolicitudes { border: 0; background: transparent; }
   .vista[data-revision="true"] .listaSolicitudes > h2 { padding-inline: 4px; }
-  .vista[data-revision="true"] .tableScroll { padding-inline: 0; }
-  .vista[data-revision="true"] .table tbody { gap: 7px; }
-  .vista[data-revision="true"] .table tbody tr { padding: 7px; }
-  .vista[data-revision="true"] .table .duracion,
-  .vista[data-revision="true"] .table .responsable,
-  .vista[data-revision="true"] .duracion > strong { display: flex; align-items: center; gap: 4px; }
-  .vista[data-revision="true"] .duracion { justify-content: flex-end; flex-wrap: wrap; }
-  .vista[data-revision="true"] .iconoRevision { display: inline-block; flex: none; color: var(--muted-foreground); }
-
-  .vista[data-revision="true"] tr[data-pendiente="true"] {
-    grid-template-columns: 22px minmax(0, .85fr) minmax(0, 1.35fr) minmax(0, 1fr);
-    row-gap: 3px;
+  .vista[data-revision="true"] .tableScroll { display: none; }
+  .tarjetasRevision { display: grid; gap: 7px; }
+  .tarjetaRevision {
+    min-width: 0; padding: 8px; border: 1px solid var(--borde-estado, var(--border));
+    border-radius: 12px; background: var(--ad-raised, var(--card));
   }
-  .vista[data-revision="true"] tr[data-pendiente="true"] td:nth-last-child(8) {
-    grid-area: 1 / 1 / 3 / 3;
-    border-inline-end: 1px solid var(--border);
-    align-self: stretch;
-    display: grid;
-    align-items: center;
+  .tarjetaRevision[data-estado="PENDIENTE_APROBACION"] { --borde-estado: #d8a625; }
+  .tarjetaRevision[data-estado="APROBADA"] { --borde-estado: #27aa73; }
+  .tarjetaRevision[data-estado="RECHAZADA"] { --borde-estado: #e05063; }
+  .tarjetaRevision[data-estado="CORRECCION_SOLICITADA"] { --borde-estado: #b27ae8; }
+  .cabeceraTarjeta { display: flex; align-items: flex-start; gap: 7px; }
+  .casillaTarjeta { display: grid; place-items: center; flex: 0 0 24px; min-height: 32px; }
+  .casillaTarjeta input { width: 16px; height: 16px; accent-color: var(--primary); }
+  .avatarTarjeta {
+    display: grid; place-items: center; flex: 0 0 32px; height: 32px; border-radius: 50%;
+    background: #4b1e73; color: white; font-weight: 700; font-size: 12px; text-transform: uppercase;
   }
-  .vista[data-revision="true"] tr[data-pendiente="true"] td:nth-last-child(7),
-  .vista[data-revision="true"] tr[data-pendiente="true"] .fechaActividad { grid-column: 3; }
-  .vista[data-revision="true"] tr[data-pendiente="true"] td:nth-last-child(3) { grid-area: 1 / 4 / 3 / 5; }
-  .vista[data-revision="true"] tr[data-pendiente="true"] td:nth-last-child(3) > * { white-space: normal; }
-  .vista[data-revision="true"] tr[data-pendiente="true"] .responsable { grid-area: 3 / 2 / 4 / 3; }
-  .vista[data-revision="true"] tr[data-pendiente="true"] .duracion { grid-area: 3 / 3 / 4 / -1; }
-  .vista[data-revision="true"] tr[data-pendiente="true"] .seleccionMovil { grid-area: 3 / 1; padding: 0; }
-  .vista[data-revision="true"] .seleccionMovil label { display: grid; min-height: 32px; place-items: center; }
-  .vista[data-revision="true"] .table tr[data-pendiente="true"] td:last-child {
-    grid-area: 4 / 1 / 5 / -1;
-    padding: 5px 0 0;
-    border-top: 1px solid var(--border);
-  }
-  .vista[data-revision="true"] .table tr[data-pendiente="true"] .acciones {
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(34px, .32fr);
-    gap: 5px;
-  }
-  .vista[data-revision="true"] .table tr[data-pendiente="true"] .acciones button {
-    width: 100%; min-height: 37px; padding: 2px 3px; border: 1px solid var(--border); font-size: 12px;
-  }
-  .vista[data-revision="true"] .table tr[data-pendiente="true"] .acciones .primary {
+  .contenidoTarjeta { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .tituloTarjeta { display: flex; justify-content: space-between; gap: 5px; font-size: 13px; line-height: 1.2; }
+  .tituloTarjeta strong:last-child { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .actividadTarjeta { margin-block: 2px 3px; font-size: 12px; line-height: 1.25; }
+  .metaTarjeta, .marcasTarjeta { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; }
+  .metaTarjeta { color: var(--muted-foreground); font-size: 11px; }
+  .metaTarjeta > span { display: inline-flex; align-items: center; gap: 3px; }
+  .metaTarjeta svg { flex: none; }
+  .marcasTarjeta { justify-content: space-between; margin-top: 4px; }
+  .marcasTarjeta .faltantes { margin: 0; }
+  .accionesTarjeta { display: flex; justify-content: flex-end; gap: 5px; margin-top: 7px; }
+  .accionesTarjeta[data-pendiente="true"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 36px; }
+  .accionesTarjeta button { min-height: 37px; padding: 2px 3px; font-size: 12px; }
+  .accionesTarjeta .primary {
     border-color: color-mix(in srgb, var(--primary) 70%, var(--border));
     background: linear-gradient(125deg, #532071, #762592);
   }

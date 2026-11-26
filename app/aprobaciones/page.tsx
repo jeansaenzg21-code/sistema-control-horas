@@ -12,7 +12,6 @@ export default function Aprobaciones() {
   const router = useRouter()
   const [periodo, setPeriodo] = useState<PeriodoAprobaciones>({ desde: '', hasta: '' })
   const esAdmin = usuario?.rol === 'admin'
-  const esRevisor = esAdmin || usuario?.rol === 'supervisor' || usuario?.rol === 'jefe_area'
   const esJefeArea = usuario?.rol === 'jefe_area'
 
   useEffect(() => {
@@ -25,7 +24,7 @@ export default function Aprobaciones() {
   return (
     <MainLayout
       ancho="ancho"
-      headerActions={esRevisor ? <div className="periodo-revision-movil"><PeriodoAprobacionesControl periodo={periodo} onChange={setPeriodo} /></div> : <PeriodoAprobacionesControl periodo={periodo} onChange={setPeriodo} />}
+      headerActions={<PeriodoAprobacionesControl periodo={periodo} onChange={setPeriodo} />}
       title={esJefeArea ? 'Aprobaciones de tu área' : 'Aprobaciones'}
       subtitle={
         esJefeArea

@@ -73,7 +73,7 @@ export function Header({ title, subtitle, onAbrirMenu, actions, onVolverMovil }:
   }
 
   return (
-    <header data-detalle-movil={onVolverMovil ? true : undefined} className="no-print sticky top-0 z-30 flex min-h-14 items-center justify-between gap-2 border-b border-border bg-header px-4 py-2 sm:px-6">
+    <header data-detalle-movil={onVolverMovil ? true : undefined} className="app-module-header no-print sticky top-0 z-30 flex min-h-14 items-center justify-between gap-2 border-b border-border bg-header px-4 py-2 sm:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <button
           type="button"
@@ -94,9 +94,9 @@ export function Header({ title, subtitle, onAbrirMenu, actions, onVolverMovil }:
       </div>
 
       <div className="flex items-center gap-1 sm:gap-3">
-        {actions}
+        {actions && <div className="app-header-actions">{actions}</div>}
 
-        <div className="relative" ref={contenedorNotifRef}>
+        <div className="app-header-notifications relative" ref={contenedorNotifRef}>
           <button
             onClick={() => setNotifAbierto((valor) => !valor)}
             className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -161,7 +161,7 @@ export function Header({ title, subtitle, onAbrirMenu, actions, onVolverMovil }:
           )}
         </div>
 
-        <div className="relative" ref={contenedorUsuarioRef}>
+        <div className="app-header-profile relative" ref={contenedorUsuarioRef}>
           <button
             onClick={() => setMenuUsuarioAbierto((valor) => !valor)}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted"

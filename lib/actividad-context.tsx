@@ -13,7 +13,7 @@ import { useAuth } from './auth-context'
 import { veTodaLaEmpresa } from './permisos'
 import { ControlStream, crearStreamSse } from './sse'
 import { opcionesApi } from '@/lib/api-cliente'
-import { esHorarioRefrigerio } from './refrigerio'
+import { esHorarioRefrigerio, inicioPausaRefrigerio } from './refrigerio'
 
 export interface Actividad {
   id: number
@@ -31,6 +31,7 @@ proyecto_id?: number | null
   fin: string | null
   duracion_segundos: number | null
   pausa_acumulada_segundos: number
+  ultima_reanudacion?: string | null
   estado: 'EN_CURSO' | 'PAUSADA' | 'PENDIENTE_APROBACION' | 'CORRECCION_SOLICITADA' | 'APROBADA' | 'RECHAZADA'
   revisado_por: number | null
   revisado_en: string | null
@@ -338,29 +339,33 @@ const streamRef = useRef<ControlStream | null>(null)
       if (!res.ok) {
         if (porRefrigerio && res.status === 400) void cargarActividadActual(usuario.id)
         console.warn('[actividad] No se pudo pausar:', res.status)
-        return
+        return false
       }
-      const elapsed = Math.max(0, Date.now() - new Date(actual.inicio).getTime())
+      const { inicioPausa } = await res.json()
+      const elapsed = Math.max(0, new Date(inicioPausa).getTime() - new Date(actual.inicio).getTime())
       const pausas = (actual.pausa_acumulada_segundos || 0) * 1000
       setTiempoPausaMs(Math.max(0, elapsed - pausas))
-      setActividadActual((prev) => prev ? {
+      setActividadActual((prev) => prev?.id === actual.id ? {
         ...prev,
         estado: 'PAUSADA',
-      } : null)
+      } : prev)
       setAlertaVisible(false)
+      return true
     } catch {
       console.warn('[actividad] Sin conexión al pausar')
     }
   }, [usuario, cargarActividadActual])
 
-  const pausarActividad = useCallback(() => pausar(false), [pausar])
+  const pausarActividad = useCallback(async () => { await pausar(false) }, [pausar])
 
   useEffect(() => {
     if (!usuario || !empresaId) return
     const comprobar = () => {
       const refrigerio = esHorarioRefrigerio()
       setEnRefrigerio(refrigerio)
-      if (!refrigerio || actividadRef.current?.estado !== 'EN_CURSO' || pausaRefrigerioEnCurso.current) return
+      const actual = actividadRef.current
+      if (actual?.estado !== 'EN_CURSO' || pausaRefrigerioEnCurso.current) return
+      if (!inicioPausaRefrigerio(new Date(actual.ultima_reanudacion ?? actual.inicio))) return
       pausaRefrigerioEnCurso.current = true
       void pausar(true).finally(() => { pausaRefrigerioEnCurso.current = false })
     }
@@ -373,7 +378,7 @@ const streamRef = useRef<ControlStream | null>(null)
       window.removeEventListener('focus', comprobar)
       document.removeEventListener('visibilitychange', comprobar)
     }
-  }, [usuario, empresaId, pausar])
+  }, [usuario, empresaId, pausar, actividadActual])
 
   const reanudarActividad = useCallback(async () => {
     if (esHorarioRefrigerio()) return
@@ -390,7 +395,7 @@ const streamRef = useRef<ControlStream | null>(null)
         return
       }
       setTiempoPausaMs(null)
-      setActividadActual((prev) => prev ? { ...prev, estado: 'EN_CURSO' } : null)
+      await cargarActividadActual(usuario.id)
       inicioRef.current = Date.now()
       setAlertaVisible(false)
     } catch {
@@ -402,6 +407,9 @@ const streamRef = useRef<ControlStream | null>(null)
     if (!usuario) return
     const actual = actividadRef.current ?? (await cargarActividadActual(usuario.id))
     if (!actual) return
+    if (actual.estado === 'EN_CURSO' && inicioPausaRefrigerio(new Date(actual.ultima_reanudacion ?? actual.inicio))) {
+      if (!await pausar(true)) return
+    }
     try {
       const res = await fetch(`/api/actividades/${actual.id}/finalizar`, opcionesApi({
         method: 'POST',
@@ -419,7 +427,7 @@ const streamRef = useRef<ControlStream | null>(null)
     } catch {
       console.warn('[actividad] Sin conexión al finalizar')
     }
-  }, [usuario, cargarActividadActual, cargarHistorial])
+  }, [usuario, cargarActividadActual, cargarHistorial, pausar])
 
   const continuarActividad = useCallback(() => {
     setAlertaVisible(false)

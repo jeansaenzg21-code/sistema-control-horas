@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getEmpresaContext, getUserFromRequest } from '@/lib/auth'
 import { notifyActivityChange } from '@/lib/events'
-import { esHorarioRefrigerio } from '@/lib/refrigerio'
+import { inicioPausaRefrigerio } from '@/lib/refrigerio'
 
 export async function POST(
   request: Request,
@@ -21,7 +21,8 @@ export async function POST(
     try {
       await conexion.beginTransaction()
       const [rows] = await conexion.query(
-        `SELECT a.id, a.usuario_id, a.estado
+        `SELECT a.id, a.usuario_id, a.estado,
+           UNIX_TIMESTAMP(COALESCE((SELECT MAX(p.fin) FROM pausas p WHERE p.actividad_id = a.id), a.inicio)) AS tramo
          FROM actividades a
          INNER JOIN usuarios u ON u.id = a.usuario_id
          INNER JOIN areas ar ON ar.id = u.area_id
@@ -36,27 +37,24 @@ export async function POST(
         return NextResponse.json({ error: 'La actividad no está en curso.' }, { status: 400 })
       }
 
-      // Se traduce las 13:00 de Perú a la zona horaria de MySQL, que puede ser
-      // distinta. Si el navegador despertó tarde, la pausa arranca a las 13:00.
-      const inicioPausa = porRefrigerio && esHorarioRefrigerio()
-        ? "GREATEST(inicio, DATE_ADD(TIMESTAMP(DATE(UTC_TIMESTAMP() - INTERVAL 5 HOUR), '18:00:00'), INTERVAL TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(), NOW()) SECOND))"
-        : 'NOW()'
-      await conexion.query(
-        `INSERT INTO pausas (actividad_id, inicio)
-         SELECT id, ${inicioPausa}
-         FROM actividades WHERE id = ?`,
-        [id]
-      )
+      const ahora = new Date()
+      const corte = inicioPausaRefrigerio(new Date(Number(actividades[0].tramo) * 1000), ahora)
+      if (porRefrigerio && !corte) {
+        await conexion.rollback()
+        return NextResponse.json({ error: 'El tramo actual no alcanza el refrigerio.' }, { status: 409 })
+      }
+      const inicio = corte ?? ahora
+      await conexion.query('INSERT INTO pausas (actividad_id, inicio) VALUES (?, FROM_UNIXTIME(?))', [id, Math.floor(inicio.getTime() / 1000)])
       await conexion.query("UPDATE actividades SET estado = 'PAUSADA' WHERE id = ?", [id])
       await conexion.commit()
+      notifyActivityChange(user.id)
+      return NextResponse.json({ ok: true, inicioPausa: inicio.toISOString() })
     } catch (error) {
       await conexion.rollback()
       throw error
     } finally {
       conexion.release()
     }
-    notifyActivityChange(user.id)
-    return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error al pausar actividad:', error)
     return NextResponse.json({ error: 'Error interno del servidor.' }, { status: 500 })

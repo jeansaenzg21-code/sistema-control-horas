@@ -173,7 +173,7 @@ export function AprobacionesAdminVista(props: Props) {
     <Resumen registros={registros} periodo={periodo} cargando={cargando} />
     <div className={styles.toolbar}>
       <div className={styles.tabs} role="group" aria-label="Estado de la solicitud">
-        {filtros.map(({ clave, titulo, icono: Icono }) => <button type="button" key={clave} aria-pressed={clave === filtro} onClick={() => props.onFiltro(clave)}><Icono size={17} />{titulo}{clave === 'pendientes' && <span>{pendientes}</span>}</button>)}
+        {filtros.map(({ clave, titulo, icono: Icono }) => <button type="button" key={clave} aria-label={clave === 'pendientes' ? titulo + ' (' + pendientes + ')' : titulo} title={titulo} aria-pressed={clave === filtro} onClick={() => props.onFiltro(clave)}><Icono size={17} aria-hidden="true" /><span className={styles.etiquetaFiltro}>{titulo}</span>{clave === 'pendientes' && <span>{pendientes}</span>}</button>)}
       </div>
       <div className={styles.busqueda}>
         <label><Search size={17} /><input value={busqueda} onChange={(evento) => props.onBusqueda(evento.target.value)} aria-label="Buscar solicitud" placeholder="Buscar solicitud…" /></label>
@@ -184,6 +184,43 @@ export function AprobacionesAdminVista(props: Props) {
     </div>
     <section className={`${styles.panel} ${styles.listaSolicitudes}`} aria-busy={cargando}>
       <h2 className={styles.heading}><Layers3 size={20} />{seleccionar ? 'Solicitudes por aprobar' : props.puedeRevisar ? 'Solicitudes de aprobación' : 'Mis solicitudes'}</h2>
+      {props.puedeRevisar && <ul className={styles.tarjetasRevision}>
+        {filas.map((fila) => {
+          const cliente = fila.cliente_nombre || 'Sin cliente'
+          const iniciales = fila.cliente_nombre?.trim().split(/\s+/).slice(0, 2).map((parte) => parte.charAt(0)).join('') || '—'
+          const pendiente = fila.estado === 'PENDIENTE_APROBACION'
+          const faltantes = pendiente ? datosFaltantesActividad(fila) : []
+          return <li key={fila.id} className={styles.tarjetaRevision} data-estado={fila.estado}>
+            <div className={styles.cabeceraTarjeta}>
+              {seleccionar && <label className={styles.casillaTarjeta}>
+                <input type="checkbox" aria-label={'Seleccionar registro ' + fila.id} checked={seleccionadas.has(fila.id)} onChange={() => props.onSeleccionar(fila.id)} />
+              </label>}
+              <span className={styles.avatarTarjeta} aria-hidden="true">{iniciales}</span>
+              <div className={styles.contenidoTarjeta}>
+                <div className={styles.tituloTarjeta}><strong>{cliente}</strong><strong>{props.duracion(fila)}</strong></div>
+                <p className={styles.actividadTarjeta}>{fila.tipo_actividad_nombre || 'Registro de horas'}</p>
+                <div className={styles.metaTarjeta}>
+                  <span><User size={13} aria-hidden="true" />{fila.usuario_nombre ? primerNombreYApellido(fila.usuario_nombre) : '—'}</span>
+                  <span><CalendarDays size={13} aria-hidden="true" />{fechaCorta(fechaLocalISO(fila.inicio))}</span>
+                </div>
+                <div className={styles.marcasTarjeta}>
+                  <FacturableBadge valor={fila.facturable} />
+                  {faltantes.length > 0 && <span className={styles.faltantes} title={textoDatosFaltantes(faltantes)}><AlertTriangle size={13} />Datos pendientes</span>}
+                </div>
+                <span className="sr-only"><StatusBadge estado={fila.estado} /></span>
+              </div>
+            </div>
+            <div className={styles.accionesTarjeta} data-pendiente={pendiente}>
+              {pendiente && <>
+                <button type="button" className={styles.primary} disabled={procesando === 'aprobar-' + fila.id} onClick={() => props.onAprobar(fila)}><Check size={16} />Aprobar</button>
+                <button type="button" className={styles.control} onClick={() => props.onRechazar(fila)}><X size={16} />Rechazar</button>
+              </>}
+              <button type="button" className={styles.control} aria-label={'Ver detalle del registro ' + fila.id} onClick={() => props.onDetalle(fila)}><ChevronRight size={17} /></button>
+            </div>
+          </li>
+        })}
+        {!filas.length && <li className={styles.empty}>{cargando ? 'Cargando solicitudes…' : 'No hay solicitudes para estos filtros.'}</li>}
+      </ul>}
       <div className={styles.tableScroll}>
         <table className={styles.table}>
           <thead><tr>
@@ -196,14 +233,14 @@ export function AprobacionesAdminVista(props: Props) {
               const iniciales = fila.cliente_nombre?.trim().split(/\s+/).slice(0, 2).map((parte) => parte.charAt(0)).join('') || '—'
               const pendiente = fila.estado === 'PENDIENTE_APROBACION'
               const faltantes = pendiente ? datosFaltantesActividad(fila) : []
-              return <tr key={fila.id} data-pendiente={props.puedeRevisar && pendiente}>
-                {seleccionar && <td className={styles.seleccionMovil}><label><input type="checkbox" aria-label={'Seleccionar registro ' + fila.id} checked={seleccionadas.has(fila.id)} onChange={() => props.onSeleccionar(fila.id)} /></label></td>}
+              return <tr key={fila.id}>
+                {seleccionar && <td><label><input type="checkbox" aria-label={'Seleccionar registro ' + fila.id} checked={seleccionadas.has(fila.id)} onChange={() => props.onSeleccionar(fila.id)} /></label></td>}
                 <td><div className={styles.cliente}><span aria-hidden="true">{iniciales}</span><div><strong>{cliente}</strong><small>{fila.area_nombre || 'Sin división'}</small></div></div></td>
                 <td><button type="button" className={styles.solicitud} title={fila.descripcion || undefined} onClick={() => props.onDetalle(fila)}>{fila.tipo_actividad_nombre || 'Registro de horas'}</button>
                   {faltantes.length > 0 && <small className={styles.faltantes} title={textoDatosFaltantes(faltantes)}><AlertTriangle size={13} />Datos pendientes</small>}</td>
                 <td className={styles.fechaActividad}><CalendarDays className={styles.soloMovil} size={13} aria-hidden="true" />{fechaCorta(fechaLocalISO(fila.inicio))}</td>
-                <td className={styles.duracion}><strong><Clock size={14} className={styles.iconoRevision} aria-hidden="true" />{props.duracion(fila)}</strong><div><FacturableBadge valor={fila.facturable} /></div></td>
-                <td className={styles.responsable} title={fila.usuario_nombre}><User size={14} className={styles.iconoRevision} aria-hidden="true" />{fila.usuario_nombre ? primerNombreYApellido(fila.usuario_nombre) : '—'}</td>
+                <td><strong>{props.duracion(fila)}</strong><div><FacturableBadge valor={fila.facturable} /></div></td>
+                <td title={fila.usuario_nombre}>{fila.usuario_nombre ? primerNombreYApellido(fila.usuario_nombre) : '—'}</td>
                 <td><StatusBadge estado={fila.estado} /></td>
                 <td>{fechaCorta(fechaDeRegistro(fila))}</td>
                 <td><div className={styles.acciones}>

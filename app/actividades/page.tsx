@@ -189,7 +189,7 @@ export default function Actividades() {
             </div>
             <h2 id="titulo-refrigerio" className="mt-6 text-2xl font-bold text-foreground">¡Es hora de refrigerio!</h2>
             <p id="detalle-refrigerio" className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              De 1:00 p. m. a 2:00 p. m. el cronómetro se pausa y no es posible registrar ni reanudar actividades.
+              {actividadActual ? 'Tu actividad queda en pausa durante el refrigerio. Puedes reanudarla al regresar, a partir de las 2:00 p. m.' : 'El refrigerio es de 1:00 p. m. a 2:00 p. m. Podrás registrar actividades al regresar.'}
             </p>
             <p className="mt-6 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200">
               El registro estará disponible nuevamente a las 2:00 p. m.

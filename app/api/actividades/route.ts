@@ -141,6 +141,7 @@ export async function GET(request: Request) {
       ar.nombre AS area_nombre,
       c.nombre AS cliente_nombre,
       COALESCE(pa.segundos, 0) AS pausa_acumulada_segundos,
+      pa.ultima_reanudacion,
       CASE
         WHEN a.fin IS NOT NULL THEN TIMESTAMPDIFF(SECOND, a.inicio, a.fin)
         ELSE TIMESTAMPDIFF(SECOND, a.inicio, NOW())
@@ -153,7 +154,7 @@ export async function GET(request: Request) {
       ${servicioJoin}
       LEFT JOIN clientes c ON c.id = a.cliente_id
       LEFT JOIN (
-        SELECT p.actividad_id,
+        SELECT p.actividad_id, MAX(p.fin) AS ultima_reanudacion,
                SUM(TIMESTAMPDIFF(SECOND, p.inicio, COALESCE(p.fin, NOW()))) AS segundos
         FROM pausas p
         GROUP BY p.actividad_id
